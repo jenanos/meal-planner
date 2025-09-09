@@ -1,1 +1,1 @@
-export * from "./client"; // <-- dette gjør `export const prisma ...` tilgjengelig
+export * from "./client"; // gjør named export: prisma

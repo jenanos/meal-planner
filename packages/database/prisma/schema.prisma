@@ -8,7 +8,6 @@ datasource db {
 
 generator client {
   provider = "prisma-client-js"
-  output = "../generated/client"
 }
 
 model User {
@@ -19,9 +18,9 @@ model User {
 }
 
 model Recipe {
-  id          String   @id @default(uuid())
-  title       String
-  diet        String
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
+  id        String   @id @default(uuid())
+  title     String
+  diet      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
 }
