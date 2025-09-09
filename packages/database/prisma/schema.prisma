@@ -2,7 +2,7 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 datasource db {
-  provider = "mysql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -16,4 +16,12 @@ model User {
   name          String?
   email         String?   @unique
   emailVerified DateTime?
+}
+
+model Recipe {
+  id          String   @id @default(uuid())
+  title       String
+  diet        String
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
 }
