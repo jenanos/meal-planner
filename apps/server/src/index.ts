@@ -1,7 +1,7 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { fastifyTRPCPlugin } from "@trpc/server/adapters/fastify";
-import { appRouter } from "@repo/api/src/routers";
+import { appRouter } from "@repo/api";
 
 const app = Fastify({ logger: true });
 

@@ -1,36 +1,43 @@
 import { prisma } from "./client";
 
-import type { User } from "../generated/client";
+const householdId = "00000000-0000-0000-0000-000000000001";
 
-const DEFAULT_USERS = [
-  // Add your own user to pre-populate the database with
-  {
-    name: "Tim Apple",
-    email: "tim@apple.com",
-  },
-] as Array<Partial<User>>;
+async function main() {
+  await prisma.household.upsert({
+    where: { id: householdId },
+    update: {},
+    create: {
+      id: householdId,
+      name: "Familien",
+    },
+  });
 
-(async () => {
-  try {
-    await Promise.all(
-      DEFAULT_USERS.map((user) =>
-        prisma.user.upsert({
-          where: {
-            email: user.email!,
-          },
-          update: {
-            ...user,
-          },
-          create: {
-            ...user,
-          },
-        })
-      )
-    );
-  } catch (error) {
-    console.error(error);
+  const recipes = [
+    { title: "Biff", diet: "MEAT" },
+    { title: "Kylling", diet: "MEAT" },
+    { title: "Lam", diet: "MEAT" },
+    { title: "Laks", diet: "FISH" },
+    { title: "Torsk", diet: "FISH" },
+    { title: "Makrell", diet: "FISH" },
+    { title: "Salat", diet: "VEG" },
+    { title: "Pasta", diet: "VEG" },
+    { title: "Grønnsakssuppe", diet: "VEG" },
+  ];
+
+  await Promise.all(
+    recipes.map((r) =>
+      prisma.recipe.create({
+        data: { ...r, householdId },
+      })
+    )
+  );
+}
+
+main()
+  .catch((e) => {
+    console.error(e);
     process.exit(1);
-  } finally {
+  })
+  .finally(async () => {
     await prisma.$disconnect();
-  }
-})();
+  });

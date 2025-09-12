@@ -1,5 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// Prisma schema for meal planner
+// learn more: https://pris.ly/d/prisma-schema
 
 datasource db {
   provider = "sqlite"
@@ -10,17 +10,47 @@ generator client {
   provider = "prisma-client-js"
 }
 
+model Household {
+  id   String @id @default(uuid())
+  name String
+
+  recipes Recipe[]
+  plans   MealPlan[]
+}
+
+model Recipe {
+  id          String    @id @default(uuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  title       String
+  diet        String
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  planItems MealPlanItem[]
+}
+
+model MealPlan {
+  id          String    @id @default(uuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  weekStart   DateTime
+
+  items MealPlanItem[]
+}
+
+model MealPlanItem {
+  id       String   @id @default(uuid())
+  planId   String
+  plan     MealPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  day      String
+  recipeId String?
+  recipe   Recipe?  @relation(fields: [recipeId], references: [id])
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
   email         String?   @unique
   emailVerified DateTime?
-}
-
-model Recipe {
-  id        String   @id @default(uuid())
-  title     String
-  diet      String
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
 }
