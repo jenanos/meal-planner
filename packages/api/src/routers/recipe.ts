@@ -1,20 +1,38 @@
-import { z } from "zod";
-import { router, publicProcedure } from "../trpc";
 import { prisma } from "@repo/database";
-
+import { router, publicProcedure } from "../trpc";
+import { Diet, RecipeCreate, RecipeListQuery } from "../schemas";
+import { z } from "zod";
 
 export const recipeRouter = router({
-  list: publicProcedure.query(() =>
-    prisma.recipe.findMany({ where: { active: true } })
-  ),
-  create: publicProcedure.input(z.object({
-    title: z.string().min(2),
-    diet: z.enum(["MEAT","FISH","VEG"]),
-    description: z.string().optional(),
-    prepMinutes: z.number().int().positive().optional()
-  })).mutation(({ input }) =>
-    prisma.recipe.create({
-      data: { ...input, householdId: "demo-household" }
-    })
-  )
+  list: publicProcedure.input(RecipeListQuery).query(({ input }) => {
+    const { householdId, diet, search } = input;
+    return prisma.recipe.findMany({
+      where: {
+        householdId,
+        active: true,
+        ...(diet ? { diet } : {}),
+        ...(search
+          ? { title: { contains: search, mode: "insensitive" } }
+          : {}),
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  }),
+  create: publicProcedure.input(RecipeCreate).mutation(({ input }) => {
+    return prisma.recipe.create({ data: input });
+  }),
+  update: publicProcedure
+    .input(
+      RecipeCreate.extend({ id: z.string().uuid() })
+    )
+    .mutation(({ input }) => {
+      const { id, ...data } = input;
+      return prisma.recipe.update({ where: { id }, data });
+    }),
+  archive: publicProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(({ input }) =>
+      prisma.recipe.update({ where: { id: input.id }, data: { active: false } })
+    ),
 });
+

@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint . --max-warnings 0"
+    "lint": "eslint . --max-warnings 0",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@tailwindcss/cli": "^4.1.12",
@@ -33,6 +34,7 @@
     "eslint": "^8.57.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.12",
-    "typescript": "5.9.2"
+    "typescript": "5.9.2",
+    "@playwright/test": "^1.49.0"
   }
 }
