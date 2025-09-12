@@ -1,11 +1,17 @@
+import 'dotenv/config';
+console.log('DATABASE_URL at runtime:', process.env.DATABASE_URL);
+
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { fastifyTRPCPlugin } from "@trpc/server/adapters/fastify";
-import { appRouter } from "@repo/api";
+import { appRouter } from "@repo/api";     // <-- bruk pakkens rot, ikke /src/routers
 
 const app = Fastify({ logger: true });
 
-await app.register(cors, { origin: true });
+await app.register(cors, {
+  origin: ["http://localhost:3000", "http://127.0.0.1:3000"], // mer eksplisitt i dev
+  credentials: true
+});
 
 await app.register(fastifyTRPCPlugin, {
   prefix: "/trpc",

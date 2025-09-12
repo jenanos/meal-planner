@@ -1,4 +1,4 @@
-// Prisma schema for meal planner
+Prisma schema for meal planner
 // learn more: https://pris.ly/d/prisma-schema
 
 datasource db {
