@@ -1,6 +1,6 @@
 import { prisma } from "@repo/database";
 import { router, publicProcedure } from "../trpc";
-import { Diet, RecipeCreate, RecipeListQuery } from "../schemas";
+import { RecipeCreate, RecipeListQuery } from "../schemas";
 import { z } from "zod";
 
 export const recipeRouter = router({
@@ -11,9 +11,7 @@ export const recipeRouter = router({
         householdId,
         active: true,
         ...(diet ? { diet } : {}),
-        ...(search
-          ? { title: { contains: search, mode: "insensitive" } }
-          : {}),
+        ...(search ? { title: { contains: search } } : {}),
       },
       orderBy: { createdAt: "desc" },
     });
@@ -22,9 +20,7 @@ export const recipeRouter = router({
     return prisma.recipe.create({ data: input });
   }),
   update: publicProcedure
-    .input(
-      RecipeCreate.extend({ id: z.string().uuid() })
-    )
+    .input(RecipeCreate.extend({ id: z.string().uuid() }))
     .mutation(({ input }) => {
       const { id, ...data } = input;
       return prisma.recipe.update({ where: { id }, data });
@@ -35,4 +31,3 @@ export const recipeRouter = router({
       prisma.recipe.update({ where: { id: input.id }, data: { active: false } })
     ),
 });
-

@@ -1,47 +1,27 @@
 import { prisma } from "@repo/database";
 import { router, publicProcedure } from "../trpc";
-import {
-  PlannerInput,
-  SaveWeekInput,
-  Weekday,
-  type PlannerWeekItem,
-} from "../schemas";
-import { z } from "zod";
+import { PlannerInput, SaveWeekInput, Day } from "../schemas";
 
-const days: Array<z.infer<typeof Weekday>> = [
-  "MON",
-  "TUE",
-  "WED",
-  "THU",
-  "FRI",
-  "SAT",
-  "SUN",
-];
+const days = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"] as const;
 
-function shuffle<T>(arr: T[]): T[] {
+function shuffle<T>(arr: T[]) {
   return [...arr].sort(() => Math.random() - 0.5);
 }
 
-export function selectRecipes(
-  recipes: Array<{ id: string; title: string; diet: string }>,
-  weeklyTargets: { MEAT: number; FISH: number; VEG: number }
-) {
-  const selected: typeof recipes = [];
-
-  (Object.keys(weeklyTargets) as Array<keyof typeof weeklyTargets>).forEach(
-    (diet) => {
-      const need = weeklyTargets[diet];
-      const pool = shuffle(recipes.filter((r) => r.diet === diet));
-      selected.push(...pool.slice(0, need));
-    }
-  );
-
+export function selectRecipes<
+  R extends { id: string; title: string; diet: string }
+>(recipes: R[], weeklyTargets: Record<string, number>) {
+  const selected: R[] = [];
+  Object.keys(weeklyTargets).forEach((diet) => {
+    const need = weeklyTargets[diet] ?? 0;
+    const pool = shuffle(recipes.filter((r) => r.diet === diet));
+    selected.push(...pool.slice(0, need));
+  });
   let i = 0;
   while (selected.length < 7 && recipes.length > 0) {
     selected.push(recipes[i % recipes.length]);
     i++;
   }
-
   return selected;
 }
 
@@ -53,19 +33,16 @@ export const plannerRouter = router({
       const recipes = await prisma.recipe.findMany({
         where: { householdId, active: true },
       });
-
       const selected = selectRecipes(recipes, weeklyTargets);
-
-      const items: PlannerWeekItem[] = days.map((day, idx) => {
+      const items = days.map((day, idx) => {
         const r = selected[idx];
         return {
-          day,
+          day, // typed as Day
           recipeId: r?.id ?? null,
           title: r?.title ?? "",
-          diet: (r?.diet ?? "MEAT") as any,
-        } as PlannerWeekItem;
+          diet: r?.diet ?? "MEAT",
+        };
       });
-
       return { plan: { weekStart, items } };
     }),
   saveWeek: publicProcedure

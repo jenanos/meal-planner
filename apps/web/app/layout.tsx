@@ -1,9 +1,11 @@
 import "./globals.css";
-import Providers from "./providers";
+import { Providers } from "./providers";
+
+export const metadata = { title: "Meal Planner" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="no">
+    <html lang="en">
       <body>
         <Providers>{children}</Providers>
       </body>

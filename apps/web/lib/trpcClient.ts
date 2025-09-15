@@ -1,8 +1,4 @@
-import { createTRPCProxyClient, httpBatchLink } from "@trpc/client";
-import type { AppRouter } from "@repo/api";
+import { createTRPCReact } from "@trpc/react-query";
+import type { AppRouter } from "@repo/api"; // pek til serverens type-eksport (ikke dist)
 
-export const trpc = createTRPCProxyClient<AppRouter>({
-  links: [
-    httpBatchLink({ url: `${process.env.NEXT_PUBLIC_API_URL}/trpc` })
-  ],
-});
+export const trpc = createTRPCReact<AppRouter>();

@@ -1,27 +1,26 @@
 "use client";
+export const dynamic = "force-dynamic";
 
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { trpc } from "../../lib/trpcClient";
-import { Button } from "@repo/ui/components/Button";
+import { Button } from "@repo/ui";
+import type { Diet } from "@repo/api";
 
 const householdId = "00000000-0000-0000-0000-000000000001";
 
 export default function RecipesPage() {
-  const qc = useQueryClient();
-  const { data } = useQuery({
-    queryKey: ["recipes"],
-    queryFn: () => trpc.recipe.list.query({ householdId }),
+  const utils = trpc.useUtils();
+
+  const { data, isLoading, error } = trpc.recipe.list.useQuery({
+    householdId,
   });
 
   const [title, setTitle] = useState("");
-  const [diet, setDiet] = useState("MEAT");
+  const [diet, setDiet] = useState<Diet>("MEAT");
 
-  const create = useMutation({
-    mutationFn: () =>
-      trpc.recipe.create.mutate({ householdId, title, diet: diet as any }),
+  const create = trpc.recipe.create.useMutation({
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["recipes"] });
+      utils.recipe.list.invalidate({ householdId });
       setTitle("");
     },
   });
@@ -29,6 +28,10 @@ export default function RecipesPage() {
   return (
     <div className="p-4 space-y-4">
       <h1 className="text-xl font-bold">Recipes</h1>
+
+      {isLoading && <p>Loading…</p>}
+      {error && <p className="text-red-500">Failed to load recipes</p>}
+
       <ul className="space-y-1">
         {data?.map((r) => (
           <li key={r.id}>
@@ -36,12 +39,13 @@ export default function RecipesPage() {
           </li>
         ))}
       </ul>
+
       <form
         className="flex gap-2 items-end"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!title) return;
-          create.mutate();
+          if (!title || create.isPending) return;
+          create.mutate({ householdId, title, diet });
         }}
       >
         <div className="flex flex-col">
@@ -58,7 +62,7 @@ export default function RecipesPage() {
           <select
             className="border px-2 py-1"
             value={diet}
-            onChange={(e) => setDiet(e.target.value)}
+            onChange={(e) => setDiet(e.target.value as Diet)}
             required
           >
             <option value="MEAT">MEAT</option>
@@ -66,10 +70,12 @@ export default function RecipesPage() {
             <option value="VEG">VEG</option>
           </select>
         </div>
-        <Button type="submit">Create</Button>
+        <Button type="submit" disabled={create.isPending}>
+          {create.isPending ? "Creating…" : "Create"}
+        </Button>
       </form>
+
       {create.error && <p className="text-red-500">Error creating recipe</p>}
     </div>
   );
 }
-

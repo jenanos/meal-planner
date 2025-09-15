@@ -1,9 +1,7 @@
-/**
- * @type {import('next').NextConfig}
- */
+/** @type {import('next').NextConfig} */
 const nextConfig = {
-  transpilePackages: ["@repo/api", "@repo/database", "@repo/ui"]
-};
-module.exports = {
+  // Ikke bruk: output: "export"
   reactStrictMode: true,
 };
+
+module.exports = nextConfig;

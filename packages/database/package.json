@@ -2,7 +2,6 @@
   "name": "@repo/database",
   "version": "1.0.0",
   "type": "module",
-
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -11,7 +10,6 @@
       "import": "./src/index.ts"
     }
   },
-
   "scripts": {
     "generate": "prisma generate",
     "postinstall": "prisma generate",
@@ -22,20 +20,21 @@
     "db:seed": "tsx src/seed.ts",
     "studio": "prisma studio"
   },
-
   "dependencies": {
     "@prisma/client": "^5.18.0"
   },
   "devDependencies": {
-    "prisma": "^5.18.0",
-    "tsx": "4.19.1",
-    "tsup": "^8.0.2",
-    "typescript": "5.9.2",
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
+    "@types/node": "^24.3.1",
     "eslint": "^8.57.0",
-    "rimraf": "^5.0.5"
+    "prisma": "^5.18.0",
+    "rimraf": "^5.0.5",
+    "tsup": "^8.0.2",
+    "tsx": "^4.19.1",
+    "typescript": "5.9.2"
   },
-
-  "prisma": { "schema": "./prisma/schema.prisma" }
+  "prisma": {
+    "seed": "tsx src/seed.ts"
+  }
 }
