@@ -11,8 +11,9 @@ model Household {
   id   String @id @default(uuid())
   name String
 
-  recipes Recipe[]
-  plans   MealPlan[]
+  recipes    Recipe[]
+  plans      MealPlan[]
+  Ingredient Ingredient[]
 }
 
 model Recipe {
@@ -23,8 +24,10 @@ model Recipe {
   diet        String
   active      Boolean   @default(true)
   createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  planItems MealPlanItem[]
+  planItems   MealPlanItem[]
+  ingredients RecipeIngredient[]
 }
 
 model MealPlan {
@@ -50,4 +53,28 @@ model User {
   name          String?
   email         String?   @unique
   emailVerified DateTime?
+}
+
+model Ingredient {
+  id          String             @id @default(uuid())
+  householdId String
+  household   Household          @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  name        String
+  recipes     RecipeIngredient[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@unique([householdId, name], name: "Ingredient_householdId_name_key")
+}
+
+model RecipeIngredient {
+  recipeId     String
+  ingredientId String
+  quantity     Float?
+  unit         String?
+
+  recipe     Recipe     @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+
+  @@id([recipeId, ingredientId])
 }

@@ -6,10 +6,19 @@ export type Diet = z.infer<typeof Diet>;
 export const Day = z.enum(["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]);
 export type Day = z.infer<typeof Day>;
 
+export const IngredientInput = z.object({
+  name: z.string().min(1),
+  quantity: z.number().positive().optional(),
+  unit: z.string().min(1).optional(),
+});
+export type IngredientInput = z.infer<typeof IngredientInput>;
+
+// Oppdater RecipeCreate til å støtte ingredienser
 export const RecipeCreate = z.object({
   householdId: z.string().uuid(),
   title: z.string().min(1),
   diet: Diet,
+  ingredients: z.array(IngredientInput).default([]),
 });
 export type RecipeCreate = z.infer<typeof RecipeCreate>;
 

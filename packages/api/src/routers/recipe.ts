@@ -14,16 +14,70 @@ export const recipeRouter = router({
         ...(search ? { title: { contains: search } } : {}),
       },
       orderBy: { createdAt: "desc" },
+      include: { ingredients: { include: { ingredient: true } } },
     });
   }),
   create: publicProcedure.input(RecipeCreate).mutation(({ input }) => {
-    return prisma.recipe.create({ data: input });
+    const { ingredients = [], ...data } = input;
+    return prisma.recipe.create({
+      data: {
+        ...data,
+        ingredients: {
+          create: ingredients.map((i) => ({
+            quantity: i.quantity ?? null,
+            unit: i.unit ?? null,
+            ingredient: {
+              connectOrCreate: {
+                where: {
+                  Ingredient_householdId_name_key: {
+                    householdId: data.householdId,
+                    name: i.name.trim(),
+                  },
+                },
+                create: {
+                  householdId: data.householdId,
+                  name: i.name.trim(),
+                },
+              },
+            },
+          })),
+        },
+      },
+      include: { ingredients: { include: { ingredient: true } } },
+    });
   }),
   update: publicProcedure
     .input(RecipeCreate.extend({ id: z.string().uuid() }))
     .mutation(({ input }) => {
-      const { id, ...data } = input;
-      return prisma.recipe.update({ where: { id }, data });
+      const { id, ingredients = [], ...data } = input;
+      return prisma.recipe.update({
+        where: { id },
+        data: {
+          ...data,
+          ingredients: {
+            deleteMany: {},
+            create: ingredients.map((i) => ({
+              quantity: i.quantity ?? null,
+              unit: i.unit ?? null,
+              ingredient: {
+                connectOrCreate: {
+                  where: {
+                    Ingredient_householdId_name_key: {
+                      householdId: data.householdId,
+                      name: i.name.trim(),
+                    },
+                  },
+                  create: {
+                    householdId: data.householdId,
+                    name: i.name.trim(),
+                  },
+                },
+              },
+            })),
+          },
+        },
+        include: { ingredients: { include: { ingredient: true } } },
+      });
     }),
   archive: publicProcedure
     .input(z.object({ id: z.string().uuid() }))

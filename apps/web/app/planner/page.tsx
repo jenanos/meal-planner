@@ -30,9 +30,9 @@ export default function PlannerPage() {
 
   return (
     <div className="p-4 space-y-4">
-      <h1 className="text-xl font-bold">Planner</h1>
+      <h1 className="text-xl font-bold text-center">Planner</h1>
 
-      <div className="flex gap-2 items-end">
+      <div className="flex gap-2 items-end justify-center">
         <div className="flex flex-col">
           <label className="text-sm">Week start</label>
           <input
@@ -71,27 +71,33 @@ export default function PlannerPage() {
       </div>
 
       {plan && (
-        <div className="space-y-2">
-          <h2 className="text-lg font-semibold">Generated plan</h2>
-          <ul className="list-disc pl-6">
-            {plan.items.map((i) => (
-              <li key={i.day}>
-                {i.day}: {i.title} ({i.diet})
-              </li>
-            ))}
-          </ul>
-          <Button
-            onClick={() =>
-              save.mutate({
-                householdId,
-                weekStart,
-                items: plan.items.map((i) => ({ day: i.day, recipeId: i.recipeId })),
-              })
-            }
-            disabled={!canSave}
-          >
-            {save.isPending ? "Saving..." : "Save plan"}
-          </Button>
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold text-center">Weekly plan</h2>
+          <div className="flex justify-center">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3 max-w-6xl">
+              {plan.items.map((i) => (
+                <div key={i.day} className="rounded-lg border p-3 shadow-sm bg-white">
+                  <div className="text-xs text-gray-500">{i.day}</div>
+                  <div className="font-medium">{i.title || "No suggestion"}</div>
+                  <div className="text-xs text-gray-400">{i.diet}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="flex justify-center">
+            <Button
+              onClick={() =>
+                save.mutate({
+                  householdId,
+                  weekStart,
+                  items: plan.items.map((i) => ({ day: i.day, recipeId: i.recipeId })),
+                })
+              }
+              disabled={!canSave}
+            >
+              {save.isPending ? "Saving..." : "Save plan"}
+            </Button>
+          </div>
         </div>
       )}
 

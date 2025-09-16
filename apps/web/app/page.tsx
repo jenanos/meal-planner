@@ -2,6 +2,7 @@
 export const dynamic = "force-dynamic";
 
 import { trpc } from "../lib/trpcClient";
+import Link from "next/link";
 
 export default function Page() {
   const householdId = "00000000-0000-0000-0000-000000000001";
@@ -17,7 +18,11 @@ export default function Page() {
   return (
     <main className="p-6">
       <h1 className="text-2xl font-semibold">Oppskrifter</h1>
-      <ul className="list-disc pl-6">
+      <p className="mt-2">
+        Vil du legge til nye oppskrifter?{" "}
+        <Link href="/recipes" className="text-blue-600 underline">Gå til Recipes</Link>
+      </p>
+      <ul className="list-disc pl-6 mt-4">
         {recipes.map((r) => (
           <li key={r.id}>
             {r.title} ({r.diet})
