@@ -107,6 +107,9 @@ importers:
       '@repo/typescript-config':
         specifier: workspace:*
         version: link:../../packages/config-typescript
+      '@trpc/server':
+        specifier: 11.5.1
+        version: 11.5.1(typescript@5.9.2)
       '@types/node':
         specifier: ^24.3.0
         version: 24.3.1

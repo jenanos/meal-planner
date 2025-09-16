@@ -1,107 +1,117 @@
 "use client";
 export const dynamic = "force-dynamic";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
 import { Button } from "@repo/ui";
-import type { Day } from "@repo/api";
 
-const householdId = "00000000-0000-0000-0000-000000000001";
-type Targets = Record<"MEAT" | "FISH" | "VEG", number>;
+function mondayOf(date = new Date()) {
+  const d = new Date(date);
+  const day = d.getDay(); // 0-6, 0=søn
+  const diff = (day === 0 ? -6 : 1) - day;
+  d.setDate(d.getDate() + diff);
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString();
+}
 
 export default function PlannerPage() {
-  const [weekStart, setWeekStart] = useState("");
-  const [targets, setTargets] = useState<Targets>({ MEAT: 3, FISH: 2, VEG: 2 });
-  const [plan, setPlan] = useState<
-    | { weekStart: string; items: Array<{ day: Day; recipeId: string | null; title: string; diet: string }> }
-    | null
-  >(null);
+  const [weekStartISO, setWeekStartISO] = useState(mondayOf());
 
-  const generate = trpc.planner.generateWeek.useMutation({
-    onSuccess: (data) => setPlan(data.plan),
-  });
+  const gen = trpc.planner.generateWeekPlan.useMutation();
+  const sugg = trpc.planner.suggestions.useQuery({ excludeIds: [] });
+  const save = trpc.planner.saveWeekPlan.useMutation();
 
-  const save = trpc.planner.saveWeek.useMutation({
-    onSuccess: () => console.log("Plan saved"),
-  });
+  const [week, setWeek] = useState<Array<any>>(Array(7).fill(null));
+  const alternatives = useMemo(() => sugg.data ?? [], [sugg.data]);
 
-  const canGenerate = !!weekStart && !generate.isPending;
-  const canSave = !!plan && !save.isPending;
+  useEffect(() => {
+    gen.mutate(undefined, {
+      onSuccess: (res) => {
+        const days = res.days ?? [];
+        setWeek(days.map((d: any) => d?.recipe ?? null));
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const canSave = week.every((r) => r && r.id);
 
   return (
-    <div className="p-4 space-y-4">
-      <h1 className="text-xl font-bold text-center">Planner</h1>
+    <div className="space-y-4">
+      <h1 className="text-xl font-bold text-center">Weekly planner</h1>
 
-      <div className="flex gap-2 items-end justify-center">
+      <div className="flex gap-3 justify-center items-end">
         <div className="flex flex-col">
-          <label className="text-sm">Week start</label>
+          <label className="text-sm">Week start (Mon)</label>
           <input
             type="date"
             className="border px-2 py-1"
-            value={weekStart}
-            onChange={(e) => setWeekStart(e.target.value)}
-            required
+            value={new Date(weekStartISO).toISOString().slice(0, 10)}
+            onChange={(e) => setWeekStartISO(new Date(e.target.value).toISOString())}
           />
         </div>
-
-        {(["MEAT", "FISH", "VEG"] as const).map((d) => (
-          <div key={d} className="flex flex-col">
-            <label className="text-sm">{d}</label>
-            <input
-              type="number"
-              min={0}
-              className="border px-2 py-1 w-20"
-              value={targets[d]}
-              onChange={(e) =>
-                setTargets({ ...targets, [d]: parseInt(e.target.value, 10) || 0 })
-              }
-              required
-            />
-          </div>
-        ))}
-
-        <Button
-          onClick={() =>
-            generate.mutate({ householdId, weekStart, weeklyTargets: targets })
-          }
-          disabled={!canGenerate}
-        >
-          {generate.isPending ? "Generating..." : "Generate"}
+        <Button onClick={() => gen.mutate(undefined, {
+          onSuccess: (res) => setWeek(res.days.map((d: any) => d.recipe))
+        })}>
+          Generate
         </Button>
       </div>
 
-      {plan && (
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold text-center">Weekly plan</h2>
-          <div className="flex justify-center">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3 max-w-6xl">
-              {plan.items.map((i) => (
-                <div key={i.day} className="rounded-lg border p-3 shadow-sm bg-white">
-                  <div className="text-xs text-gray-500">{i.day}</div>
-                  <div className="font-medium">{i.title || "No suggestion"}</div>
-                  <div className="text-xs text-gray-400">{i.diet}</div>
-                </div>
-              ))}
+      <div className="overflow-x-auto">
+        <div className="grid grid-cols-7 gap-3 min-w-[840px]">
+          {week.map((r, idx) => (
+            <div key={idx} className="border rounded p-3 bg-white">
+              <div className="text-xs text-gray-500">Day {idx}</div>
+              <div className="font-medium">{r?.name ?? "—"}</div>
+              <div className="text-xs text-gray-500">{r?.category}</div>
+              <div className="text-xs text-gray-400">E{r?.everydayScore} • H{r?.healthScore}</div>
+              {r?.ingredients?.length ? (
+                <ul className="list-disc pl-5 text-xs mt-1">
+                  {r.ingredients.map((i: any) => <li key={i.ingredientId}>{i.name}</li>)}
+                </ul>
+              ) : null}
             </div>
-          </div>
-          <div className="flex justify-center">
-            <Button
-              onClick={() =>
-                save.mutate({
-                  householdId,
-                  weekStart,
-                  items: plan.items.map((i) => ({ day: i.day, recipeId: i.recipeId })),
-                })
-              }
-              disabled={!canSave}
-            >
-              {save.isPending ? "Saving..." : "Save plan"}
-            </Button>
-          </div>
+          ))}
         </div>
-      )}
+      </div>
 
-      {(generate.error || save.error) && <p className="text-red-500">Error</p>}
+      <div className="space-y-2">
+        <h2 className="font-semibold">Alternatives</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2">
+          {alternatives.map((r: any) => (
+            <button
+              key={r.id}
+              className="text-left border rounded p-2 hover:bg-gray-50"
+              onClick={() => {
+                // sett første tomme dag til denne
+                const i = week.findIndex((x) => !x);
+                if (i >= 0) {
+                  const next = [...week];
+                  next[i] = r;
+                  setWeek(next);
+                }
+              }}
+            >
+              <div className="font-medium">{r.name}</div>
+              <div className="text-xs text-gray-500">{r.category} • E{r.everydayScore} • H{r.healthScore}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex justify-center">
+        <Button
+          disabled={!canSave || save.isPending}
+          onClick={() => save.mutate({
+            weekStart: weekStartISO,
+            recipeIdsByDay: week.map((r) => r.id),
+          })}
+        >
+          {save.isPending ? "Saving…" : "Save week plan"}
+        </Button>
+      </div>
+
+      {(gen.error || save.error) && <p className="text-red-500 text-center">Error</p>}
     </div>
   );
 }
