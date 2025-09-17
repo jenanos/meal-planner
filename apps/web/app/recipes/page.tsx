@@ -6,6 +6,7 @@ import { trpc } from "../../lib/trpcClient";
 import { Button } from "@repo/ui";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@repo/api";
+import { describeEveryday, describeHealth } from "../../lib/scoreLabels";
 
 const CATEGORIES = ["FISK", "VEGETAR", "KYLLING", "STORFE", "ANNET"] as const;
 
@@ -70,8 +71,13 @@ export default function RecipesPage() {
         {error && <li className="text-red-500">Failed to load</li>}
         {items.map((r: RecipeListItem) => (
           <li key={r.id} className="border rounded p-3">
-            <div className="font-medium">{r.name} <span className="text-xs text-gray-500">({r.category})</span></div>
-            <div className="text-xs text-gray-500">Everyday {r.everydayScore} • Health {r.healthScore}</div>
+            <div className="font-medium">
+              {r.name}{" "}
+              <span className="text-xs text-gray-500">({r.category})</span>
+            </div>
+            <div className="text-xs text-gray-500">
+              {describeEveryday(r.everydayScore)} • {describeHealth(r.healthScore)}
+            </div>
             {r.description && <div className="text-sm mt-1">{r.description}</div>}
             {r.ingredients?.length ? (
               <ul className="list-disc pl-6 text-sm text-gray-600 mt-1">

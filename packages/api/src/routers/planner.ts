@@ -3,13 +3,35 @@ import { router, publicProcedure } from "../trpc";
 import { PlannerConstraints, WeekPlanInput } from "../schemas";
 import { z } from "zod";
 
+/** Day + meta (kan utvides senere) */
+interface DayMeta {
+  label: string;
+}
+
+const DAYS = [0, 1, 2, 3, 4, 5, 6] as const;
+export type DayIndex = typeof DAYS[number];
+
+const DAY_META: Record<DayIndex, DayMeta> = {
+  0: { label: "Mon" },
+  1: { label: "Tue" },
+  2: { label: "Wed" },
+  3: { label: "Thu" },
+  4: { label: "Fri" },
+  5: { label: "Sat" },
+  6: { label: "Sun" },
+};
+
+function getDayMeta(d: DayIndex) {
+  return DAY_META[d];
+}
+
 type RecipeDTO = {
   id: string;
   name: string;
-  category: "FISK" | "VEGETAR" | "KYLLING" | "STORFE" | "ANNET";
+  category: string;
   everydayScore: number;
   healthScore: number;
-  lastUsed?: Date | null;
+  lastUsed: Date | null;
   usageCount: number;
   ingredients: { ingredientId: string; name: string }[];
 };
@@ -30,13 +52,44 @@ function toDTO(r: any): RecipeDTO {
   };
 }
 
-const DAYS = [0, 1, 2, 3, 4, 5, 6] as const;
-
 function daysSince(d?: Date | null) {
   if (!d) return Infinity;
-  const diff = Date.now() - d.getTime();
-  return Math.floor(diff / (1000 * 60 * 60 * 24));
+  return Math.floor((Date.now() - d.getTime()) / 86_400_000);
 }
+
+/* Suggestions */
+
+const suggestionKindSchema = z.enum(["longGap", "frequent", "search"]);
+type SuggestionKind = z.infer<typeof suggestionKindSchema>;
+
+const suggestionInputSchema = z.object({
+  excludeIds: z.array(z.string().uuid()).default([]),
+  limit: z.number().int().min(1).max(20).default(6),
+  type: suggestionKindSchema.default("longGap"),
+  search: z.string().optional(),
+});
+type SuggestionInput = z.infer<typeof suggestionInputSchema>;
+
+function buildSuggestions(
+  pool: RecipeDTO[],
+  opts: { kind: SuggestionKind; limit: number; exclude: string[]; search?: string }
+) {
+  const excl = new Set(opts.exclude);
+  let cand = pool.filter((r) => !excl.has(r.id));
+
+  if (opts.kind === "search" && opts.search) {
+    const q = opts.search.toLowerCase();
+    cand = cand.filter((r) => r.name.toLowerCase().includes(q));
+  } else if (opts.kind === "longGap") {
+    cand = cand.sort((a, b) => daysSince(b.lastUsed) - daysSince(a.lastUsed));
+  } else if (opts.kind === "frequent") {
+    cand = cand.sort((a, b) => b.usageCount - a.usageCount);
+  }
+
+  return cand.slice(0, opts.limit);
+}
+
+/* Planner router */
 
 export const plannerRouter = router({
   generateWeekPlan: publicProcedure
@@ -55,7 +108,7 @@ export const plannerRouter = router({
       });
       const pool = all.map(toDTO);
 
-      const target: Record<RecipeDTO["category"], number> = {
+      const target: Record<string, number> = {
         FISK: cfg.fish,
         VEGETAR: cfg.vegetarian,
         KYLLING: cfg.chicken,
@@ -64,81 +117,91 @@ export const plannerRouter = router({
       };
 
       const usedIng = new Set<string>();
-      const chosen: RecipeDTO[] = [];
+      const chosen: (RecipeDTO | null)[] = [];
+      const selectedIds = new Set<string>();
 
-      const score = (r: RecipeDTO, dayIndex: number) => {
-        // Base scoring
+      const score = (r: RecipeDTO, dayIndex: DayIndex) => {
+        const meta = getDayMeta(dayIndex); // meta er ikke brukt ennå – reserveres
         let s = 0;
-
-        // Dag-regler
         const isMonWed = dayIndex <= 2;
         const isThuSat = dayIndex >= 3 && dayIndex <= 5;
 
         if (isMonWed) {
-          // Foretrekk hverdagsvennlig og sunnere
-          s += (4 - Math.min(r.everydayScore, 4)) * 2; // lav score bedre
+          s += (4 - Math.min(r.everydayScore, 4)) * 2;
           s += (r.healthScore >= 4 ? 2 : 0);
         } else if (isThuSat) {
-          // Tillat helgekos
           s += (r.everydayScore >= 4 ? 2 : 0);
           s += (r.healthScore >= 3 ? 1 : 0);
         } else {
-          // Søndag balanser rest
           s += 1;
         }
 
-        // Ingrediens-overlapp
-        const overlap = r.ingredients.reduce((acc, i) => acc + (usedIng.has(i.ingredientId) ? 1 : 0), 0);
+        const overlap = r.ingredients.reduce(
+          (acc, i) => acc + (usedIng.has(i.ingredientId) ? 1 : 0),
+          0
+        );
         s += overlap * 1.5;
 
-        // Recency
-        const ds = daysSince(r.lastUsed ?? undefined);
+        const ds = daysSince(r.lastUsed);
         if (ds >= cfg.preferRecentGapDays) s += 2;
         else if (ds < 7) s -= 2;
 
-        // Straff hvis kategori-kvote allerede oppfylt
-        const catLeft = target[r.category];
-        if (catLeft <= 0) s -= 5;
+        if ((target[r.category] ?? 0) <= 0) s -= 5;
 
         return s;
       };
 
-      // Greedy m/enkelt backoff
       for (const dayIndex of DAYS) {
-        // Kandidater: de med kvote igjen eller ANNET hvis tomt
         const candidates = pool
-          .filter((r) => target[r.category] > 0 || r.category === "ANNET")
-          .filter((r) => !chosen.some((c) => c.id === r.id));
+          .filter((r) => (target[r.category] ?? 0) > 0 || r.category === "ANNET")
+          .filter((r) => !selectedIds.has(r.id));
 
-        candidates.sort((a, b) => score(b, dayIndex) - score(a, dayIndex));
-        const pick = candidates[0] ?? pool.find((r) => !chosen.some((c) => c.id === r.id));
+        const scored = candidates
+          .map((r) => ({ r, s: score(r, dayIndex) }))
+          .sort((a, b) => b.s - a.s);
+
+        const pick = scored.length ? scored[0].r : null;
+        chosen.push(pick);
         if (pick) {
-          chosen.push(pick);
-          target[pick.category] = Math.max(0, target[pick.category] - 1);
+          selectedIds.add(pick.id);
+          target[pick.category] = Math.max(0, (target[pick.category] ?? 0) - 1);
           pick.ingredients.forEach((i) => usedIng.add(i.ingredientId));
         }
       }
 
-      const selectedIds = new Set(chosen.map((r) => r.id));
       const alternatives = pool
         .filter((r) => !selectedIds.has(r.id))
-        .sort((a, b) => (b.healthScore - a.healthScore) + (a.everydayScore - b.everydayScore))
+        .sort(
+          (a, b) =>
+            (b.healthScore - a.healthScore) + (a.everydayScore - b.everydayScore)
+        )
         .slice(0, 10);
 
       return {
-        days: DAYS.map((i) => ({ dayIndex: i, recipe: chosen[i] ?? null })),
+        days: DAYS.map((d) => ({ dayIndex: d, recipe: chosen[d] })),
         alternatives,
       };
     }),
 
   suggestions: publicProcedure
-    .input(z.object({ excludeIds: z.array(z.string().uuid()).default([]) }).optional())
+    .input(suggestionInputSchema.optional())
     .query(async ({ input }) => {
+      const args = suggestionInputSchema.parse(input ?? {});
       const all = await prisma.recipe.findMany({
         include: { ingredients: { include: { ingredient: true } } },
       });
-      const exclude = new Set(input?.excludeIds ?? []);
-      return all.filter((r) => !exclude.has(r.id)).slice(0, 10).map(toDTO);
+      const pool = all.map(toDTO);
+
+      if (args.type === "search" && !(args.search ?? "").trim()) {
+        return [];
+      }
+
+      return buildSuggestions(pool, {
+        kind: args.type,
+        limit: args.limit,
+        exclude: args.excludeIds,
+        search: args.search,
+      });
     }),
 
   saveWeekPlan: publicProcedure
@@ -149,14 +212,14 @@ export const plannerRouter = router({
         throw new Error("recipeIdsByDay must have length 7");
       }
 
+      const weekStartDate = new Date(weekStart);
       const plan = await prisma.weekPlan.upsert({
-        where: { weekStart: new Date(weekStart) },
+        where: { weekStart: weekStartDate },
         update: {},
-        create: { weekStart: new Date(weekStart) },
+        create: { weekStart: weekStartDate },
       });
 
-      // Upsert 7 entries (unik (weekPlanId, dayIndex))
-      for (let i = 0; i < 7; i++) {
+      for (let i = 0 as DayIndex; i < 7; i = (i + 1) as DayIndex) {
         const recipeId = recipeIdsByDay[i];
         await prisma.weekPlanEntry.upsert({
           where: { weekPlanId_dayIndex: { weekPlanId: plan.id, dayIndex: i } },
@@ -165,19 +228,25 @@ export const plannerRouter = router({
         });
       }
 
-      // Markér brukt
       await Promise.all(
         recipeIdsByDay.map((id) =>
-          prisma.recipe.update({ where: { id }, data: { usageCount: { increment: 1 }, lastUsed: new Date() } })
+          prisma.recipe.update({
+            where: { id },
+            data: { usageCount: { increment: 1 }, lastUsed: new Date() },
+          })
         )
       );
 
       const full = await prisma.weekPlan.findUnique({
         where: { id: plan.id },
-        include: { entries: { include: { recipe: true } } },
+        include: {
+          entries: {
+            include: { recipe: true },
+            orderBy: { dayIndex: "asc" },
+          },
+        },
       });
 
       return full;
     }),
 });
-
