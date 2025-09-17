@@ -4,6 +4,13 @@ export const dynamic = "force-dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
 import { Button } from "@repo/ui";
+import type { inferRouterOutputs } from "@trpc/server";
+import type { AppRouter } from "@repo/api";
+
+type GenOutput = inferRouterOutputs<AppRouter>["planner"]["generateWeekPlan"];
+type RecipeDTO = GenOutput["alternatives"][number];
+
+// week: Array<RecipeDTO | null>
 
 function mondayOf(date = new Date()) {
   const d = new Date(date);

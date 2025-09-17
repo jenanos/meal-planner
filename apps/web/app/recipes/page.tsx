@@ -4,6 +4,8 @@ export const dynamic = "force-dynamic";
 import { useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
 import { Button } from "@repo/ui";
+import type { inferRouterOutputs } from "@trpc/server";
+import type { AppRouter } from "@repo/api";
 
 const CATEGORIES = ["FISK", "VEGETAR", "KYLLING", "STORFE", "ANNET"] as const;
 
@@ -40,6 +42,8 @@ export default function RecipesPage() {
 
   const items = useMemo(() => data?.items ?? [], [data]);
 
+  type RecipeListItem = inferRouterOutputs<AppRouter>["recipe"]["list"]["items"][number];
+
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-bold">Recipes</h1>
@@ -64,7 +68,7 @@ export default function RecipesPage() {
       <ul className="space-y-2">
         {isLoading && <li>Loading…</li>}
         {error && <li className="text-red-500">Failed to load</li>}
-        {items.map((r: any) => (
+        {items.map((r: RecipeListItem) => (
           <li key={r.id} className="border rounded p-3">
             <div className="font-medium">{r.name} <span className="text-xs text-gray-500">({r.category})</span></div>
             <div className="text-xs text-gray-500">Everyday {r.everydayScore} • Health {r.healthScore}</div>
