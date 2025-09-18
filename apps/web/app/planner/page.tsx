@@ -131,7 +131,6 @@ export default function PlannerPage() {
       setWeek(nextWeek);
       setLongGap(res.suggestions.longGap.filter((item) => !currentSet.has(item.id)));
       setFrequent(res.suggestions.frequent.filter((item) => !currentSet.has(item.id)));
-      setSearchResults([]);
       setSearchError(null);
       setLastUpdatedISO(res.updatedAt);
       utils.planner.getWeekPlan.setData({ weekStart: res.weekStart }, res);
@@ -225,18 +224,32 @@ export default function PlannerPage() {
       const data = (await utils.planner.suggestions.fetch({
         type: "search",
         search: term,
-        excludeIds: selectedIds,
+        excludeIds: [],
         limit: 12,
       })) as RecipeDTO[];
-      const filtered = data.filter((recipe) => !selectedIds.includes(recipe.id));
-      setSearchResults(filtered);
-      setSearchError(filtered.length ? null : "Ingen treff");
+      setSearchResults(data);
+      setSearchError(data.length ? null : "Ingen treff");
     } catch (err) {
       setSearchError("Kunne ikke søke akkurat nå");
     } finally {
       setSearchLoading(false);
     }
-  }, [searchTerm, utils, selectedIds]);
+  }, [searchTerm, utils]);
+
+  useEffect(() => {
+    const term = searchTerm.trim();
+    if (!term) {
+      setSearchResults([]);
+      setSearchError(null);
+      return;
+    }
+
+    const handle = window.setTimeout(() => {
+      executeSearch();
+    }, 300);
+
+    return () => window.clearTimeout(handle);
+  }, [searchTerm, executeSearch]);
 
   const handleWeekCardDrop = useCallback(
     async (event: DragEvent<HTMLDivElement>, targetIndex: number) => {
@@ -282,8 +295,6 @@ export default function PlannerPage() {
         setLongGap((prev) => prev.filter((item) => item.id !== recipe.id));
       } else if (payload.source === "frequent") {
         setFrequent((prev) => prev.filter((item) => item.id !== recipe.id));
-      } else if (payload.source === "search") {
-        setSearchResults((prev) => prev.filter((item) => item.id !== recipe.id));
       }
 
     },
@@ -401,30 +412,50 @@ export default function PlannerPage() {
     );
   };
 
-  const renderSuggestionCard = (recipe: RecipeDTO, source: DragSource, index: number) => (
-    <button
-      key={recipe.id}
-      className="text-left border rounded p-2 hover:bg-gray-50 cursor-grab"
-      onClick={async () => {
-        const firstEmpty = week.findIndex((slot) => !slot);
-        const targetIndex = firstEmpty === -1 ? 0 : firstEmpty;
-        const next = [...week];
-        next[targetIndex] = recipe;
-        await commitWeekPlan(next);
-        if (source === "longGap") setLongGap((prev) => prev.filter((item) => item.id !== recipe.id));
-        if (source === "frequent") setFrequent((prev) => prev.filter((item) => item.id !== recipe.id));
-        if (source === "search") setSearchResults((prev) => prev.filter((item) => item.id !== recipe.id));
-      }}
-      draggable
-      onDragStart={(event) => handleDragStart(event, { source, index, recipeId: recipe.id })}
-      type="button"
-    >
-      <div className="font-medium">{recipe.name}</div>
-      <div className="text-xs text-gray-500">
-        {recipe.category} • {describeEveryday(recipe.everydayScore)} • {describeHealth(recipe.healthScore)}
-      </div>
-    </button>
-  );
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+
+  const renderSuggestionCard = (recipe: RecipeDTO, source: DragSource, index: number) => {
+    const isInWeek = selectedIdSet.has(recipe.id);
+    const handlePick = async () => {
+      if (isInWeek) return;
+      const firstEmpty = week.findIndex((slot) => !slot);
+      const targetIndex = firstEmpty === -1 ? 0 : firstEmpty;
+      const next = [...week];
+      next[targetIndex] = recipe;
+      await commitWeekPlan(next);
+      if (source === "longGap") setLongGap((prev) => prev.filter((item) => item.id !== recipe.id));
+      if (source === "frequent") setFrequent((prev) => prev.filter((item) => item.id !== recipe.id));
+    };
+
+    return (
+      <button
+        key={recipe.id}
+        className={`relative overflow-hidden text-left border rounded p-2 transition-colors ${
+          isInWeek ? "cursor-not-allowed bg-gray-100" : "hover:bg-gray-50 cursor-grab"
+        }`}
+        onClick={handlePick}
+        draggable={!isInWeek}
+        onDragStart={(event) => {
+          if (isInWeek) return;
+          handleDragStart(event, { source, index, recipeId: recipe.id });
+        }}
+        type="button"
+      >
+        <div className="font-medium">{recipe.name}</div>
+        <div className="text-xs text-gray-500">
+          {recipe.category} • {describeEveryday(recipe.everydayScore)} • {describeHealth(recipe.healthScore)}
+        </div>
+        {isInWeek && (
+          <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center text-center px-3">
+            <span className="text-[11px] font-medium uppercase tracking-wide text-gray-600">
+              Allerede i ukeplanen
+            </span>
+            <span className="mt-1 text-sm font-medium text-gray-700">{recipe.name}</span>
+          </div>
+        )}
+      </button>
+    );
+  };
 
   return (
     <div className="space-y-6">
