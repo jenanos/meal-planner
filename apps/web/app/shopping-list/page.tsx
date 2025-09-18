@@ -76,17 +76,42 @@ type ShoppingListItem = ShoppingListResult["items"][number];
 export default function ShoppingListPage() {
   const currentWeekStart = useMemo(() => startOfWeekISO(), []);
   const [activeWeekStart, setActiveWeekStart] = useState(currentWeekStart);
+  const [includeNextWeek, setIncludeNextWeek] = useState(false);
   const [checkedMap, setCheckedMap] = useState<Record<string, boolean>>({});
 
-  const shoppingQuery = trpc.planner.shoppingList.useQuery({ weekStart: activeWeekStart });
+  const shoppingQuery = trpc.planner.shoppingList.useQuery({
+    weekStart: activeWeekStart,
+    includeNextWeek,
+  });
+
+  const includedWeeksSignature = useMemo(
+    () => (shoppingQuery.data?.includedWeekStarts ?? (shoppingQuery.data?.weekStart ? [shoppingQuery.data.weekStart] : [])).join("|"),
+    [shoppingQuery.data?.includedWeekStarts, shoppingQuery.data?.weekStart]
+  );
 
   useEffect(() => {
-    setCheckedMap({});
-  }, [shoppingQuery.data?.weekStart]);
+    const next: Record<string, boolean> = {};
+    for (const item of shoppingQuery.data?.items ?? []) {
+      const key = `${item.ingredientId}::${item.unit ?? ""}`;
+      next[key] = item.checked ?? false;
+    }
+    setCheckedMap(next);
+  }, [includedWeeksSignature, shoppingQuery.data?.items]);
 
   const items = shoppingQuery.data?.items ?? [];
   const isLoading = shoppingQuery.isLoading;
   const isFetching = shoppingQuery.isFetching;
+
+  const sortedItems = useMemo(() => {
+    const unchecked: ShoppingListItem[] = [];
+    const checked: ShoppingListItem[] = [];
+    for (const item of items) {
+      const key = `${item.ingredientId}::${item.unit ?? ""}`;
+      if (checkedMap[key]) checked.push(item);
+      else unchecked.push(item);
+    }
+    return [...unchecked, ...checked];
+  }, [items, checkedMap]);
 
   const weekLabel = useMemo(
     () => deriveWeekLabel(activeWeekStart, currentWeekStart),
@@ -102,8 +127,14 @@ export default function ShoppingListPage() {
     [activeWeekStart, currentWeekStart]
   );
 
+  const maxAhead = includeNextWeek ? 3 : 4;
   const canGoPrev = diffWeeks > -4;
-  const canGoNext = diffWeeks < 4;
+  const canGoNext = diffWeeks < maxAhead;
+
+  const includedWeekLabels = useMemo(() => {
+    const weeks = shoppingQuery.data?.includedWeekStarts ?? (shoppingQuery.data?.weekStart ? [shoppingQuery.data.weekStart] : []);
+    return weeks.map((week) => deriveWeekLabel(week, currentWeekStart));
+  }, [shoppingQuery.data?.includedWeekStarts, shoppingQuery.data?.weekStart, currentWeekStart]);
 
   function changeWeek(delta: number) {
     const target = addWeeksISO(activeWeekStart, delta);
@@ -111,15 +142,39 @@ export default function ShoppingListPage() {
       (new Date(target).getTime() - new Date(currentWeekStart).getTime()) / (7 * MS_PER_DAY)
     );
     if (offset < -4 || offset > 4) return;
+    if (includeNextWeek && offset + 1 > 4) return;
     setActiveWeekStart(target);
   }
 
+  const updateShoppingItem = trpc.planner.updateShoppingItem.useMutation();
+
   function toggleItem(item: ShoppingListItem) {
     const key = `${item.ingredientId}::${item.unit ?? ""}`;
+    const currentValue = checkedMap[key] ?? item.checked ?? false;
+    const nextValue = !currentValue;
     setCheckedMap((prev) => ({
       ...prev,
-      [key]: !prev[key],
+      [key]: nextValue,
     }));
+    updateShoppingItem.mutate(
+      {
+        ingredientId: item.ingredientId,
+        unit: item.unit ?? null,
+        weeks: item.weekStarts ?? [activeWeekStart],
+        checked: nextValue,
+      },
+      {
+        onError: () => {
+          setCheckedMap((prev) => ({
+            ...prev,
+            [key]: currentValue,
+          }));
+        },
+        onSuccess: () => {
+          shoppingQuery.refetch().catch(() => undefined);
+        },
+      }
+    );
   }
 
   function isChecked(item: ShoppingListItem) {
@@ -141,22 +196,45 @@ export default function ShoppingListPage() {
             Neste uke
           </Button>
         </div>
-        {isFetching && <span className="text-xs text-gray-500">Oppdaterer…</span>}
+        <div className="flex items-center gap-3">
+          <Button
+            type="button"
+            variant={includeNextWeek ? "default" : "outline"}
+            size="sm"
+            onClick={() => setIncludeNextWeek((prev) => !prev)}
+            aria-pressed={includeNextWeek}
+          >
+            {includeNextWeek ? "Fjern neste ukes plan" : "Inkluder neste ukes plan"}
+          </Button>
+          {isFetching && <span className="text-xs text-gray-500">Oppdaterer…</span>}
+        </div>
       </div>
+
+      {includeNextWeek && includedWeekLabels.length ? (
+        <p className="text-xs text-gray-500">
+          Viser varer for {includedWeekLabels.join(" og ")}.
+        </p>
+      ) : null}
 
       {isLoading ? (
         <p className="text-sm text-gray-500">Laster handleliste…</p>
-      ) : !items.length ? (
+      ) : !sortedItems.length ? (
         <p className="text-sm text-gray-500">Ingen oppskrifter valgt for denne uken ennå.</p>
       ) : (
         <ul className="space-y-3">
-          {items.map((item) => {
+          {sortedItems.map((item) => {
             const key = `${item.ingredientId}::${item.unit ?? ""}`;
             const quantityLabel =
               item.totalQuantity != null ? formatQuantity(item.totalQuantity, item.unit) : null;
+            const checked = isChecked(item);
             return (
-              <li key={key} className="border rounded-lg p-3 bg-white">
-                <label className="flex items-start gap-3 cursor-pointer">
+              <li
+                key={key}
+                className={`border rounded-lg p-3 transition ${
+                  checked ? "bg-gray-100 border-gray-200" : "bg-white"
+                }`}
+              >
+                <label className={`flex items-start gap-3 cursor-pointer ${checked ? "text-gray-400" : ""}`}>
                   <input
                     type="checkbox"
                     className="mt-1"
@@ -164,13 +242,13 @@ export default function ShoppingListPage() {
                     onChange={() => toggleItem(item)}
                   />
                   <div className="flex-1 space-y-1">
-                    <div className="font-medium text-gray-900">{item.name}</div>
-                    <div className="text-xs text-gray-500">
+                    <div className={`font-medium ${checked ? "text-gray-500" : "text-gray-900"}`}>{item.name}</div>
+                    <div className={`text-xs ${checked ? "text-gray-400" : "text-gray-500"}`}>
                       {quantityLabel ?? "Mengde ikke spesifisert"}
                       {item.hasMissingQuantities && quantityLabel ? " • noen mengder mangler" : null}
                     </div>
                     {item.details.length ? (
-                      <ul className="list-disc pl-5 text-xs text-gray-500 space-y-1">
+                      <ul className={`list-disc pl-5 text-xs space-y-1 ${checked ? "text-gray-400" : "text-gray-500"}`}>
                         {item.details.map((detail, index) => {
                           const detailLabel =
                             detail.quantity != null
@@ -196,4 +274,3 @@ export default function ShoppingListPage() {
     </div>
   );
 }
-

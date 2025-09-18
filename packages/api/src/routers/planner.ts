@@ -106,6 +106,7 @@ const weekTimelineInputSchema = z.object({
 
 const shoppingListInputSchema = z.object({
   weekStart: z.string().optional(),
+  includeNextWeek: z.boolean().optional(),
 });
 
 function buildSuggestions(
@@ -568,12 +569,26 @@ export const plannerRouter = router({
   shoppingList: publicProcedure
     .input(shoppingListInputSchema.optional())
     .query(async ({ input }) => {
-      const targetWeek = startOfWeek(input?.weekStart);
+      const args = shoppingListInputSchema.parse(input ?? {});
+      const targetWeek = startOfWeek(args.weekStart);
       const weekStart = clampToFutureLimit(targetWeek);
-      await ensureWeekIndex(prisma, weekStart);
+      const includeNextWeek = Boolean(args.includeNextWeek);
 
-      const plan = await prisma.weekPlan.findUnique({
-        where: { weekStart },
+      const weekStarts: Date[] = [weekStart];
+      if (includeNextWeek) {
+        const nextWeek = addWeeks(weekStart, 1);
+        const maxFuture = maxAllowedFutureWeek();
+        if (nextWeek.getTime() <= maxFuture.getTime()) {
+          weekStarts.push(nextWeek);
+        }
+      }
+
+      for (const week of weekStarts) {
+        await ensureWeekIndex(prisma, week);
+      }
+
+      const plans = await prisma.weekPlan.findMany({
+        where: { weekStart: { in: weekStarts } },
         include: {
           entries: {
             include: {
@@ -586,6 +601,23 @@ export const plannerRouter = router({
             orderBy: { dayIndex: "asc" },
           },
         },
+      });
+
+      const planMap = new Map<number, (typeof plans)[number]>();
+      plans.forEach((plan) => {
+        planMap.set(plan.weekStart.getTime(), plan);
+      });
+
+      const statuses = await prisma.shoppingState.findMany({
+        where: {
+          weekStart: { in: weekStarts },
+        },
+      });
+
+      const statusMap = new Map<string, boolean>();
+      statuses.forEach((status) => {
+        const key = `${status.weekStart.toISOString()}::${status.ingredientId}::${status.unit ?? ""}`;
+        statusMap.set(key, status.checked);
       });
 
       type Accumulator = {
@@ -601,43 +633,51 @@ export const plannerRouter = router({
           quantity: number | null;
           unit: string | null;
           notes: string | null;
+          weekStart: string;
         }[];
+        weeks: Set<string>;
       };
 
       const map = new Map<string, Accumulator>();
 
-      for (const entry of plan?.entries ?? []) {
-        if (!entry.recipe) continue;
-        const recipe = toDTO(entry.recipe);
-        for (const ingredient of recipe.ingredients) {
-          const unit = ingredient.unit ?? null;
-          const key = `${ingredient.ingredientId}::${unit ?? ""}`;
-          if (!map.has(key)) {
-            map.set(key, {
-              ingredientId: ingredient.ingredientId,
-              name: ingredient.name,
+      for (const week of weekStarts) {
+        const plan = planMap.get(week.getTime());
+        for (const entry of plan?.entries ?? []) {
+          if (!entry.recipe) continue;
+          const recipe = toDTO(entry.recipe);
+          for (const ingredient of recipe.ingredients) {
+            const unit = ingredient.unit ?? null;
+            const key = `${ingredient.ingredientId}::${unit ?? ""}`;
+            if (!map.has(key)) {
+              map.set(key, {
+                ingredientId: ingredient.ingredientId,
+                name: ingredient.name,
+                unit,
+                sumQuantity: 0,
+                hasQuantities: false,
+                hasMissingQuantities: false,
+                details: [],
+                weeks: new Set<string>(),
+              });
+            }
+            const acc = map.get(key)!;
+            const quantity = ingredient.quantity;
+            if (quantity != null) {
+              acc.sumQuantity += quantity;
+              acc.hasQuantities = true;
+            } else {
+              acc.hasMissingQuantities = true;
+            }
+            acc.details.push({
+              recipeId: recipe.id,
+              recipeName: recipe.name,
+              quantity,
               unit,
-              sumQuantity: 0,
-              hasQuantities: false,
-              hasMissingQuantities: false,
-              details: [],
+              notes: ingredient.notes,
+              weekStart: week.toISOString(),
             });
+            acc.weeks.add(week.toISOString());
           }
-          const acc = map.get(key)!;
-          const quantity = ingredient.quantity;
-          if (quantity != null) {
-            acc.sumQuantity += quantity;
-            acc.hasQuantities = true;
-          } else {
-            acc.hasMissingQuantities = true;
-          }
-          acc.details.push({
-            recipeId: recipe.id,
-            recipeName: recipe.name,
-            quantity,
-            unit,
-            notes: ingredient.notes,
-          });
         }
       }
 
@@ -649,13 +689,55 @@ export const plannerRouter = router({
           totalQuantity: item.hasQuantities ? item.sumQuantity : null,
           hasMissingQuantities: item.hasMissingQuantities,
           details: item.details,
+          weekStarts: Array.from(item.weeks.values()),
+          checked: Array.from(item.weeks.values()).every((weekIso) =>
+            statusMap.get(`${weekIso}::${item.ingredientId}::${item.unit ?? ""}`)
+          ),
         }))
         .sort((a, b) => a.name.localeCompare(b.name, "nb", { sensitivity: "base" }));
 
       return {
         weekStart: weekStart.toISOString(),
+        includedWeekStarts: weekStarts.map((week) => week.toISOString()),
         items,
       };
+    }),
+
+  updateShoppingItem: publicProcedure
+    .input(z.object({
+      ingredientId: z.string().uuid(),
+      unit: z.string().nullable().optional(),
+      weeks: z.array(z.string()),
+      checked: z.boolean(),
+    }))
+    .mutation(async ({ input }) => {
+      const weekDates = input.weeks.map((week) => startOfWeek(week));
+      const unit = input.unit ?? null;
+
+      await prisma.$transaction(
+        weekDates.map((week) =>
+          prisma.shoppingState.upsert({
+            where: {
+              weekStart_ingredientId_unit: {
+                weekStart: week,
+                ingredientId: input.ingredientId,
+                unit,
+              },
+            },
+            create: {
+              weekStart: week,
+              ingredientId: input.ingredientId,
+              unit,
+              checked: input.checked,
+            },
+            update: {
+              checked: input.checked,
+            },
+          })
+        )
+      );
+
+      return { ok: true };
     }),
 
   saveWeekPlan: publicProcedure
