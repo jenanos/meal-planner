@@ -1,50 +1,67 @@
 import { z } from "zod";
 
-export const Diet = z.enum(["MEAT", "FISH", "VEG"]);
-export type Diet = z.infer<typeof Diet>;
+// (Hvis ikke allerede definert)
+export const Category = z.enum(["FISK", "VEGETAR", "KYLLING", "STORFE", "ANNET"]);
+export type Category = z.infer<typeof Category>;
 
-export const Day = z.enum(["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]);
-export type Day = z.infer<typeof Day>;
-
-export const IngredientInput = z.object({
+export const IngredientCreate = z.object({
   name: z.string().min(1),
-  quantity: z.number().positive().optional(),
   unit: z.string().min(1).optional(),
 });
-export type IngredientInput = z.infer<typeof IngredientInput>;
+export type IngredientCreate = z.infer<typeof IngredientCreate>;
 
-// Oppdater RecipeCreate til å støtte ingredienser
+export const IngredientById = z.object({
+  id: z.string().uuid(),
+});
+export type IngredientById = z.infer<typeof IngredientById>;
+
+export const IngredientListQuery = z.object({
+  search: z.string().optional(),
+});
+export type IngredientListQuery = z.infer<typeof IngredientListQuery>;
+
+// (Hvis ikke allerede finnes)
 export const RecipeCreate = z.object({
-  householdId: z.string().uuid(),
-  title: z.string().min(1),
-  diet: Diet,
-  ingredients: z.array(IngredientInput).default([]),
+  name: z.string().min(1),
+  description: z.string().optional(),
+  category: Category,
+  everydayScore: z.number().int().min(1).max(5),
+  healthScore: z.number().int().min(1).max(5),
+  ingredients: z.array(
+    z.object({
+      name: z.string().min(1),
+      quantity: z.union([z.number(), z.string()]).optional(),
+      unit: z.string().min(1).optional(),
+      notes: z.string().min(1).optional(),
+    })
+  ).default([]),
 });
 export type RecipeCreate = z.infer<typeof RecipeCreate>;
 
+export const RecipeUpdate = RecipeCreate.extend({
+  id: z.string().uuid(),
+});
+export type RecipeUpdate = z.infer<typeof RecipeUpdate>;
+
 export const RecipeListQuery = z.object({
-  householdId: z.string().uuid(),
-  diet: Diet.optional(),
+  page: z.number().int().min(1).default(1),
+  pageSize: z.number().int().min(1).max(1000).default(20),
+  category: Category.optional(),
   search: z.string().optional(),
 });
 export type RecipeListQuery = z.infer<typeof RecipeListQuery>;
 
-export const PlannerInput = z.object({
-  householdId: z.string().uuid(),
-  weekStart: z.string(), // eller z.coerce.date()
-  weeklyTargets: z.record(Diet, z.number().int().min(0)),
+export const PlannerConstraints = z.object({
+  fish: z.number().int().min(0).default(2),
+  vegetarian: z.number().int().min(0).default(3),
+  chicken: z.number().int().min(0).default(1),
+  beef: z.number().int().min(0).default(1),
+  preferRecentGapDays: z.number().int().min(0).default(21),
 });
-export type PlannerInput = z.infer<typeof PlannerInput>;
+export type PlannerConstraints = z.infer<typeof PlannerConstraints>;
 
-export const SaveWeekInput = z.object({
-  householdId: z.string().uuid(),
-  weekStart: z.string(),
-  items: z.array(
-    z.object({
-      day: Day,
-      recipeId: z.string().uuid().nullable(),
-    })
-  ),
+export const WeekPlanInput = z.object({
+  weekStart: z.string().min(1),
+  recipeIdsByDay: z.array(z.string().uuid().nullable()).length(7),
 });
-export type SaveWeekInput = z.infer<typeof SaveWeekInput>;
-
+export type WeekPlanInput = z.infer<typeof WeekPlanInput>;

@@ -7,74 +7,73 @@ generator client {
   provider = "prisma-client-js"
 }
 
-model Household {
-  id   String @id @default(uuid())
-  name String
-
-  recipes    Recipe[]
-  plans      MealPlan[]
-  Ingredient Ingredient[]
-}
-
 model Recipe {
-  id          String    @id @default(uuid())
-  householdId String
-  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  title       String
-  diet        String
-  active      Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id            String    @id @default(uuid())
+  name          String    @unique
+  description   String?
+  category      String // "FISK" | "VEGETAR" | "KYLLING" | "STORFE" | "ANNET" (valider i API/Zod)
+  everydayScore Int
+  healthScore   Int
+  lastUsed      DateTime?
+  usageCount    Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  planItems   MealPlanItem[]
   ingredients RecipeIngredient[]
-}
+  weekEntries WeekPlanEntry[]
 
-model MealPlan {
-  id          String    @id @default(uuid())
-  householdId String
-  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  weekStart   DateTime
-
-  items MealPlanItem[]
-}
-
-model MealPlanItem {
-  id       String   @id @default(uuid())
-  planId   String
-  plan     MealPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
-  day      String
-  recipeId String?
-  recipe   Recipe?  @relation(fields: [recipeId], references: [id])
-}
-
-model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String?   @unique
-  emailVerified DateTime?
+  @@index([category])
+  @@index([lastUsed])
 }
 
 model Ingredient {
-  id          String             @id @default(uuid())
-  householdId String
-  household   Household          @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  name        String
-  recipes     RecipeIngredient[]
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
+  id   String  @id @default(uuid())
+  name String  @unique
+  unit String?
 
-  @@unique([householdId, name], name: "Ingredient_householdId_name_key")
+  recipes RecipeIngredient[]
 }
 
 model RecipeIngredient {
   recipeId     String
   ingredientId String
-  quantity     Float?
-  unit         String?
+
+  quantity Decimal?
+  notes    String?
 
   recipe     Recipe     @relation(fields: [recipeId], references: [id], onDelete: Cascade)
   ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
 
   @@id([recipeId, ingredientId])
+}
+
+model WeekPlan {
+  id        String   @id @default(uuid())
+  weekStart DateTime @unique
+  weekIndexId String? @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  entries WeekPlanEntry[]
+  weekIndex WeekIndex? @relation(fields: [weekIndexId], references: [id], onDelete: Cascade)
+}
+
+model WeekIndex {
+  id        String   @id @default(uuid())
+  weekStart DateTime @unique
+  createdAt DateTime @default(now())
+
+  plan WeekPlan?
+}
+
+model WeekPlanEntry {
+  id         String @id @default(uuid())
+  weekPlanId String
+  dayIndex   Int
+  recipeId   String
+
+  weekPlan WeekPlan @relation(fields: [weekPlanId], references: [id], onDelete: Cascade)
+  recipe   Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@unique([weekPlanId, dayIndex])
 }

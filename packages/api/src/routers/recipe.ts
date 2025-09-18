@@ -1,76 +1,111 @@
 import { prisma } from "@repo/database";
 import { router, publicProcedure } from "../trpc";
-import { RecipeCreate, RecipeListQuery } from "../schemas";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import { RecipeCreate, RecipeListQuery, RecipeUpdate } from "../schemas";
+
+function toDTO(r: any) {
+  return {
+    id: r.id,
+    name: r.name,
+    description: r.description ?? undefined,
+    category: r.category,
+    everydayScore: r.everydayScore,
+    healthScore: r.healthScore,
+    lastUsed: r.lastUsed ?? undefined,
+    usageCount: r.usageCount,
+    ingredients: (r.ingredients ?? []).map((ri: any) => ({
+      ingredientId: ri.ingredientId,
+      name: ri.ingredient.name,
+      unit: ri.ingredient.unit ?? undefined,
+      quantity: ri.quantity ?? undefined,
+      notes: ri.notes ?? undefined,
+    })),
+  };
+}
 
 export const recipeRouter = router({
-  list: publicProcedure.input(RecipeListQuery).query(({ input }) => {
-    const { householdId, diet, search } = input;
-    return prisma.recipe.findMany({
-      where: {
-        householdId,
-        active: true,
-        ...(diet ? { diet } : {}),
-        ...(search ? { title: { contains: search } } : {}),
-      },
-      orderBy: { createdAt: "desc" },
-      include: { ingredients: { include: { ingredient: true } } },
-    });
-  }),
-  create: publicProcedure.input(RecipeCreate).mutation(({ input }) => {
-    const { ingredients = [], ...data } = input;
-    return prisma.recipe.create({
-      data: {
-        ...data,
-        ingredients: {
-          create: ingredients.map((i) => ({
-            quantity: i.quantity ?? null,
-            unit: i.unit ?? null,
-            ingredient: {
-              connectOrCreate: {
-                where: {
-                  Ingredient_householdId_name_key: {
-                    householdId: data.householdId,
-                    name: i.name.trim(),
+  list: publicProcedure
+    .input(RecipeListQuery)
+    .query(async ({ input }) => {
+      const { page = 1, pageSize = 20, category, search } = input;
+      const where: any = {
+        ...(category ? { category } : {}),
+        ...(search ? { name: { contains: search, mode: "insensitive" as const } } : {}),
+      };
+      const [total, items] = await Promise.all([
+        prisma.recipe.count({ where }),
+        prisma.recipe.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+          include: { ingredients: { include: { ingredient: true } } },
+        }),
+      ]);
+      return { total, page, pageSize, items: items.map(toDTO) };
+    }),
+
+  getById: publicProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .query(async ({ input }) => {
+      const r = await prisma.recipe.findUnique({
+        where: { id: input.id },
+        include: { ingredients: { include: { ingredient: true } } },
+      });
+      if (!r) throw new TRPCError({ code: "NOT_FOUND", message: "Recipe not found" });
+      return toDTO(r);
+    }),
+
+  create: publicProcedure
+    .input(RecipeCreate)
+    .mutation(async ({ input }) => {
+      try {
+        const { ingredients, ...data } = input;
+        const created = await prisma.recipe.create({
+          data: {
+            ...data,
+            ingredients: {
+              create: ingredients.map((i) => ({
+                notes: i.notes ?? null,
+                quantity: i.quantity == null ? null : String(i.quantity),
+                ingredient: {
+                  connectOrCreate: {
+                    where: { name: i.name.trim() },
+                    create: { name: i.name.trim(), unit: i.unit ?? null },
                   },
                 },
-                create: {
-                  householdId: data.householdId,
-                  name: i.name.trim(),
-                },
-              },
+              })),
             },
-          })),
-        },
-      },
-      include: { ingredients: { include: { ingredient: true } } },
-    });
-  }),
+          },
+          include: { ingredients: { include: { ingredient: true } } },
+        });
+        return toDTO(created);
+      } catch (e: any) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: e?.message ?? "Create failed" });
+      }
+    }),
+
   update: publicProcedure
-    .input(RecipeCreate.extend({ id: z.string().uuid() }))
-    .mutation(({ input }) => {
-      const { id, ingredients = [], ...data } = input;
-      return prisma.recipe.update({
+    .input(RecipeUpdate)
+    .mutation(async ({ input }) => {
+      const { id, ingredients, ...data } = input;
+      const existing = await prisma.recipe.findUnique({ where: { id } });
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Recipe not found" });
+
+      const updated = await prisma.recipe.update({
         where: { id },
         data: {
           ...data,
           ingredients: {
             deleteMany: {},
             create: ingredients.map((i) => ({
-              quantity: i.quantity ?? null,
-              unit: i.unit ?? null,
+              notes: i.notes ?? null,
+              quantity: i.quantity == null ? null : String(i.quantity),
               ingredient: {
                 connectOrCreate: {
-                  where: {
-                    Ingredient_householdId_name_key: {
-                      householdId: data.householdId,
-                      name: i.name.trim(),
-                    },
-                  },
-                  create: {
-                    householdId: data.householdId,
-                    name: i.name.trim(),
-                  },
+                  where: { name: i.name.trim() },
+                  create: { name: i.name.trim(), unit: i.unit ?? null },
                 },
               },
             })),
@@ -78,10 +113,27 @@ export const recipeRouter = router({
         },
         include: { ingredients: { include: { ingredient: true } } },
       });
+      return toDTO(updated);
     }),
-  archive: publicProcedure
+
+  delete: publicProcedure
     .input(z.object({ id: z.string().uuid() }))
-    .mutation(({ input }) =>
-      prisma.recipe.update({ where: { id: input.id }, data: { active: false } })
-    ),
+    .mutation(async ({ input }) => {
+      try {
+        await prisma.recipe.delete({ where: { id: input.id } });
+        return { ok: true };
+      } catch (e: any) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Delete failed" });
+      }
+    }),
+
+  markUsed: publicProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ input }) => {
+      const r = await prisma.recipe.update({
+        where: { id: input.id },
+        data: { usageCount: { increment: 1 }, lastUsed: new Date() },
+      });
+      return { id: r.id, usageCount: r.usageCount, lastUsed: r.lastUsed };
+    }),
 });

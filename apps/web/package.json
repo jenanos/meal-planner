@@ -10,6 +10,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@repo/api": "workspace:*",
     "@repo/ui": "workspace:*",
     "@tailwindcss/cli": "^4.1.12",
     "@tailwindcss/postcss": "^4.1.12",
@@ -20,14 +21,15 @@
     "next": "^14.1.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "@repo/api": "workspace:*",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@next/eslint-plugin-next": "^14.1.1",
+    "@playwright/test": "^1.49.0",
     "@repo/database": "workspace:*",
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
+    "@trpc/server": "11.5.1",
     "@types/node": "^24.3.0",
     "@types/react": "^18.2.61",
     "@types/react-dom": "^18.2.19",
@@ -35,7 +37,6 @@
     "eslint": "^8.57.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.12",
-    "typescript": "5.9.2",
-    "@playwright/test": "^1.49.0"
+    "typescript": "5.9.2"
   }
 }

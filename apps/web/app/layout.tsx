@@ -13,10 +13,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <nav className="mx-auto max-w-6xl px-4 py-3 flex gap-4">
               <Link href="/">Home</Link>
               <Link href="/recipes">Recipes</Link>
-              <Link href="/planner">Planner</Link>
+              <Link href="/ingredients">Ingredients</Link>
             </nav>
           </header>
-          <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
+          <main className="mx-auto max-w-6xl px-4 py-6">
+            {children}
+          </main>
         </Providers>
       </body>
     </html>
