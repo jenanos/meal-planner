@@ -50,9 +50,20 @@ model RecipeIngredient {
 model WeekPlan {
   id        String   @id @default(uuid())
   weekStart DateTime @unique
+  weekIndexId String? @unique
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   entries WeekPlanEntry[]
+  weekIndex WeekIndex? @relation(fields: [weekIndexId], references: [id], onDelete: Cascade)
+}
+
+model WeekIndex {
+  id        String   @id @default(uuid())
+  weekStart DateTime @unique
+  createdAt DateTime @default(now())
+
+  plan WeekPlan?
 }
 
 model WeekPlanEntry {
