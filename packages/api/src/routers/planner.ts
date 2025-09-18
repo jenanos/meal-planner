@@ -218,7 +218,11 @@ async function ensureWeekIndexWindow(baseWeek: Date) {
   }
 }
 
-async function writeWeekPlan(weekStart: Date, recipeIds: string[]) {
+async function writeWeekPlan(weekStart: Date, recipeIds: (string | null)[]) {
+  if (recipeIds.length !== 7) {
+    throw new Error("recipeIds must have length 7");
+  }
+
   return prisma.$transaction(async (tx) => {
     const now = new Date();
     const index = await ensureWeekIndex(tx, weekStart);
@@ -235,14 +239,25 @@ async function writeWeekPlan(weekStart: Date, recipeIds: string[]) {
 
     for (let i = 0 as DayIndex; i < recipeIds.length; i = (i + 1) as DayIndex) {
       const recipeId = recipeIds[i];
-      await tx.weekPlanEntry.upsert({
-        where: { weekPlanId_dayIndex: { weekPlanId: plan.id, dayIndex: i } },
-        update: { recipeId },
-        create: { weekPlanId: plan.id, dayIndex: i, recipeId },
-      });
+      const where = { weekPlanId_dayIndex: { weekPlanId: plan.id, dayIndex: i } };
+
+      if (recipeId) {
+        await tx.weekPlanEntry.upsert({
+          where,
+          update: { recipeId },
+          create: { weekPlanId: plan.id, dayIndex: i, recipeId },
+        });
+      } else {
+        await tx.weekPlanEntry.deleteMany({
+          where: {
+            weekPlanId: plan.id,
+            dayIndex: i,
+          },
+        });
+      }
     }
 
-    const newCounts = countOccurrences(recipeIds);
+    const newCounts = countOccurrences(recipeIds.filter((id): id is string => Boolean(id)));
     for (const [recipeId, newCount] of Array.from(newCounts.entries())) {
       const prevCount = prevCounts.get(recipeId) ?? 0;
       const diff = newCount - prevCount;
@@ -443,12 +458,12 @@ export const plannerRouter = router({
         throw new Error("Failed to generate a full week plan");
       }
 
-      const persisted = await writeWeekPlan(
-        weekStart,
-        recipeIds as string[]
-      );
+      const persisted = await writeWeekPlan(weekStart, recipeIds);
 
-      const suggestions = buildSuggestionBuckets(pool, recipeIds as string[]);
+      const suggestions = buildSuggestionBuckets(
+        pool,
+        recipeIds.filter((id): id is string => Boolean(id))
+      );
 
       return composeWeekResponse({
         weekStart,
@@ -544,7 +559,10 @@ export const plannerRouter = router({
       const persisted = await writeWeekPlan(weekStart, recipeIdsByDay);
 
       const pool = await fetchAllRecipes();
-      const suggestions = buildSuggestionBuckets(pool, recipeIdsByDay);
+      const suggestions = buildSuggestionBuckets(
+        pool,
+        recipeIdsByDay.filter((id): id is string => Boolean(id))
+      );
 
       return composeWeekResponse({
         weekStart,

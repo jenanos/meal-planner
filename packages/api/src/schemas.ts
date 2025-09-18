@@ -62,7 +62,6 @@ export type PlannerConstraints = z.infer<typeof PlannerConstraints>;
 
 export const WeekPlanInput = z.object({
   weekStart: z.string().min(1),
-  recipeIdsByDay: z.array(z.string().uuid()).length(7),
+  recipeIdsByDay: z.array(z.string().uuid().nullable()).length(7),
 });
 export type WeekPlanInput = z.infer<typeof WeekPlanInput>;
-

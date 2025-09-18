@@ -146,8 +146,10 @@ export default function PlannerPage() {
   }, [weekPlanQuery.data, applyWeekData]);
 
   useEffect(() => {
-    if (!weekPlanQuery.data) return;
-    const hasRecipes = week.some((recipe) => Boolean(recipe));
+    const data = weekPlanQuery.data;
+    if (!data) return;
+    if (data.weekStart !== activeWeekStart) return;
+    const hasRecipes = data.days.some((day) => Boolean(day.recipe));
     if (hasRecipes || generateWeek.isPending || isAutoGenerating) return;
 
     setIsAutoGenerating(true);
@@ -163,7 +165,6 @@ export default function PlannerPage() {
     );
   }, [
     weekPlanQuery.data,
-    week,
     generateWeek,
     activeWeekStart,
     applyWeekData,
@@ -174,10 +175,7 @@ export default function PlannerPage() {
   const commitWeekPlan = useCallback(
     async (nextWeek: WeekState, opts?: { suppressRefetch?: boolean }) => {
       setWeek(nextWeek);
-      const ids = nextWeek.map((recipe) => recipe?.id).filter(Boolean) as string[];
-      if (ids.length !== 7) {
-        return;
-      }
+      const ids = nextWeek.map((recipe) => recipe?.id ?? null);
 
       try {
         const payload = await saveWeek.mutateAsync({
