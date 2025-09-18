@@ -159,7 +159,7 @@ function countOccurrences(ids: string[]) {
   return map;
 }
 
-const PAST_WEEKS_WINDOW = 12;
+const PAST_WEEKS_WINDOW = 4;
 const FUTURE_WEEKS_LIMIT = 4;
 
 type TxClient = Parameters<typeof prisma.$transaction>[0] extends (
