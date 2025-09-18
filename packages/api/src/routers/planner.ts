@@ -33,7 +33,13 @@ type RecipeDTO = {
   healthScore: number;
   lastUsed: Date | null;
   usageCount: number;
-  ingredients: { ingredientId: string; name: string }[];
+  ingredients: {
+    ingredientId: string;
+    name: string;
+    unit: string | null;
+    quantity: number | null;
+    notes: string | null;
+  }[];
 };
 
 type WeekPlanSuggestionBuckets = {
@@ -48,6 +54,12 @@ type WeekPlanResponse = {
   suggestions: WeekPlanSuggestionBuckets;
 };
 
+function toNumber(value: any): number | null {
+  if (value == null) return null;
+  const num = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
 function toDTO(r: any): RecipeDTO {
   return {
     id: r.id,
@@ -60,6 +72,9 @@ function toDTO(r: any): RecipeDTO {
     ingredients: (r.ingredients ?? []).map((ri: any) => ({
       ingredientId: ri.ingredientId,
       name: ri.ingredient.name,
+      unit: ri.ingredient.unit ?? null,
+      quantity: toNumber(ri.quantity),
+      notes: ri.notes ?? null,
     })),
   };
 }
@@ -87,6 +102,10 @@ type WeekStartInput = z.infer<typeof weekStartInputSchema>;
 
 const weekTimelineInputSchema = z.object({
   around: z.string().optional(),
+});
+
+const shoppingListInputSchema = z.object({
+  weekStart: z.string().optional(),
 });
 
 function buildSuggestions(
@@ -544,6 +563,99 @@ export const plannerRouter = router({
         exclude: args.excludeIds,
         search: args.search,
       });
+    }),
+
+  shoppingList: publicProcedure
+    .input(shoppingListInputSchema.optional())
+    .query(async ({ input }) => {
+      const targetWeek = startOfWeek(input?.weekStart);
+      const weekStart = clampToFutureLimit(targetWeek);
+      await ensureWeekIndex(prisma, weekStart);
+
+      const plan = await prisma.weekPlan.findUnique({
+        where: { weekStart },
+        include: {
+          entries: {
+            include: {
+              recipe: {
+                include: {
+                  ingredients: { include: { ingredient: true } },
+                },
+              },
+            },
+            orderBy: { dayIndex: "asc" },
+          },
+        },
+      });
+
+      type Accumulator = {
+        ingredientId: string;
+        name: string;
+        unit: string | null;
+        sumQuantity: number;
+        hasQuantities: boolean;
+        hasMissingQuantities: boolean;
+        details: {
+          recipeId: string;
+          recipeName: string;
+          quantity: number | null;
+          unit: string | null;
+          notes: string | null;
+        }[];
+      };
+
+      const map = new Map<string, Accumulator>();
+
+      for (const entry of plan?.entries ?? []) {
+        if (!entry.recipe) continue;
+        const recipe = toDTO(entry.recipe);
+        for (const ingredient of recipe.ingredients) {
+          const unit = ingredient.unit ?? null;
+          const key = `${ingredient.ingredientId}::${unit ?? ""}`;
+          if (!map.has(key)) {
+            map.set(key, {
+              ingredientId: ingredient.ingredientId,
+              name: ingredient.name,
+              unit,
+              sumQuantity: 0,
+              hasQuantities: false,
+              hasMissingQuantities: false,
+              details: [],
+            });
+          }
+          const acc = map.get(key)!;
+          const quantity = ingredient.quantity;
+          if (quantity != null) {
+            acc.sumQuantity += quantity;
+            acc.hasQuantities = true;
+          } else {
+            acc.hasMissingQuantities = true;
+          }
+          acc.details.push({
+            recipeId: recipe.id,
+            recipeName: recipe.name,
+            quantity,
+            unit,
+            notes: ingredient.notes,
+          });
+        }
+      }
+
+      const items = Array.from(map.values())
+        .map((item) => ({
+          ingredientId: item.ingredientId,
+          name: item.name,
+          unit: item.unit,
+          totalQuantity: item.hasQuantities ? item.sumQuantity : null,
+          hasMissingQuantities: item.hasMissingQuantities,
+          details: item.details,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name, "nb", { sensitivity: "base" }));
+
+      return {
+        weekStart: weekStart.toISOString(),
+        items,
+      };
     }),
 
   saveWeekPlan: publicProcedure
