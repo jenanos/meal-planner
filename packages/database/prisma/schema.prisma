@@ -77,3 +77,15 @@ model WeekPlanEntry {
 
   @@unique([weekPlanId, dayIndex])
 }
+
+model ShoppingState {
+  id           String   @id @default(uuid())
+  weekStart    DateTime
+  ingredientId String
+  unit         String?
+  checked      Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([weekStart, ingredientId, unit])
+}
