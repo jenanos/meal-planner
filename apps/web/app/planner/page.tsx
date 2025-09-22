@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 import type { DragEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
-import { Button } from "@repo/ui";
+import { Button, Card, CardContent, Input } from "@repo/ui";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@repo/api";
 import { describeEveryday, describeHealth } from "../../lib/scoreLabels";
@@ -75,7 +75,7 @@ function formatWeekRange(weekStartISO: string) {
 function deriveWeekLabel(weekStartISO: string, currentWeekISO: string) {
   const diffWeeks = Math.round(
     (new Date(weekStartISO).getTime() - new Date(currentWeekISO).getTime()) /
-      (7 * MS_PER_DAY)
+    (7 * MS_PER_DAY)
   );
 
   let prefix = "Denne uken";
@@ -395,11 +395,9 @@ export default function PlannerPage() {
   const renderWeekCard = (recipe: WeekRecipe, index: number) => {
     const isDraggingTarget = dragOverIndex === index;
     return (
-      <div
+      <Card
         key={index}
-        className={`border rounded p-3 bg-white transition-colors ${
-          isDraggingTarget ? "ring-2 ring-blue-400" : ""
-        }`}
+        className={isDraggingTarget ? "ring-2 ring-ring" : undefined}
         onDragOver={(event) => {
           event.preventDefault();
           setDragOverIndex(index);
@@ -412,28 +410,32 @@ export default function PlannerPage() {
           handleDragStart(event, { source: "week", index, recipeId: recipe.id });
         }}
       >
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <div className="text-xs text-gray-500">{DAY_NAMES[index]}</div>
-            <div className="font-medium">{recipe?.name ?? "—"}</div>
-            <div className="text-xs text-gray-500">{recipe?.category ?? ""}</div>
+        <CardContent className="pt-4">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <div className="text-xs text-muted-foreground">{DAY_NAMES[index]}</div>
+              <div className="font-medium">{recipe?.name ?? "—"}</div>
+              <div className="text-xs text-muted-foreground">{recipe?.category ?? ""}</div>
+            </div>
           </div>
-        </div>
-        {recipe ? (
-          <div className="text-xs text-gray-400">
-            {describeEveryday(recipe.everydayScore)} • {describeHealth(recipe.healthScore)}
-          </div>
-        ) : (
-          <div className="text-xs text-gray-300">Ingen valgt</div>
-        )}
-        {recipe?.ingredients?.length ? (
-          <ul className="list-disc pl-5 text-xs mt-2 space-y-1">
-            {recipe.ingredients.map((ingredient) => (
-              <li key={ingredient.ingredientId}>{ingredient.name}</li>
-            ))}
-          </ul>
-        ) : null}
-      </div>
+
+          {recipe ? (
+            <div className="text-xs text-muted-foreground">
+              {describeEveryday(recipe.everydayScore)} • {describeHealth(recipe.healthScore)}
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground/60">Ingen valgt</div>
+          )}
+
+          {recipe?.ingredients?.length ? (
+            <ul className="list-disc pl-5 text-xs mt-2 space-y-1">
+              {recipe.ingredients.map((ingredient) => (
+                <li key={ingredient.ingredientId}>{ingredient.name}</li>
+              ))}
+            </ul>
+          ) : null}
+        </CardContent>
+      </Card>
     );
   };
 
@@ -453,32 +455,33 @@ export default function PlannerPage() {
     };
 
     return (
-      <button
+      <Card
         key={recipe.id}
-        className={`relative overflow-hidden text-left border rounded p-2 transition-colors ${
-          isInWeek ? "cursor-not-allowed bg-gray-100" : "hover:bg-gray-50 cursor-grab"
-        }`}
+        className={isInWeek ? "cursor-not-allowed opacity-90" : "cursor-grab"}
         onClick={handlePick}
         draggable={!isInWeek}
         onDragStart={(event) => {
           if (isInWeek) return;
           handleDragStart(event, { source, index, recipeId: recipe.id });
         }}
-        type="button"
       >
-        <div className="font-medium">{recipe.name}</div>
-        <div className="text-xs text-gray-500">
-          {recipe.category} • {describeEveryday(recipe.everydayScore)} • {describeHealth(recipe.healthScore)}
-        </div>
-        {isInWeek && (
-          <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center text-center px-3">
-            <span className="text-[11px] font-medium uppercase tracking-wide text-gray-600">
-              Allerede i ukeplanen
-            </span>
-            <span className="mt-1 text-sm font-medium text-gray-700">{recipe.name}</span>
+        <CardContent className="pt-4">
+          <div className="font-medium">{recipe.name}</div>
+          <div className="text-xs text-muted-foreground">
+            {recipe.category} • {describeEveryday(recipe.everydayScore)} • {describeHealth(recipe.healthScore)}
           </div>
-        )}
-      </button>
+
+          {isInWeek && (
+            <div className="relative">
+              <div className="absolute inset-0 rounded-lg bg-background/70 backdrop-blur-sm flex items-center justify-center text-center px-3">
+                <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Allerede i ukeplanen
+                </span>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     );
   };
 
@@ -491,29 +494,29 @@ export default function PlannerPage() {
           <Button
             type="button"
             variant="outline"
-            size="sm"
-            className="h-8 w-8 p-0"
+            size="icon"
+            className="size-8 p-0"
             onClick={() => setVisibleStart((prev) => Math.max(0, prev - 1))}
             disabled={!canShowPrev}
           >
             ←
           </Button>
+
           <div className="flex gap-2">
             {visibleWeeks.map((item) => {
               const isActive = item.weekStart === activeWeekStart;
               const isCurrent = item.weekStart === currentWeekStart;
-              const baseClass = isActive
-                ? "bg-slate-900 text-white border-slate-900"
-                : isCurrent
-                ? "border-slate-900 text-slate-900"
-                : item.hasEntries
-                ? "border-slate-400 text-slate-700"
-                : "border-dashed border-slate-300 text-slate-500";
+
+              const variant: React.ComponentProps<typeof Button>["variant"] =
+                isActive ? "default" : isCurrent ? "outline" : item.hasEntries ? "secondary" : "ghost";
 
               return (
-                <button
+                <Button
                   key={item.weekStart}
                   type="button"
+                  variant={variant}
+                  size="sm"
+                  className="px-3"
                   onClick={() => {
                     setWeek(makeEmptyWeek());
                     setLongGap([]);
@@ -532,26 +535,25 @@ export default function PlannerPage() {
                       setVisibleStart(centered);
                     }
                   }}
-                  className={`whitespace-nowrap rounded-full border px-3 py-1 text-sm transition ${baseClass}`}
-                  aria-current={isActive ? "date" : undefined}
                 >
                   {item.label}
-                </button>
+                </Button>
               );
             })}
           </div>
+
           <Button
             type="button"
             variant="outline"
-            size="sm"
-            className="h-8 w-8 p-0"
+            size="icon"
+            className="size-8 p-0"
             onClick={() => setVisibleStart((prev) => Math.min(maxVisibleStart, prev + 1))}
             disabled={!canShowNext}
           >
             →
           </Button>
         </div>
-        <p className="text-xs text-center text-gray-500">{statusText}</p>
+        <p className="text-xs text-center text-muted-foreground">{statusText}</p>
       </div>
 
       <div className="overflow-x-auto">
@@ -593,8 +595,7 @@ export default function PlannerPage() {
           <div className="flex flex-col sm:flex-row sm:items-end sm:gap-3">
             <div className="flex-1 flex flex-col">
               <label className="text-sm">Søk i alle oppskrifter</label>
-              <input
-                className="border px-2 py-1"
+              <Input
                 placeholder="For eksempel linsegryte"
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
