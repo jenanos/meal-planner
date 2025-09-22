@@ -712,7 +712,7 @@ export const plannerRouter = router({
     }))
     .mutation(async ({ input }) => {
       const weekDates = input.weeks.map((week) => startOfWeek(week));
-      const unit = input.unit ?? null;
+      const unitKey = input.unit ?? ""; // alltid string
 
       await prisma.$transaction(
         weekDates.map((week) =>
@@ -721,13 +721,13 @@ export const plannerRouter = router({
               weekStart_ingredientId_unit: {
                 weekStart: week,
                 ingredientId: input.ingredientId,
-                unit,
+                unit: unitKey, // endret fra null|string
               },
             },
             create: {
               weekStart: week,
               ingredientId: input.ingredientId,
-              unit,
+              unit: unitKey, // endret fra null|string
               checked: input.checked,
             },
             update: {
