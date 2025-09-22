@@ -1,5 +1,8 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+packages/*/dist/
+packages/ui/dist/
+
 # dependencies
 node_modules
 .pnp
@@ -35,3 +38,4 @@ yarn-error.log*
 packages/database/prisma/dev.db
 packages/database/prisma/dev.db-journal
 packages/database/prisma/migrations/20250909075958_init/migration.sql
+
