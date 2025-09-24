@@ -70,7 +70,7 @@ export default function RecipesPage() {
         {isLoading && <li>Loading…</li>}
         {error && <li className="text-red-500">Failed to load</li>}
         {items.map((r: RecipeListItem) => (
-          <li key={r.id} className="border rounded p-3">
+          <li key={r.id} className="border rounded-sm p-3">
             <div className="font-medium">
               {r.name}{" "}
               <span className="text-xs text-gray-500">({r.category})</span>
@@ -154,7 +154,7 @@ export default function RecipesPage() {
           {ingList.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {ingList.map((i) => (
-                <span key={i.name} className="inline-flex items-center gap-2 border rounded px-2 py-1 text-sm">
+                <span key={i.name} className="inline-flex items-center gap-2 border rounded-sm px-2 py-1 text-sm">
                   {i.name}
                   <button
                     type="button"

@@ -473,7 +473,7 @@ export default function PlannerPage() {
 
           {isInWeek && (
             <div className="relative">
-              <div className="absolute inset-0 rounded-lg bg-background/70 backdrop-blur-sm flex items-center justify-center text-center px-3">
+              <div className="absolute inset-0 rounded-lg bg-background/70 backdrop-blur-xs flex items-center justify-center text-center px-3">
                 <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   Allerede i ukeplanen
                 </span>
