@@ -13,6 +13,3 @@ export { Checkbox } from "./components/ui/checkbox";
 export { Label } from "./components/ui/label";
 export { Separator } from "./components/ui/separator";
 export { GridBeams } from "./components/ui/grid-beams";
-
-// ev. annen felles CSS (tailwind v4 bygges i appen):
-import "./styles.css";
