@@ -2,37 +2,45 @@
 @import "tw-animate-css";
 
 @source "./**/*.{ts,tsx,js,jsx,mdx}";
-@source "../../packages/ui/src/**/*.{ts,tsx,js,jsx,mdx}";
+@source "../../../packages/ui/src/**/*.{ts,tsx,js,jsx,mdx}";
 
 /* Shadcn base tokens (lys modus) */
 :root {
-  --background: 0 0% 100%;
-  --foreground: 222.2 84% 4.9%;
+  --background: 34 90% 96%;
+  --foreground: 20 32% 20%;
 
-  --card: 0 0% 100%;
-  --card-foreground: 222.2 84% 4.9%;
+  --card: 33 65% 94%;
+  --card-foreground: 20 38% 22%;
 
-  --popover: 0 0% 100%;
-  --popover-foreground: 222.2 84% 4.9%;
+  --popover: 33 65% 94%;
+  --popover-foreground: 20 32% 20%;
 
-  --primary: 222.2 47.4% 11.2%;
-  --primary-foreground: 210 40% 98%;
+  --primary: 25 74% 45%;
+  --primary-foreground: 33 100% 96%;
 
-  --secondary: 210 40% 96.1%;
-  --secondary-foreground: 222.2 47.4% 11.2%;
+  --secondary: 142 32% 42%;
+  --secondary-foreground: 36 100% 96%;
 
-  --muted: 210 40% 96.1%;
-  --muted-foreground: 215.4 16.3% 46.9%;
+  --muted: 30 40% 90%;
+  --muted-foreground: 24 23% 34%;
 
-  --accent: 210 40% 96.1%;
-  --accent-foreground: 222.2 47.4% 11.2%;
+  --accent: 15 55% 86%;
+  --accent-foreground: 20 32% 20%;
 
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 210 40% 98%;
+  --destructive: 2 70% 45%;
+  --destructive-foreground: 33 100% 96%;
 
-  --border: 214.3 31.8% 91.4%;
-  --input: 214.3 31.8% 91.4%;
-  --ring: 215 20.2% 65.1%;
+  --border: 28 35% 82%;
+  --input: 28 35% 82%;
+  --ring: 25 74% 45%;
+
+  --fall-gradient: radial-gradient(
+    circle at 20% -10%,
+    hsl(36 100% 98%) 0%,
+    hsl(27 88% 92%) 35%,
+    hsl(18 76% 88%) 65%,
+    hsl(40 70% 90%) 100%
+  );
 
   /* Viktig for rundinger: */
   --radius: 0.75rem;
@@ -41,33 +49,40 @@
 
 /* Shadcn base tokens (dark) */
 .dark {
-  --background: 222.2 84% 4.9%;
-  --foreground: 210 40% 98%;
+  --background: 22 34% 15%;
+  --foreground: 33 100% 96%;
 
-  --card: 222.2 84% 4.9%;
-  --card-foreground: 210 40% 98%;
+  --card: 26 32% 18%;
+  --card-foreground: 33 90% 96%;
 
-  --popover: 222.2 84% 4.9%;
-  --popover-foreground: 210 40% 98%;
+  --popover: 26 32% 18%;
+  --popover-foreground: 33 90% 96%;
 
-  --primary: 210 40% 98%;
-  --primary-foreground: 222.2 47.4% 11.2%;
+  --primary: 24 80% 58%;
+  --primary-foreground: 23 28% 14%;
 
-  --secondary: 217.2 32.6% 17.5%;
-  --secondary-foreground: 210 40% 98%;
+  --secondary: 145 24% 32%;
+  --secondary-foreground: 33 90% 96%;
 
-  --muted: 217.2 32.6% 17.5%;
-  --muted-foreground: 215 20.2% 65.1%;
+  --muted: 24 18% 28%;
+  --muted-foreground: 33 22% 72%;
 
-  --accent: 217.2 32.6% 17.5%;
-  --accent-foreground: 210 40% 98%;
+  --accent: 18 52% 34%;
+  --accent-foreground: 33 90% 96%;
 
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 210 40% 98%;
+  --destructive: 5 68% 46%;
+  --destructive-foreground: 33 95% 96%;
 
-  --border: 217.2 32.6% 17.5%;
-  --input: 217.2 32.6% 17.5%;
-  --ring: 263.4 70% 50.4%;
+  --border: 24 26% 28%;
+  --input: 24 26% 28%;
+  --ring: 24 80% 58%;
+
+  --fall-gradient: radial-gradient(
+    circle at 10% -20%,
+    hsl(28 45% 22%) 0%,
+    hsl(24 36% 18%) 40%,
+    hsl(20 30% 14%) 100%
+  );
 }
 
 /* Du har dette allerede – behold det etter token-definisjonene */
@@ -124,5 +139,45 @@
 
   body {
     @apply bg-background text-foreground;
+    background-image: var(--fall-gradient);
+    background-attachment: fixed;
+  }
+}
+
+@layer components {
+  .app-header {
+    background: hsl(var(--card) / 0.85);
+    border-color: hsl(var(--border) / 0.65);
+    backdrop-filter: blur(18px);
+    box-shadow: 0 18px 36px -24px color-mix(in oklab, hsl(var(--primary)) 30%, transparent);
+  }
+
+  .app-shell {
+    background: hsl(var(--card) / 0.82);
+    border: 1px solid hsl(var(--border) / 0.6);
+    border-radius: var(--radius-xl);
+    backdrop-filter: blur(20px);
+    box-shadow: 0 30px 60px -32px color-mix(in oklab, hsl(var(--primary)) 40%, transparent);
+  }
+
+  .app-nav-link {
+    color: hsl(var(--foreground) / 0.78);
+    border-radius: 999px;
+    padding: 0.35rem 0.85rem;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    transition: color 160ms ease, background-color 160ms ease, box-shadow 220ms ease;
+  }
+
+  .app-nav-link:is(:hover, :focus-visible) {
+    color: hsl(var(--primary));
+    background: color-mix(in oklab, hsl(var(--primary)) 14%, transparent);
+    box-shadow: 0 12px 24px -20px color-mix(in oklab, hsl(var(--primary)) 35%, transparent);
+  }
+
+  .app-nav-link[aria-current="page"] {
+    color: hsl(var(--primary));
+    background: color-mix(in oklab, hsl(var(--primary)) 18%, transparent);
+    box-shadow: 0 16px 32px -22px color-mix(in oklab, hsl(var(--primary)) 40%, transparent);
   }
 }
