@@ -1,12 +1,23 @@
 "use client";
 export const dynamic = "force-dynamic";
 
-import type { ComponentProps, DragEvent } from "react";
+import type { DragEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
-import { Button, Card, CardContent, Input } from "@repo/ui";
+import { Button, Input } from "@repo/ui";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@repo/api";
+import { WeekSelector } from "./components/WeekSelector";
+import { WeekCard } from "./components/WeekCard";
+import { SuggestionCard } from "./components/SuggestionCard";
+import {
+  MS_PER_DAY,
+  startOfWeekISO,
+  addWeeksISO,
+  addDays,
+  deriveWeekLabel,
+  formatWeekRange,
+} from "../../lib/week";
 
 const DAY_NAMES = [
   "Mandag",
@@ -18,7 +29,6 @@ const DAY_NAMES = [
   "Søndag",
 ] as const;
 
-const MS_PER_DAY = 86_400_000;
 const DESKTOP_WINDOW_SIZE = 5;
 const MOBILE_WINDOW_SIZE = 3;
 
@@ -50,55 +60,6 @@ type TimelineWeekEntry = {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
-}
-
-function startOfWeekISO(dateInput?: string | Date) {
-  const date = dateInput ? new Date(dateInput) : new Date();
-  if (Number.isNaN(date.getTime())) {
-    throw new Error("Invalid date value");
-  }
-  const utc = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  const day = utc.getUTCDay();
-  const diff = (day === 0 ? -6 : 1) - day;
-  utc.setUTCDate(utc.getUTCDate() + diff);
-  utc.setUTCHours(0, 0, 0, 0);
-  return utc.toISOString();
-}
-
-function addWeeksISO(weekStartISO: string, weeks: number) {
-  const date = new Date(weekStartISO);
-  date.setUTCDate(date.getUTCDate() + weeks * 7);
-  return startOfWeekISO(date);
-}
-
-function addDays(date: Date, days: number) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
-function formatWeekRange(weekStartISO: string) {
-  const formatter = new Intl.DateTimeFormat("nb-NO", {
-    day: "2-digit",
-    month: "short",
-  });
-
-  const start = new Date(weekStartISO);
-  const end = addDays(new Date(weekStartISO), 6);
-  return `${formatter.format(start)}–${formatter.format(end)}`;
-}
-
-function deriveWeekLabel(weekStartISO: string, currentWeekISO: string) {
-  const diffWeeks = Math.round(
-    (new Date(weekStartISO).getTime() - new Date(currentWeekISO).getTime()) /
-    (7 * MS_PER_DAY)
-  );
-
-  if (diffWeeks === 0) return "Denne uken";
-  if (diffWeeks === 1) return "Neste uke";
-  if (diffWeeks === -1) return "Forrige uke";
-
-  return formatWeekRange(weekStartISO);
 }
 
 function makeEmptyWeek() {
@@ -143,6 +104,9 @@ export default function PlannerPage() {
     () => week.filter((recipe): recipe is RecipeDTO => Boolean(recipe)).map((recipe) => recipe.id),
     [week]
   );
+
+  // Added: set for quick membership checks in JSX
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
   const applyWeekData = useCallback(
     (res: WeekPlanResult) => {
@@ -497,235 +461,43 @@ export default function PlannerPage() {
     }
   };
 
-  const renderWeekSelectorRow = (
-    weeks: TimelineWeekEntry[],
-    options: {
-      variant: "desktop" | "mobile";
-      onPrev: () => void;
-      onNext: () => void;
-      disablePrev: boolean;
-      disableNext: boolean;
-    }
-  ) => {
-    if (!weeks.length) return null;
-
-    const baseWidth = options.variant === "mobile" ? "min-w-[96px]" : "min-w-[120px]";
-    const gap = options.variant === "mobile" ? "gap-2" : "gap-3";
-    const paddingX = options.variant === "mobile" ? "px-12" : "px-16";
-    const gradientWidth = options.variant === "mobile" ? "w-12" : "w-20";
-
-    const activePos = weeks.findIndex((entry) => entry.index === activeWeekIndex);
-    const needsLeftPlaceholder =
-      options.variant === "mobile" && activePos === 0 && mobileWindowStart === 0;
-    const needsRightPlaceholder =
-      options.variant === "mobile" && activePos === weeks.length - 1 && mobileWindowStart === mobileMaxStart;
-
-    let visibleWeeks = weeks;
-    if (options.variant === "mobile") {
-      if (needsLeftPlaceholder && visibleWeeks.length > 2) {
-        visibleWeeks = visibleWeeks.slice(0, visibleWeeks.length - 1);
-      }
-      if (needsRightPlaceholder && visibleWeeks.length > 2) {
-        visibleWeeks = visibleWeeks.slice(1);
-      }
-    }
-    //TODO: Fix button opacity issue for mobile
-    return (
-      <div className="relative flex min-h-[44px] items-center justify-center">
-        <div
-          className={`pointer-events-none absolute inset-y-0 left-0 ${gradientWidth} bg-gradient-to-r from-background via-background/80 to-transparent z-10`}
-        />
-        <div
-          className={`pointer-events-none absolute inset-y-0 right-0 ${gradientWidth} bg-gradient-to-l from-background via-background/80 to-transparent z-10`}
-        />
-
-        <div className={`relative z-20 flex ${gap} overflow-hidden ${paddingX} py-1`}>
-          {needsLeftPlaceholder ? (
-            <span
-              aria-hidden
-              className={`inline-block ${baseWidth} h-9 rounded-md opacity-0 pointer-events-none`}
-            />
-          ) : null}
-
-          {visibleWeeks.map((entry, index) => {
-            if (!entry.week) {
-              return (
-                <span
-                  key={`placeholder-${options.variant}-${index}`}
-                  className={`inline-block ${baseWidth} h-9 rounded-md opacity-0 pointer-events-none`}
-                  aria-hidden
-                />
-              );
-            }
-
-            const week = entry.week;
-            const isActive = week.weekStart === activeWeekStart;
-            const isCurrent = week.weekStart === currentWeekStart;
-
-            let opacityClass = "opacity-65";
-            if (entry.index !== null && activeWeekIndex !== -1) {
-              const distance = Math.abs(entry.index - activeWeekIndex);
-              if (distance === 0) opacityClass = "opacity-100";
-              else if (distance === 1) opacityClass = "opacity-70";
-              else if (distance >= 2) opacityClass = "opacity-45";
-            } else if (index === 0 || index === weeks.length - 1) {
-              opacityClass = "opacity-45";
-            }
-
-            const variant: ComponentProps<typeof Button>["variant"] = "ghost";
-
-            return (
-              <Button
-                key={week.weekStart}
-                type="button"
-                variant={variant}
-                size="sm"
-                className={`${baseWidth} px-3 text-sm transition-opacity whitespace-nowrap ${isActive ? "font-semibold opacity-100 bg-primary/10" : opacityClass
-                  }`}
-                onClick={() => handleSelectWeek(week.weekStart, entry.index)}
-              >
-                {week.label}
-              </Button>
-            );
-          })}
-
-          {needsRightPlaceholder ? (
-            <span
-              aria-hidden
-              className={`inline-block ${baseWidth} h-9 rounded-md opacity-0 pointer-events-none`}
-            />
-          ) : null}
-        </div>
-
-        <Button
-          type="button"
-          size="icon"
-          className={`absolute left-2 top-1/2 -translate-y-1/2 shadow-sm z-10 ${options.variant === "mobile" ? "size-8" : "size-9"
-            } `}
-          aria-label="Forrige uke"
-          onClick={options.onPrev}
-          disabled={options.disablePrev}
-        >
-          ←
-        </Button>
-
-        <Button
-          type="button"
-          size="icon"
-          className={`absolute right-2 top-1/2 -translate-y-1/2 shadow-sm z-10 ${options.variant === "mobile" ? "size-8" : "size-9"
-            } `}
-          aria-label="Neste uke"
-          onClick={options.onNext}
-          disabled={options.disableNext}
-        >
-          →
-        </Button>
-      </div>
-    );
-  };
-
-  const renderWeekCard = (recipe: WeekRecipe, index: number) => {
-    const isDraggingTarget = dragOverIndex === index;
-    return (
-      <Card
-        key={index}
-        className={`${isDraggingTarget ? "ring-2 ring-ring " : ""}flex h-full w-full max-w-sm xl:max-w-full items-center justify-center text-center`}
-        onDragOver={(event) => {
-          event.preventDefault();
-          setDragOverIndex(index);
-        }}
-        onDragLeave={() => setDragOverIndex((prev) => (prev === index ? null : prev))}
-        onDrop={(event) => handleWeekCardDrop(event, index)}
-        draggable={Boolean(recipe)}
-        onDragStart={(event) => {
-          if (!recipe) return;
-          handleDragStart(event, { source: "week", index, recipeId: recipe.id });
-        }}
-      >
-        <CardContent className="flex h-full min-h-[132px] flex-col items-center justify-center gap-2 p-4 text-center">
-          <div className="text-xs text-muted-foreground">{DAY_NAMES[index]}</div>
-          {recipe ? (
-            <div className="space-y-1">
-              <div className="font-medium line-clamp-2 break-words">{recipe.name}</div>
-              {recipe.category ? (
-                <div className="text-xs text-muted-foreground">{recipe.category}</div>
-              ) : null}
-            </div>
-          ) : (
-            <div className="text-sm text-muted-foreground/60">Ingen valgt</div>
-          )}
-        </CardContent>
-      </Card>
-    );
-  };
-
-  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
-
-  const renderSuggestionCard = (recipe: RecipeDTO, source: DragSource, index: number) => {
-    const isInWeek = selectedIdSet.has(recipe.id);
-    const handlePick = async () => {
-      if (isInWeek) return;
-      const firstEmpty = week.findIndex((slot) => !slot);
-      const targetIndex = firstEmpty === -1 ? 0 : firstEmpty;
-      const next = [...week];
-      next[targetIndex] = recipe;
-      await commitWeekPlan(next);
-      if (source === "longGap") setLongGap((prev) => prev.filter((item) => item.id !== recipe.id));
-      if (source === "frequent") setFrequent((prev) => prev.filter((item) => item.id !== recipe.id));
-    };
-
-    return (
-      <Card
-        key={recipe.id}
-        className={`${isInWeek ? "cursor-not-allowed opacity-90" : "cursor-grab"} relative flex h-full w-full max-w-sm xl:max-w-full items-center justify-center text-center`}
-        onClick={handlePick}
-        draggable={!isInWeek}
-        onDragStart={(event) => {
-          if (isInWeek) return;
-          handleDragStart(event, { source, index, recipeId: recipe.id });
-        }}
-      >
-        <CardContent className="flex h-full min-h-[132px] flex-col items-center justify-center gap-2 p-4 text-center">
-          <div className="font-medium line-clamp-2 break-words">{recipe.name}</div>
-          {recipe.category ? (
-            <div className="text-xs text-muted-foreground">{recipe.category}</div>
-          ) : null}
-        </CardContent>
-
-        {isInWeek && (
-          <div className="pointer-events-none absolute inset-0 rounded-lg bg-background/70 backdrop-blur-xs flex items-center justify-center px-3 text-center">
-            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              Allerede i ukeplanen
-            </span>
-          </div>
-        )}
-      </Card>
-    );
-  };
-
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-bold text-center">Ukesplan</h1>
 
       <div className="space-y-3">
         <div className="hidden sm:block">
-          {renderWeekSelectorRow(desktopVisibleWeeks, {
-            variant: "desktop",
-            onPrev: () => pageDesktop(-1),
-            onNext: () => pageDesktop(1),
-            disablePrev: !canDesktopPagePrev,
-            disableNext: !canDesktopPageNext,
-          })}
+          <WeekSelector
+            weeks={desktopVisibleWeeks}
+            variant="desktop"
+            onPrev={() => pageDesktop(-1)}
+            onNext={() => pageDesktop(1)}
+            disablePrev={!canDesktopPagePrev}
+            disableNext={!canDesktopPageNext}
+            activeWeekStart={activeWeekStart}
+            currentWeekStart={currentWeekStart}
+            activeWeekIndex={activeWeekIndex}
+            mobileWindowStart={mobileWindowStart}
+            mobileMaxStart={mobileMaxStart}
+            onSelectWeek={handleSelectWeek}
+          />
         </div>
 
         <div className="sm:hidden">
-          {renderWeekSelectorRow(mobileVisibleWeeks, {
-            variant: "mobile",
-            onPrev: () => pageMobile(-1),
-            onNext: () => pageMobile(1),
-            disablePrev: !canMobilePagePrev,
-            disableNext: !canMobilePageNext,
-          })}
+          <WeekSelector
+            weeks={mobileVisibleWeeks}
+            variant="mobile"
+            onPrev={() => pageMobile(-1)}
+            onNext={() => pageMobile(1)}
+            disablePrev={!canMobilePagePrev}
+            disableNext={!canMobilePageNext}
+            activeWeekStart={activeWeekStart}
+            currentWeekStart={currentWeekStart}
+            activeWeekIndex={activeWeekIndex}
+            mobileWindowStart={mobileWindowStart}
+            mobileMaxStart={mobileMaxStart}
+            onSelectWeek={handleSelectWeek}
+          />
         </div>
 
         <p className="text-xs text-center text-muted-foreground">{statusText}</p>
@@ -736,7 +508,22 @@ export default function PlannerPage() {
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-2">
-                {week.map((recipe, index) => renderWeekCard(recipe, index))}
+                {week.map((recipe, index) => (
+                  <WeekCard
+                    key={index}
+                    index={index}
+                    dayName={DAY_NAMES[index]}
+                    recipe={recipe}
+                    isDraggingTarget={dragOverIndex === index}
+                    onDragOver={(e) => { e.preventDefault(); setDragOverIndex(index); }}
+                    onDragLeave={() => setDragOverIndex((prev) => (prev === index ? null : prev))}
+                    onDrop={(e) => handleWeekCardDrop(e, index)}
+                    onDragStart={(e) => {
+                      if (!recipe) return;
+                      handleDragStart(e, { source: "week", index, recipeId: recipe.id });
+                    }}
+                  />
+                ))}
               </div>
               <div className="flex flex-col gap-3">
                 <div className="flex items-center justify-between gap-2">
@@ -806,19 +593,55 @@ export default function PlannerPage() {
                     </div>
                     {searchError && <p className="text-sm text-red-500">{searchError}</p>}
                     <div className="flex flex-col gap-2">
-                      {searchResults.length ? (
-                        searchResults.map((recipe, index) => renderSuggestionCard(recipe, "search", index))
-                      ) : (
-                        !searchError && <p className="text-sm text-gray-500">Søk for å hente forslag</p>
-                      )}
+                      {searchResults.length
+                        ? searchResults.map((recipe, index) => (
+                          <SuggestionCard
+                            key={recipe.id}
+                            recipe={recipe}
+                            source="search"
+                            index={index}
+                            isInWeek={selectedIdSet.has(recipe.id)}
+                            onPick={async () => {
+                              const firstEmpty = week.findIndex((slot) => !slot);
+                              const targetIndex = firstEmpty === -1 ? 0 : firstEmpty;
+                              const next = [...week];
+                              next[targetIndex] = recipe;
+                              await commitWeekPlan(next);
+                            }}
+                            onDragStart={(e) => handleDragStart(e, { source: "search", index, recipeId: recipe.id })}
+                          />
+                        ))
+                        : !searchError && <p className="text-sm text-gray-500">Søk for å hente forslag</p>}
                     </div>
                   </div>
                 ) : (
                   <div className="flex flex-col gap-2">
                     {(mobileEditorView === "longGap" ? longGap : frequent).length ? (
-                      (mobileEditorView === "longGap" ? longGap : frequent).map((recipe, index) =>
-                        renderSuggestionCard(recipe, mobileEditorView, index)
-                      )
+                      (mobileEditorView === "longGap" ? longGap : frequent).map((recipe, index) => {
+                        const isInWeek = selectedIdSet.has(recipe.id);
+                        const onPick = async () => {
+                          if (isInWeek) return;
+                          const firstEmpty = week.findIndex((slot) => !slot);
+                          const targetIndex = firstEmpty === -1 ? 0 : firstEmpty;
+                          const next = [...week];
+                          next[targetIndex] = recipe;
+                          await commitWeekPlan(next);
+                          setLongGap((prev) => prev.filter((x) => x.id !== recipe.id));
+                        };
+                        return (
+                          <SuggestionCard
+                            key={recipe.id}
+                            recipe={recipe}
+                            source={mobileEditorView}
+                            index={index}
+                            isInWeek={isInWeek}
+                            onPick={onPick}
+                            onDragStart={(e) =>
+                              handleDragStart(e, { source: mobileEditorView, index, recipeId: recipe.id })
+                            }
+                          />
+                        );
+                      })
                     ) : (
                       <p className="text-sm text-gray-500">Ingen forslag akkurat nå</p>
                     )}
@@ -838,7 +661,22 @@ export default function PlannerPage() {
         ) : (
           <div className="space-y-3">
             <div className="flex flex-col gap-2">
-              {week.map((recipe, index) => renderWeekCard(recipe, index))}
+              {week.map((recipe, index) => (
+                <WeekCard
+                  key={index}
+                  index={index}
+                  dayName={DAY_NAMES[index]}
+                  recipe={recipe}
+                  isDraggingTarget={dragOverIndex === index}
+                  onDragOver={(e) => { e.preventDefault(); setDragOverIndex(index); }}
+                  onDragLeave={() => setDragOverIndex((prev) => (prev === index ? null : prev))}
+                  onDrop={(e) => handleWeekCardDrop(e, index)}
+                  onDragStart={(e) => {
+                    if (!recipe) return;
+                    handleDragStart(e, { source: "week", index, recipeId: recipe.id });
+                  }}
+                />
+              ))}
             </div>
             <Button
               type="button"
@@ -858,7 +696,22 @@ export default function PlannerPage() {
         <div className="space-y-4">
           <div className="overflow-x-auto">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3 justify-items-center xl:min-w-[840px]">
-              {week.map((recipe, index) => renderWeekCard(recipe, index))}
+              {week.map((recipe, index) => (
+                <WeekCard
+                  key={index}
+                  index={index}
+                  dayName={DAY_NAMES[index]}
+                  recipe={recipe}
+                  isDraggingTarget={dragOverIndex === index}
+                  onDragOver={(e) => { e.preventDefault(); setDragOverIndex(index); }}
+                  onDragLeave={() => setDragOverIndex((prev) => (prev === index ? null : prev))}
+                  onDrop={(e) => handleWeekCardDrop(e, index)}
+                  onDragStart={(e) => {
+                    if (!recipe) return;
+                    handleDragStart(e, { source: "week", index, recipeId: recipe.id });
+                  }}
+                />
+              ))}
             </div>
           </div>
 
@@ -870,11 +723,28 @@ export default function PlannerPage() {
                   Oppdater
                 </Button>
               </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-2 justify-items-center">
-            {longGap.length ? longGap.map((recipe, index) => renderSuggestionCard(recipe, "longGap", index)) : (
-              <p className="text-sm text-gray-500">Ingen forslag akkurat nå</p>
-            )}
-          </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-2 justify-items-center">
+                {longGap.length ? longGap.map((recipe, index) => (
+                  <SuggestionCard
+                    key={recipe.id}
+                    recipe={recipe}
+                    source="longGap"
+                    index={index}
+                    isInWeek={selectedIdSet.has(recipe.id)}
+                    onPick={async () => {
+                      const firstEmpty = week.findIndex((slot) => !slot);
+                      const targetIndex = firstEmpty === -1 ? 0 : firstEmpty;
+                      const next = [...week];
+                      next[targetIndex] = recipe;
+                      await commitWeekPlan(next);
+                      setLongGap((prev) => prev.filter((x) => x.id !== recipe.id));
+                    }}
+                    onDragStart={(e) => handleDragStart(e, { source: "longGap", index, recipeId: recipe.id })}
+                  />
+                )) : (
+                  <p className="text-sm text-gray-500">Ingen forslag akkurat nå</p>
+                )}
+              </div>
             </section>
 
             <section className="space-y-2">
@@ -884,11 +754,28 @@ export default function PlannerPage() {
                   Oppdater
                 </Button>
               </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-2 justify-items-center">
-            {frequent.length ? frequent.map((recipe, index) => renderSuggestionCard(recipe, "frequent", index)) : (
-              <p className="text-sm text-gray-500">Ingen forslag akkurat nå</p>
-            )}
-          </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-2 justify-items-center">
+                {frequent.length ? frequent.map((recipe, index) => (
+                  <SuggestionCard
+                    key={recipe.id}
+                    recipe={recipe}
+                    source="frequent"
+                    index={index}
+                    isInWeek={selectedIdSet.has(recipe.id)}
+                    onPick={async () => {
+                      const firstEmpty = week.findIndex((slot) => !slot);
+                      const targetIndex = firstEmpty === -1 ? 0 : firstEmpty;
+                      const next = [...week];
+                      next[targetIndex] = recipe;
+                      await commitWeekPlan(next);
+                      setFrequent((prev) => prev.filter((x) => x.id !== recipe.id));
+                    }}
+                    onDragStart={(e) => handleDragStart(e, { source: "frequent", index, recipeId: recipe.id })}
+                  />
+                )) : (
+                  <p className="text-sm text-gray-500">Ingen forslag akkurat nå</p>
+                )}
+              </div>
             </section>
 
             <section className="space-y-3">
@@ -925,12 +812,26 @@ export default function PlannerPage() {
                 </div>
               </div>
               {searchError && <p className="text-sm text-red-500">{searchError}</p>}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-2 justify-items-center">
-            {searchResults.length ? (
-              searchResults.map((recipe, index) => renderSuggestionCard(recipe, "search", index))
-            ) : (
-              !searchError && <p className="text-sm text-gray-500">Søk for å hente forslag</p>
-            )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-2 justify-items-center">
+                {searchResults.length
+                  ? searchResults.map((recipe, index) => (
+                    <SuggestionCard
+                      key={recipe.id}
+                      recipe={recipe}
+                      source="search"
+                      index={index}
+                      isInWeek={selectedIdSet.has(recipe.id)}
+                      onPick={async () => {
+                        const firstEmpty = week.findIndex((slot) => !slot);
+                        const targetIndex = firstEmpty === -1 ? 0 : firstEmpty;
+                        const next = [...week];
+                        next[targetIndex] = recipe;
+                        await commitWeekPlan(next);
+                      }}
+                      onDragStart={(e) => handleDragStart(e, { source: "search", index, recipeId: recipe.id })}
+                    />
+                  ))
+                  : !searchError && <p className="text-sm text-gray-500">Søk for å hente forslag</p>}
               </div>
             </section>
           </div>
