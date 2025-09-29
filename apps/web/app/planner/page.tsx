@@ -1,7 +1,6 @@
 "use client";
 export const dynamic = "force-dynamic";
 
-import type { DragEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
 import { Button, Input } from "@repo/ui";
@@ -18,6 +17,21 @@ import {
   deriveWeekLabel,
   formatWeekRange,
 } from "../../lib/week";
+
+// Add dnd-kit imports
+import {
+  DndContext,
+  useDraggable,
+  useDroppable,
+  DragOverlay,
+  MouseSensor,
+  TouchSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+} from "@dnd-kit/core";
+import { createPortal } from "react-dom";
 
 const DAY_NAMES = [
   "Mandag",
@@ -39,14 +53,7 @@ type WeekRecipe = WeekDay["recipe"];
 type RecipeDTO = NonNullable<WeekRecipe>;
 type WeekState = (RecipeDTO | null)[];
 
-type DragSource = "week" | "longGap" | "frequent" | "search";
-
-type DragPayload = {
-  source: DragSource;
-  index: number;
-  recipeId: string;
-};
-
+// ADD: timeline-typer som brukes i denne filen
 type TimelineWeek = {
   weekStart: string;
   hasEntries: boolean;
@@ -58,16 +65,81 @@ type TimelineWeekEntry = {
   index: number | null;
 };
 
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max);
+// ADD: enkle util-funksjoner som mangler i filen
+function makeEmptyWeek(): WeekState {
+  return Array<RecipeDTO | null>(7).fill(null);
 }
 
-function makeEmptyWeek() {
-  return Array.from({ length: 7 }, () => null) as WeekState;
+function lowerIdSet(list: RecipeDTO[]): Set<string> {
+  return new Set(list.map((r) => r.id));
 }
 
-function lowerIdSet(items: RecipeDTO[]) {
-  return new Set(items.map((item) => item.id));
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+type DragSource = "week" | "longGap" | "frequent" | "search";
+
+type DragPayload = {
+  source: DragSource;
+  index: number;
+  recipeId: string;
+};
+
+// Small helper to encode/decode drag ids
+function makeDragId(p: DragPayload) {
+  return `${p.source}:${p.index}:${p.recipeId}`;
+}
+function parseDragId(id: string): DragPayload | null {
+  const [source, indexStr, recipeId] = id.split(":");
+  if (
+    (source === "week" || source === "longGap" || source === "frequent" || source === "search") &&
+    Number.isFinite(Number(indexStr)) &&
+    recipeId
+  ) {
+    return { source, index: Number(indexStr), recipeId };
+  }
+  return null;
+}
+
+// Droppable wrapper for each week slot
+function WeekDroppableSlot(props: {
+  index: number;
+  children: (isOver: boolean, setNodeRef: (node: HTMLElement | null) => void) => React.ReactNode;
+}) {
+  const { isOver, setNodeRef } = useDroppable({ id: `day-${props.index}` });
+  return <>{props.children(isOver, setNodeRef)}</>;
+}
+
+// Generic draggable wrapper
+function DraggableWrapper(props: {
+  id: string;
+  children: (opts: {
+    setNodeRef: any;
+    listeners: any;
+    attributes: any;
+    style: any;
+  }) => React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: props.id });
+
+  // Når vi bruker DragOverlay: ikke flytt originalen, og skjul den mens den dras
+  const style = isDragging
+    ? {
+      opacity: 0,              // skjul kilden
+      touchAction: "none",
+      cursor: "grabbing",
+    }
+    : transform
+      ? {
+        transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+        touchAction: "none",
+        cursor: "grabbing",
+        zIndex: 50,
+      }
+      : { touchAction: "none", cursor: "grab" };
+
+  return <>{props.children({ setNodeRef, listeners, attributes, style })}</>;
 }
 
 export default function PlannerPage() {
@@ -81,7 +153,6 @@ export default function PlannerPage() {
   const [searchResults, setSearchResults] = useState<RecipeDTO[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [isAutoGenerating, setIsAutoGenerating] = useState(false);
   const [lastUpdatedISO, setLastUpdatedISO] = useState<string | null>(null);
   const [isMobileEditorOpen, setIsMobileEditorOpen] = useState(false);
@@ -90,6 +161,15 @@ export default function PlannerPage() {
   );
   const [desktopWindowStart, setDesktopWindowStart] = useState(0);
   const [mobileWindowStart, setMobileWindowStart] = useState(0);
+
+  // dnd-kit: sensors + active id
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } }),
+    useSensor(KeyboardSensor)
+  );
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null); // NY: hvilken dag vi er over
 
   const weekPlanQuery = trpc.planner.getWeekPlan.useQuery(
     { weekStart: activeWeekStart },
@@ -104,8 +184,6 @@ export default function PlannerPage() {
     () => week.filter((recipe): recipe is RecipeDTO => Boolean(recipe)).map((recipe) => recipe.id),
     [week]
   );
-
-  // Added: set for quick membership checks in JSX
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
   const applyWeekData = useCallback(
@@ -234,61 +312,81 @@ export default function PlannerPage() {
     return () => window.clearTimeout(handle);
   }, [searchTerm, executeSearch]);
 
-  const handleWeekCardDrop = useCallback(
-    async (event: DragEvent<HTMLDivElement>, targetIndex: number) => {
-      event.preventDefault();
-      setDragOverIndex(null);
-      const payloadRaw = event.dataTransfer.getData("application/json");
-      if (!payloadRaw) return;
+  // dnd-kit handlers
+  const onDragStart = useCallback((event: any) => {
+    setActiveId(String(event.active.id));
+    setOverIndex(null);
+  }, []);
 
-      let payload: DragPayload | null = null;
-      try {
-        payload = JSON.parse(payloadRaw) as DragPayload;
-      } catch (err) {
-        console.error("Unknown drag payload", err);
-        return;
-      }
-      if (!payload) return;
+  const onDragOver = useCallback((event: any) => {
+    const overId: string | null = event.over ? String(event.over.id) : null;
+    if (overId && overId.startsWith("day-")) {
+      const idx = Number(overId.slice(4));
+      setOverIndex(Number.isFinite(idx) ? idx : null);
+    } else {
+      setOverIndex(null);
+    }
+  }, []);
 
+  const onDragCancel = useCallback(() => {
+    setActiveId(null);
+    setOverIndex(null);
+  }, []);
+
+  const onDragEnd = useCallback(async (event: any) => {
+    const { active, over } = event;
+    setActiveId(null);
+    setOverIndex(null);
+    if (!over) return;
+
+    const overId = String(over.id);
+    if (!overId.startsWith("day-")) return;
+
+    const targetIndex = Number(overId.slice(4));
+    if (!Number.isFinite(targetIndex)) return;
+
+    const payload = parseDragId(String(active.id));
+    if (!payload) return;
+
+    // Helper to resolve the dragged recipe
+    const getRecipe = (): RecipeDTO | null => {
       if (payload.source === "week") {
-        if (payload.index === targetIndex) return;
-        const next = [...week];
-        const [moved] = next.splice(payload.index, 1);
-        next.splice(targetIndex, 0, moved);
-        await commitWeekPlan(next);
-        return;
+        return week[payload.index] ?? null;
       }
-
-      const sourceLists: Record<DragSource, RecipeDTO[]> = {
-        week: [],
+      const lists: Record<Exclude<DragSource, "week">, RecipeDTO[]> = {
         longGap,
         frequent,
         search: searchResults,
       };
+      const list = lists[payload.source as Exclude<DragSource, "week">];
+      return list[payload.index] ?? list.find((r) => r.id === payload.recipeId) ?? null;
+    };
 
-      const sourceList = sourceLists[payload.source];
-      const recipe = sourceList[payload.index];
-      if (!recipe) return;
+    const recipe = getRecipe();
+    if (!recipe) return;
 
+    if (payload.source === "week") {
+      if (payload.index === targetIndex) return;
+      const next = [...week];
+      const [moved] = next.splice(payload.index, 1);
+      next.splice(targetIndex, 0, moved);
+      await commitWeekPlan(next);
+      return;
+    }
+
+    // From suggestions -> into week
+    {
       const next = [...week];
       next[targetIndex] = recipe;
       await commitWeekPlan(next);
 
       if (payload.source === "longGap") {
-        setLongGap((prev) => prev.filter((item) => item.id !== recipe.id));
+        setLongGap((prev) => prev.filter((x) => x.id !== recipe.id));
       } else if (payload.source === "frequent") {
-        setFrequent((prev) => prev.filter((item) => item.id !== recipe.id));
+        setFrequent((prev) => prev.filter((x) => x.id !== recipe.id));
       }
-
-    },
-    [week, commitWeekPlan, longGap, frequent, searchResults]
-  );
-
-  const handleDragStart = useCallback((event: DragEvent, data: DragPayload) => {
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("application/json", JSON.stringify(data));
-    event.dataTransfer.setData("text/plain", data.recipeId);
-  }, []);
+    }
+  }, [week, longGap, frequent, searchResults, commitWeekPlan]);
 
   const timelineWeeks = useMemo<TimelineWeek[]>(() => {
     if (!timelineQuery.data) return [];
@@ -461,144 +559,382 @@ export default function PlannerPage() {
     }
   };
 
-  return (
-    <div className="space-y-6">
-      <h1 className="text-xl font-bold text-center">Ukesplan</h1>
+  // Hent innholdet som skal vises i DragOverlay basert på activeId
+  const overlayContent = useMemo(() => {
+    if (!activeId) return null;
+    const payload = parseDragId(activeId);
+    if (!payload) return null;
 
-      <div className="space-y-3">
-        <div className="hidden sm:block">
-          <WeekSelector
-            weeks={desktopVisibleWeeks}
-            variant="desktop"
-            onPrev={() => pageDesktop(-1)}
-            onNext={() => pageDesktop(1)}
-            disablePrev={!canDesktopPagePrev}
-            disableNext={!canDesktopPageNext}
-            activeWeekStart={activeWeekStart}
-            currentWeekStart={currentWeekStart}
-            activeWeekIndex={activeWeekIndex}
-            mobileWindowStart={mobileWindowStart}
-            mobileMaxStart={mobileMaxStart}
-            onSelectWeek={handleSelectWeek}
-          />
+    // Finn oppskriften basert på kilden
+    const getRecipe = (): RecipeDTO | null => {
+      if (payload.source === "week") return week[payload.index] ?? null;
+      const lists: Record<Exclude<DragSource, "week">, RecipeDTO[]> = {
+        longGap,
+        frequent,
+        search: searchResults,
+      };
+      const list = lists[payload.source as Exclude<DragSource, "week">];
+      return list[payload.index] ?? list.find((r) => r.id === payload.recipeId) ?? null;
+    };
+    const recipe = getRecipe();
+    if (!recipe) return null;
+
+    const isAdd = payload.source !== "week";
+    const targetLabel = overIndex != null ? DAY_NAMES[overIndex] : "Slipp på en dag";
+
+    // Kreativ “ghost”-overlay: lett forstørret, rotert, med chip for mål-dag
+    return (
+      <div className="pointer-events-none select-none rounded-xl border bg-background/95 shadow-2xl ring-2 ring-primary/40 transform-gpu scale-105 rotate-2 px-4 py-3 min-w-[200px] max-w-[260px]">
+        <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">
+          {isAdd ? "Legg til" : "Flytter"}
         </div>
-
-        <div className="sm:hidden">
-          <WeekSelector
-            weeks={mobileVisibleWeeks}
-            variant="mobile"
-            onPrev={() => pageMobile(-1)}
-            onNext={() => pageMobile(1)}
-            disablePrev={!canMobilePagePrev}
-            disableNext={!canMobilePageNext}
-            activeWeekStart={activeWeekStart}
-            currentWeekStart={currentWeekStart}
-            activeWeekIndex={activeWeekIndex}
-            mobileWindowStart={mobileWindowStart}
-            mobileMaxStart={mobileMaxStart}
-            onSelectWeek={handleSelectWeek}
-          />
+        <div className="font-medium leading-snug line-clamp-2">{recipe.name}</div>
+        {recipe.category ? (
+          <div className="text-xs text-muted-foreground">{recipe.category}</div>
+        ) : null}
+        <div className="mt-2 inline-block rounded-full bg-primary/10 text-primary px-2 py-1 text-[11px]">
+          {targetLabel}
         </div>
-
-        <p className="text-xs text-center text-muted-foreground">{statusText}</p>
       </div>
+    );
+  }, [activeId, week, longGap, frequent, searchResults, overIndex]);
 
-      <div className="space-y-4 sm:hidden">
-        {isMobileEditorOpen ? (
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-2">
-                {week.map((recipe, index) => (
-                  <WeekCard
-                    key={index}
-                    index={index}
-                    dayName={DAY_NAMES[index]}
-                    recipe={recipe}
-                    isDraggingTarget={dragOverIndex === index}
-                    onDragOver={(e) => { e.preventDefault(); setDragOverIndex(index); }}
-                    onDragLeave={() => setDragOverIndex((prev) => (prev === index ? null : prev))}
-                    onDrop={(e) => handleWeekCardDrop(e, index)}
-                    onDragStart={(e) => {
-                      if (!recipe) return;
-                      handleDragStart(e, { source: "week", index, recipeId: recipe.id });
-                    }}
-                  />
-                ))}
-              </div>
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center justify-between gap-2">
-                  <label htmlFor="mobile-editor-source" className="text-sm font-medium">
-                    Velg forslag
-                  </label>
-                  {mobileEditorView !== "search" ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        if (mobileEditorView === "longGap" || mobileEditorView === "frequent") {
-                          refreshSuggestions(mobileEditorView);
-                        }
-                      }}
-                    >
-                      Oppdater
-                    </Button>
-                  ) : null}
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}    // NY: oppdaterer overIndex fortløpende
+      onDragCancel={onDragCancel}
+      onDragEnd={onDragEnd}
+    >
+      <div className="space-y-6">
+        <h1 className="text-xl font-bold text-center">Ukesplan</h1>
+
+        <div className="space-y-3">
+          <div className="hidden sm:block">
+            <WeekSelector
+              weeks={desktopVisibleWeeks}
+              variant="desktop"
+              onPrev={() => pageDesktop(-1)}
+              onNext={() => pageDesktop(1)}
+              disablePrev={!canDesktopPagePrev}
+              disableNext={!canDesktopPageNext}
+              activeWeekStart={activeWeekStart}
+              currentWeekStart={currentWeekStart}
+              activeWeekIndex={activeWeekIndex}
+              mobileWindowStart={mobileWindowStart}
+              mobileMaxStart={mobileMaxStart}
+              onSelectWeek={handleSelectWeek}
+            />
+          </div>
+
+          <div className="sm:hidden">
+            <WeekSelector
+              weeks={mobileVisibleWeeks}
+              variant="mobile"
+              onPrev={() => pageMobile(-1)}
+              onNext={() => pageMobile(1)}
+              disablePrev={!canMobilePagePrev}
+              disableNext={!canMobilePageNext}
+              activeWeekStart={activeWeekStart}
+              currentWeekStart={currentWeekStart}
+              activeWeekIndex={activeWeekIndex}
+              mobileWindowStart={mobileWindowStart}
+              mobileMaxStart={mobileMaxStart}
+              onSelectWeek={handleSelectWeek}
+            />
+          </div>
+
+          <p className="text-xs text-center text-muted-foreground">{statusText}</p>
+        </div>
+
+        <div className="space-y-4 sm:hidden">
+          {isMobileEditorOpen ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-2">
+                  {week.map((recipe, index) => (
+                    <WeekDroppableSlot key={index} index={index}>
+                      {(isOver, setDropRef) => (
+                        <div ref={setDropRef}>
+                          {recipe ? (
+                            <DraggableWrapper id={makeDragId({ source: "week", index, recipeId: recipe.id })}>
+                              {({ setNodeRef, listeners, attributes, style }) => (
+                                <div ref={setNodeRef} style={style} {...listeners} {...attributes}>
+                                  <WeekCard
+                                    index={index}
+                                    dayName={DAY_NAMES[index]}
+                                    recipe={recipe}
+                                    isDraggingTarget={isOver}
+                                  />
+                                </div>
+                              )}
+                            </DraggableWrapper>
+                          ) : (
+                            <WeekCard
+                              index={index}
+                              dayName={DAY_NAMES[index]}
+                              recipe={recipe}
+                              isDraggingTarget={isOver}
+                            />
+                          )}
+                        </div>
+                      )}
+                    </WeekDroppableSlot>
+                  ))}
                 </div>
-
-                <select
-                  id="mobile-editor-source"
-                  className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  value={mobileEditorView}
-                  onChange={(event) =>
-                    setMobileEditorView(event.target.value as "frequent" | "longGap" | "search")
-                  }
-                >
-                  <option value="frequent">Ofte brukt</option>
-                  <option value="longGap">Lenge siden sist</option>
-                  <option value="search">Søk</option>
-                </select>
-
-                {mobileEditorView === "search" ? (
-                  <div className="space-y-3">
-                    <div className="space-y-2">
-                      <Input
-                        placeholder="For eksempel linsegryte"
-                        value={searchTerm}
-                        onChange={(event) => setSearchTerm(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            executeSearch();
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <label htmlFor="mobile-editor-source" className="text-sm font-medium">
+                      Velg forslag
+                    </label>
+                    {mobileEditorView !== "search" ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (mobileEditorView === "longGap" || mobileEditorView === "frequent") {
+                            refreshSuggestions(mobileEditorView);
                           }
                         }}
-                      />
-                      <div className="flex gap-2">
-                        <Button type="button" onClick={executeSearch} disabled={searchLoading} className="flex-1">
-                          {searchLoading ? "Søker…" : "Søk"}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          onClick={() => {
-                            setSearchTerm("");
-                            setSearchResults([]);
-                            setSearchError(null);
+                      >
+                        Oppdater
+                      </Button>
+                    ) : null}
+                  </div>
+
+                  <select
+                    id="mobile-editor-source"
+                    className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={mobileEditorView}
+                    onChange={(event) =>
+                      setMobileEditorView(event.target.value as "frequent" | "longGap" | "search")
+                    }
+                  >
+                    <option value="frequent">Ofte brukt</option>
+                    <option value="longGap">Lenge siden sist</option>
+                    <option value="search">Søk</option>
+                  </select>
+
+                  {mobileEditorView === "search" ? (
+                    <div className="space-y-3">
+                      <div className="space-y-2">
+                        <Input
+                          placeholder="For eksempel linsegryte"
+                          value={searchTerm}
+                          onChange={(event) => setSearchTerm(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              executeSearch();
+                            }
                           }}
-                          className="flex-1"
-                        >
-                          Tøm
-                        </Button>
+                        />
+                        <div className="flex gap-2">
+                          <Button type="button" onClick={executeSearch} disabled={searchLoading} className="flex-1">
+                            {searchLoading ? "Søker…" : "Søk"}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => {
+                              setSearchTerm("");
+                              setSearchResults([]);
+                              setSearchError(null);
+                            }}
+                            className="flex-1"
+                          >
+                            Tøm
+                          </Button>
+                        </div>
+                      </div>
+                      {searchError && <p className="text-sm text-red-500">{searchError}</p>}
+                      <div className="flex flex-col gap-2">
+                        {searchResults.length
+                          ? searchResults.map((recipe, index) => (
+                            <DraggableWrapper
+                              key={recipe.id}
+                              id={makeDragId({ source: "search", index, recipeId: recipe.id })}
+                            >
+                              {({ setNodeRef, listeners, attributes, style }) => (
+                                <div ref={setNodeRef} style={style} {...listeners} {...attributes}>
+                                  <SuggestionCard
+                                    recipe={recipe}
+                                    source="search"
+                                    index={index}
+                                    isInWeek={selectedIdSet.has(recipe.id)}
+                                    onPick={async () => {
+                                      const firstEmpty = week.findIndex((slot) => !slot);
+                                      const targetIndex = firstEmpty === -1 ? 0 : firstEmpty;
+                                      const next = [...week];
+                                      next[targetIndex] = recipe;
+                                      await commitWeekPlan(next);
+                                    }}
+                                  />
+                                </div>
+                              )}
+                            </DraggableWrapper>
+                          ))
+                          : !searchError && <p className="text-sm text-gray-500">Søk for å hente forslag</p>}
                       </div>
                     </div>
-                    {searchError && <p className="text-sm text-red-500">{searchError}</p>}
+                  ) : (
                     <div className="flex flex-col gap-2">
-                      {searchResults.length
-                        ? searchResults.map((recipe, index) => (
-                          <SuggestionCard
-                            key={recipe.id}
+                      {(mobileEditorView === "longGap" ? longGap : frequent).length ? (
+                        (mobileEditorView === "longGap" ? longGap : frequent).map((recipe, index) => {
+                          const isInWeek = selectedIdSet.has(recipe.id);
+                          const onPick = async () => {
+                            if (isInWeek) return;
+                            const firstEmpty = week.findIndex((slot) => !slot);
+                            const targetIndex = firstEmpty === -1 ? 0 : firstEmpty;
+                            const next = [...week];
+                            next[targetIndex] = recipe;
+                            await commitWeekPlan(next);
+                            setLongGap((prev) => prev.filter((x) => x.id !== recipe.id));
+                          };
+                          return (
+                            <DraggableWrapper
+                              key={recipe.id}
+                              id={makeDragId({
+                                source: mobileEditorView,
+                                index,
+                                recipeId: recipe.id,
+                              })}
+                            >
+                              {({ setNodeRef, listeners, attributes, style }) => (
+                                <div ref={setNodeRef} style={style} {...listeners} {...attributes}>
+                                  <SuggestionCard
+                                    recipe={recipe}
+                                    source={mobileEditorView}
+                                    index={index}
+                                    isInWeek={isInWeek}
+                                    onPick={onPick}
+                                  />
+                                </div>
+                              )}
+                            </DraggableWrapper>
+                          );
+                        })
+                      ) : (
+                        <p className="text-sm text-gray-500">Ingen forslag akkurat nå</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full"
+                onClick={() => setIsMobileEditorOpen(false)}
+              >
+                Ferdig med endringer
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex flex-col gap-2">
+                {week.map((recipe, index) => (
+                  <WeekDroppableSlot key={index} index={index}>
+                    {(isOver, setDropRef) => (
+                      <div ref={setDropRef}>
+                        {recipe ? (
+                          <DraggableWrapper id={makeDragId({ source: "week", index, recipeId: recipe.id })}>
+                            {({ setNodeRef, listeners, attributes, style }) => (
+                              <div ref={setNodeRef} style={style} {...listeners} {...attributes}>
+                                <WeekCard
+                                  index={index}
+                                  dayName={DAY_NAMES[index]}
+                                  recipe={recipe}
+                                  isDraggingTarget={isOver}
+                                />
+                              </div>
+                            )}
+                          </DraggableWrapper>
+                        ) : (
+                          <WeekCard
+                            index={index}
+                            dayName={DAY_NAMES[index]}
                             recipe={recipe}
-                            source="search"
+                            isDraggingTarget={isOver}
+                          />
+                        )}
+                      </div>
+                    )}
+                  </WeekDroppableSlot>
+                ))}
+              </div>
+              <Button
+                type="button"
+                className="w-full"
+                onClick={() => {
+                  setMobileEditorView("frequent");
+                  setIsMobileEditorOpen(true);
+                }}
+              >
+                Trykk her for å endre ukesplanen
+              </Button>
+            </div>
+          )}
+        </div>
+
+        <div className="hidden sm:block">
+          <div className="space-y-4">
+            <div className="overflow-x-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3 justify-items-center xl:min-w-[840px]">
+                {week.map((recipe, index) => (
+                  <WeekDroppableSlot key={index} index={index}>
+                    {(isOver, setDropRef) => (
+                      <div ref={setDropRef}>
+                        {recipe ? (
+                          <DraggableWrapper id={makeDragId({ source: "week", index, recipeId: recipe.id })}>
+                            {({ setNodeRef, listeners, attributes, style }) => (
+                              <div ref={setNodeRef} style={style} {...listeners} {...attributes}>
+                                <WeekCard
+                                  index={index}
+                                  dayName={DAY_NAMES[index]}
+                                  recipe={recipe}
+                                  isDraggingTarget={isOver}
+                                />
+                              </div>
+                            )}
+                          </DraggableWrapper>
+                        ) : (
+                          <WeekCard
+                            index={index}
+                            dayName={DAY_NAMES[index]}
+                            recipe={recipe}
+                            isDraggingTarget={isOver}
+                          />
+                        )}
+                      </div>
+                    )}
+                  </WeekDroppableSlot>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <section className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-semibold">Lenge siden sist</h2>
+                  <Button type="button" variant="outline" onClick={() => refreshSuggestions("longGap")}>
+                    Oppdater
+                  </Button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-2 justify-items-center">
+                  {longGap.length ? longGap.map((recipe, index) => (
+                    <DraggableWrapper key={recipe.id} id={makeDragId({ source: "longGap", index, recipeId: recipe.id })}>
+                      {({ setNodeRef, listeners, attributes, style }) => (
+                        <div ref={setNodeRef} style={style} {...listeners} {...attributes}>
+                          <SuggestionCard
+                            recipe={recipe}
+                            source="longGap"
                             index={index}
                             isInWeek={selectedIdSet.has(recipe.id)}
                             onPick={async () => {
@@ -607,240 +943,130 @@ export default function PlannerPage() {
                               const next = [...week];
                               next[targetIndex] = recipe;
                               await commitWeekPlan(next);
+                              setLongGap((prev) => prev.filter((x) => x.id !== recipe.id));
                             }}
-                            onDragStart={(e) => handleDragStart(e, { source: "search", index, recipeId: recipe.id })}
                           />
-                        ))
-                        : !searchError && <p className="text-sm text-gray-500">Søk for å hente forslag</p>}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-2">
-                    {(mobileEditorView === "longGap" ? longGap : frequent).length ? (
-                      (mobileEditorView === "longGap" ? longGap : frequent).map((recipe, index) => {
-                        const isInWeek = selectedIdSet.has(recipe.id);
-                        const onPick = async () => {
-                          if (isInWeek) return;
-                          const firstEmpty = week.findIndex((slot) => !slot);
-                          const targetIndex = firstEmpty === -1 ? 0 : firstEmpty;
-                          const next = [...week];
-                          next[targetIndex] = recipe;
-                          await commitWeekPlan(next);
-                          setLongGap((prev) => prev.filter((x) => x.id !== recipe.id));
-                        };
-                        return (
+                        </div>
+                      )}
+                    </DraggableWrapper>
+                  )) : (
+                    <p className="text-sm text-gray-500">Ingen forslag akkurat nå</p>
+                  )}
+                </div>
+              </section>
+
+              <section className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-semibold">Ofte brukt</h2>
+                  <Button type="button" variant="outline" onClick={() => refreshSuggestions("frequent")}>
+                    Oppdater
+                  </Button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-2 justify-items-center">
+                  {frequent.length ? frequent.map((recipe, index) => (
+                    <DraggableWrapper key={recipe.id} id={makeDragId({ source: "frequent", index, recipeId: recipe.id })}>
+                      {({ setNodeRef, listeners, attributes, style }) => (
+                        <div ref={setNodeRef} style={style} {...listeners} {...attributes}>
                           <SuggestionCard
-                            key={recipe.id}
                             recipe={recipe}
-                            source={mobileEditorView}
+                            source="frequent"
                             index={index}
-                            isInWeek={isInWeek}
-                            onPick={onPick}
-                            onDragStart={(e) =>
-                              handleDragStart(e, { source: mobileEditorView, index, recipeId: recipe.id })
-                            }
+                            isInWeek={selectedIdSet.has(recipe.id)}
+                            onPick={async () => {
+                              const firstEmpty = week.findIndex((slot) => !slot);
+                              const targetIndex = firstEmpty === -1 ? 0 : firstEmpty;
+                              const next = [...week];
+                              next[targetIndex] = recipe;
+                              await commitWeekPlan(next);
+                              setFrequent((prev) => prev.filter((x) => x.id !== recipe.id));
+                            }}
                           />
-                        );
-                      })
-                    ) : (
-                      <p className="text-sm text-gray-500">Ingen forslag akkurat nå</p>
-                    )}
+                        </div>
+                      )}
+                    </DraggableWrapper>
+                  )) : (
+                    <p className="text-sm text-gray-500">Ingen forslag akkurat nå</p>
+                  )}
+                </div>
+              </section>
+
+              <section className="space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-end sm:gap-3">
+                  <div className="flex-1 flex flex-col">
+                    <label className="text-sm">Søk i alle oppskrifter</label>
+                    <Input
+                      placeholder="For eksempel linsegryte"
+                      value={searchTerm}
+                      onChange={(event) => setSearchTerm(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          executeSearch();
+                        }
+                      }}
+                    />
                   </div>
-                )}
-              </div>
+                  <div className="flex gap-2 mt-2 sm:mt-0">
+                    <Button type="button" onClick={executeSearch} disabled={searchLoading}>
+                      {searchLoading ? "Søker…" : "Søk"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => {
+                        setSearchTerm("");
+                        setSearchResults([]);
+                        setSearchError(null);
+                      }}
+                    >
+                      Tøm
+                    </Button>
+                  </div>
+                </div>
+                {searchError && <p className="text-sm text-red-500">{searchError}</p>}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-2 justify-items-center">
+                  {searchResults.length
+                    ? searchResults.map((recipe, index) => (
+                      <DraggableWrapper key={recipe.id} id={makeDragId({ source: "search", index, recipeId: recipe.id })}>
+                        {({ setNodeRef, listeners, attributes, style }) => (
+                          <div ref={setNodeRef} style={style} {...listeners} {...attributes}>
+                            <SuggestionCard
+                              recipe={recipe}
+                              source="search"
+                              index={index}
+                              isInWeek={selectedIdSet.has(recipe.id)}
+                              onPick={async () => {
+                                const firstEmpty = week.findIndex((slot) => !slot);
+                                const targetIndex = firstEmpty === -1 ? 0 : firstEmpty;
+                                const next = [...week];
+                                next[targetIndex] = recipe;
+                                await commitWeekPlan(next);
+                              }}
+                            />
+                          </div>
+                        )}
+                      </DraggableWrapper>
+                    ))
+                    : !searchError && <p className="text-sm text-gray-500">Søk for å hente forslag</p>}
+                </div>
+              </section>
             </div>
-            <Button
-              type="button"
-              variant="ghost"
-              className="w-full"
-              onClick={() => setIsMobileEditorOpen(false)}
-            >
-              Ferdig med endringer
-            </Button>
           </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="flex flex-col gap-2">
-              {week.map((recipe, index) => (
-                <WeekCard
-                  key={index}
-                  index={index}
-                  dayName={DAY_NAMES[index]}
-                  recipe={recipe}
-                  isDraggingTarget={dragOverIndex === index}
-                  onDragOver={(e) => { e.preventDefault(); setDragOverIndex(index); }}
-                  onDragLeave={() => setDragOverIndex((prev) => (prev === index ? null : prev))}
-                  onDrop={(e) => handleWeekCardDrop(e, index)}
-                  onDragStart={(e) => {
-                    if (!recipe) return;
-                    handleDragStart(e, { source: "week", index, recipeId: recipe.id });
-                  }}
-                />
-              ))}
-            </div>
-            <Button
-              type="button"
-              className="w-full"
-              onClick={() => {
-                setMobileEditorView("frequent");
-                setIsMobileEditorOpen(true);
-              }}
-            >
-              Trykk her for å endre ukesplanen
-            </Button>
-          </div>
+        </div>
+
+        {(weekPlanQuery.error || saveWeek.error || generateWeek.error) && (
+          <p className="text-center text-sm text-red-500">Noe gikk galt. Prøv igjen.</p>
         )}
       </div>
 
-      <div className="hidden sm:block">
-        <div className="space-y-4">
-          <div className="overflow-x-auto">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3 justify-items-center xl:min-w-[840px]">
-              {week.map((recipe, index) => (
-                <WeekCard
-                  key={index}
-                  index={index}
-                  dayName={DAY_NAMES[index]}
-                  recipe={recipe}
-                  isDraggingTarget={dragOverIndex === index}
-                  onDragOver={(e) => { e.preventDefault(); setDragOverIndex(index); }}
-                  onDragLeave={() => setDragOverIndex((prev) => (prev === index ? null : prev))}
-                  onDrop={(e) => handleWeekCardDrop(e, index)}
-                  onDragStart={(e) => {
-                    if (!recipe) return;
-                    handleDragStart(e, { source: "week", index, recipeId: recipe.id });
-                  }}
-                />
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <section className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h2 className="font-semibold">Lenge siden sist</h2>
-                <Button type="button" variant="outline" onClick={() => refreshSuggestions("longGap")}>
-                  Oppdater
-                </Button>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-2 justify-items-center">
-                {longGap.length ? longGap.map((recipe, index) => (
-                  <SuggestionCard
-                    key={recipe.id}
-                    recipe={recipe}
-                    source="longGap"
-                    index={index}
-                    isInWeek={selectedIdSet.has(recipe.id)}
-                    onPick={async () => {
-                      const firstEmpty = week.findIndex((slot) => !slot);
-                      const targetIndex = firstEmpty === -1 ? 0 : firstEmpty;
-                      const next = [...week];
-                      next[targetIndex] = recipe;
-                      await commitWeekPlan(next);
-                      setLongGap((prev) => prev.filter((x) => x.id !== recipe.id));
-                    }}
-                    onDragStart={(e) => handleDragStart(e, { source: "longGap", index, recipeId: recipe.id })}
-                  />
-                )) : (
-                  <p className="text-sm text-gray-500">Ingen forslag akkurat nå</p>
-                )}
-              </div>
-            </section>
-
-            <section className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h2 className="font-semibold">Ofte brukt</h2>
-                <Button type="button" variant="outline" onClick={() => refreshSuggestions("frequent")}>
-                  Oppdater
-                </Button>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-2 justify-items-center">
-                {frequent.length ? frequent.map((recipe, index) => (
-                  <SuggestionCard
-                    key={recipe.id}
-                    recipe={recipe}
-                    source="frequent"
-                    index={index}
-                    isInWeek={selectedIdSet.has(recipe.id)}
-                    onPick={async () => {
-                      const firstEmpty = week.findIndex((slot) => !slot);
-                      const targetIndex = firstEmpty === -1 ? 0 : firstEmpty;
-                      const next = [...week];
-                      next[targetIndex] = recipe;
-                      await commitWeekPlan(next);
-                      setFrequent((prev) => prev.filter((x) => x.id !== recipe.id));
-                    }}
-                    onDragStart={(e) => handleDragStart(e, { source: "frequent", index, recipeId: recipe.id })}
-                  />
-                )) : (
-                  <p className="text-sm text-gray-500">Ingen forslag akkurat nå</p>
-                )}
-              </div>
-            </section>
-
-            <section className="space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-end sm:gap-3">
-                <div className="flex-1 flex flex-col">
-                  <label className="text-sm">Søk i alle oppskrifter</label>
-                  <Input
-                    placeholder="For eksempel linsegryte"
-                    value={searchTerm}
-                    onChange={(event) => setSearchTerm(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        executeSearch();
-                      }
-                    }}
-                  />
-                </div>
-                <div className="flex gap-2 mt-2 sm:mt-0">
-                  <Button type="button" onClick={executeSearch} disabled={searchLoading}>
-                    {searchLoading ? "Søker…" : "Søk"}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => {
-                      setSearchTerm("");
-                      setSearchResults([]);
-                      setSearchError(null);
-                    }}
-                  >
-                    Tøm
-                  </Button>
-                </div>
-              </div>
-              {searchError && <p className="text-sm text-red-500">{searchError}</p>}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-2 justify-items-center">
-                {searchResults.length
-                  ? searchResults.map((recipe, index) => (
-                    <SuggestionCard
-                      key={recipe.id}
-                      recipe={recipe}
-                      source="search"
-                      index={index}
-                      isInWeek={selectedIdSet.has(recipe.id)}
-                      onPick={async () => {
-                        const firstEmpty = week.findIndex((slot) => !slot);
-                        const targetIndex = firstEmpty === -1 ? 0 : firstEmpty;
-                        const next = [...week];
-                        next[targetIndex] = recipe;
-                        await commitWeekPlan(next);
-                      }}
-                      onDragStart={(e) => handleDragStart(e, { source: "search", index, recipeId: recipe.id })}
-                    />
-                  ))
-                  : !searchError && <p className="text-sm text-gray-500">Søk for å hente forslag</p>}
-              </div>
-            </section>
-          </div>
-        </div>
-      </div>
-
-      {(weekPlanQuery.error || saveWeek.error || generateWeek.error) && (
-        <p className="text-center text-sm text-red-500">Noe gikk galt. Prøv igjen.</p>
-      )}
-    </div>
+      {/* DragOverlay i portal */}
+      {mounted &&
+        createPortal(
+          <DragOverlay dropAnimation={null} style={{ pointerEvents: "none", zIndex: 1000 }}>
+            {overlayContent}
+          </DragOverlay>,
+          document.body
+        )}
+    </DndContext>
   );
 }

@@ -3,15 +3,26 @@ import type { DragEvent } from "react";
 import { Card, CardContent } from "@repo/ui";
 import type { WeekRecipe } from "../types";
 
-type Props = {
+export type Props = {
     index: number;
-    dayName: string;
-    recipe: WeekRecipe;
-    isDraggingTarget: boolean;
-    onDrop: (e: DragEvent<HTMLDivElement>) => void;
-    onDragStart: (e: DragEvent) => void;
-    onDragOver: (e: DragEvent<HTMLDivElement>) => void;
-    onDragLeave: () => void;
+    dayName: "Mandag" | "Tirsdag" | "Onsdag" | "Torsdag" | "Fredag" | "Lørdag" | "Søndag";
+    recipe: {
+        id: string;
+        name: string;
+        category: string;
+        everydayScore: number;
+        healthScore: number;
+        ingredients: any[];
+        lastUsed: string | null;
+        usageCount: number;
+    } | null;
+    isDraggingTarget?: boolean;
+
+    // HTML5 DnD – gjør valgfrie
+    onDrop?: React.DragEventHandler;
+    onDragStart?: React.DragEventHandler;
+    onDragOver?: React.DragEventHandler;
+    onDragLeave?: React.DragEventHandler;
 };
 
 export function WeekCard({
@@ -27,14 +38,11 @@ export function WeekCard({
     return (
         <Card
             className={`${isDraggingTarget ? "ring-2 ring-ring " : ""}flex h-full w-full max-w-sm xl:max-w-full items-center justify-center text-center`}
-            onDragOver={onDragOver}
-            onDragLeave={onDragLeave}
-            onDrop={onDrop}
-            draggable={Boolean(recipe)}
-            onDragStart={(e) => {
-                if (!recipe) return;
-                onDragStart(e);
-            }}
+            draggable={!!onDragStart}
+            onDragStart={(e) => { onDragStart?.(e); }}
+            onDragOver={(e) => { e.preventDefault(); onDragOver?.(e); }}
+            onDragLeave={(e) => { onDragLeave?.(e); }}
+            onDrop={(e) => { e.preventDefault(); onDrop?.(e); }}
         >
             <CardContent className="flex h-full min-h-[132px] flex-col items-center justify-center gap-2 p-4 text-center">
                 <div className="text-xs text-muted-foreground">{dayName}</div>

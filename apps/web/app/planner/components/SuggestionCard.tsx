@@ -3,24 +3,36 @@ import type { DragEvent } from "react";
 import { Card, CardContent } from "@repo/ui";
 import type { DragSource, RecipeDTO } from "../types";
 
-type Props = {
-    recipe: RecipeDTO;
-    source: DragSource;
+export type Props = {
+    recipe: {
+        id: string;
+        name: string;
+        category: string;
+        everydayScore: number;
+        healthScore: number;
+        ingredients: any[];
+        lastUsed: string | null;
+        usageCount: number;
+    };
+    source: "search" | "longGap" | "frequent";
     index: number;
     isInWeek: boolean;
-    onPick: () => Promise<void> | void;
-    onDragStart: (e: DragEvent) => void;
+    onPick?: () => void;
+
+    // HTML5 DnD – gjør valgfrie for dnd-kit
+    onDragStart?: React.DragEventHandler;
 };
 
 export function SuggestionCard({ recipe, source, index, isInWeek, onPick, onDragStart }: Props) {
     return (
         <Card
             className={`${isInWeek ? "cursor-not-allowed opacity-90" : "cursor-grab"} relative flex h-full w-full max-w-sm xl:max-w-full items-center justify-center text-center`}
-            onClick={() => { if (!isInWeek) onPick(); }}
-            draggable={!isInWeek}
+            onClick={() => { if (!isInWeek) onPick?.(); }}
+            // Avoid native HTML5 DnD when using dnd-kit:
+            draggable={false}
             onDragStart={(e) => {
                 if (isInWeek) return;
-                onDragStart(e);
+                onDragStart?.(e);
             }}
         >
             <CardContent className="flex h-full min-h-[132px] flex-col items-center justify-center gap-2 p-4 text-center">
