@@ -7,7 +7,6 @@ import { trpc } from "../../lib/trpcClient";
 import { Button, Card, CardContent, Input } from "@repo/ui";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@repo/api";
-import { describeEveryday, describeHealth } from "../../lib/scoreLabels";
 
 const DAY_NAMES = [
   "Mandag",
@@ -411,29 +410,19 @@ export default function PlannerPage() {
         }}
       >
         <CardContent className="pt-4">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <div className="text-xs text-muted-foreground">{DAY_NAMES[index]}</div>
-              <div className="font-medium">{recipe?.name ?? "—"}</div>
-              <div className="text-xs text-muted-foreground">{recipe?.category ?? ""}</div>
-            </div>
+          <div className="text-xs text-muted-foreground">{DAY_NAMES[index]}</div>
+          <div className="mt-1">
+            {recipe ? (
+              <>
+                <div className="font-medium">{recipe.name}</div>
+                {recipe.category ? (
+                  <div className="text-xs text-muted-foreground">{recipe.category}</div>
+                ) : null}
+              </>
+            ) : (
+              <div className="text-sm text-muted-foreground/60">Ingen valgt</div>
+            )}
           </div>
-
-          {recipe ? (
-            <div className="text-xs text-muted-foreground">
-              {describeEveryday(recipe.everydayScore)} • {describeHealth(recipe.healthScore)}
-            </div>
-          ) : (
-            <div className="text-xs text-muted-foreground/60">Ingen valgt</div>
-          )}
-
-          {recipe?.ingredients?.length ? (
-            <ul className="list-disc pl-5 text-xs mt-2 space-y-1">
-              {recipe.ingredients.map((ingredient) => (
-                <li key={ingredient.ingredientId}>{ingredient.name}</li>
-              ))}
-            </ul>
-          ) : null}
         </CardContent>
       </Card>
     );
@@ -467,9 +456,9 @@ export default function PlannerPage() {
       >
         <CardContent className="pt-4">
           <div className="font-medium">{recipe.name}</div>
-          <div className="text-xs text-muted-foreground">
-            {recipe.category} • {describeEveryday(recipe.everydayScore)} • {describeHealth(recipe.healthScore)}
-          </div>
+          {recipe.category ? (
+            <div className="text-xs text-muted-foreground">{recipe.category}</div>
+          ) : null}
 
           {isInWeek && (
             <div className="relative">
