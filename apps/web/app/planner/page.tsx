@@ -514,6 +514,22 @@ export default function PlannerPage() {
     const paddingX = options.variant === "mobile" ? "px-12" : "px-16";
     const gradientWidth = options.variant === "mobile" ? "w-12" : "w-20";
 
+    const activePos = weeks.findIndex((entry) => entry.index === activeWeekIndex);
+    const needsLeftPlaceholder =
+      options.variant === "mobile" && activePos === 0 && mobileWindowStart === 0;
+    const needsRightPlaceholder =
+      options.variant === "mobile" && activePos === weeks.length - 1 && mobileWindowStart === mobileMaxStart;
+
+    let visibleWeeks = weeks;
+    if (options.variant === "mobile") {
+      if (needsLeftPlaceholder && visibleWeeks.length > 2) {
+        visibleWeeks = visibleWeeks.slice(0, visibleWeeks.length - 1);
+      }
+      if (needsRightPlaceholder && visibleWeeks.length > 2) {
+        visibleWeeks = visibleWeeks.slice(1);
+      }
+    }
+    //TODO: Fix button opacity issue for mobile
     return (
       <div className="relative flex min-h-[44px] items-center justify-center">
         <div
@@ -523,8 +539,15 @@ export default function PlannerPage() {
           className={`pointer-events-none absolute inset-y-0 right-0 ${gradientWidth} bg-gradient-to-l from-background via-background/80 to-transparent z-10`}
         />
 
-        <div className={`relative z-0 flex ${gap} overflow-hidden ${paddingX} py-1`}>
-          {weeks.map((entry, index) => {
+        <div className={`relative z-20 flex ${gap} overflow-hidden ${paddingX} py-1`}>
+          {needsLeftPlaceholder ? (
+            <span
+              aria-hidden
+              className={`inline-block ${baseWidth} h-9 rounded-md opacity-0 pointer-events-none`}
+            />
+          ) : null}
+
+          {visibleWeeks.map((entry, index) => {
             if (!entry.week) {
               return (
                 <span
@@ -535,8 +558,9 @@ export default function PlannerPage() {
               );
             }
 
-            const isActive = entry.week.weekStart === activeWeekStart;
-            const isCurrent = entry.week.weekStart === currentWeekStart;
+            const week = entry.week;
+            const isActive = week.weekStart === activeWeekStart;
+            const isCurrent = week.weekStart === currentWeekStart;
 
             let opacityClass = "opacity-65";
             if (entry.index !== null && activeWeekIndex !== -1) {
@@ -552,28 +576,32 @@ export default function PlannerPage() {
 
             return (
               <Button
-                key={entry.week.weekStart}
+                key={week.weekStart}
                 type="button"
                 variant={variant}
                 size="sm"
-                className={`${baseWidth} px-3 text-sm transition-opacity whitespace-nowrap ${
-                  isActive ? "font-semibold opacity-100 bg-primary/10" : opacityClass
-                }`}
-                onClick={() => handleSelectWeek(entry.week.weekStart, entry.index)}
+                className={`${baseWidth} px-3 text-sm transition-opacity whitespace-nowrap ${isActive ? "font-semibold opacity-100 bg-primary/10" : opacityClass
+                  }`}
+                onClick={() => handleSelectWeek(week.weekStart, entry.index)}
               >
-                {entry.week.label}
+                {week.label}
               </Button>
             );
           })}
+
+          {needsRightPlaceholder ? (
+            <span
+              aria-hidden
+              className={`inline-block ${baseWidth} h-9 rounded-md opacity-0 pointer-events-none`}
+            />
+          ) : null}
         </div>
 
         <Button
           type="button"
-          variant="outline"
           size="icon"
-          className={`absolute left-2 top-1/2 -translate-y-1/2 shadow-sm z-20 ${
-            options.variant === "mobile" ? "size-8" : "size-9"
-          } bg-background`}
+          className={`absolute left-2 top-1/2 -translate-y-1/2 shadow-sm z-10 ${options.variant === "mobile" ? "size-8" : "size-9"
+            } `}
           aria-label="Forrige uke"
           onClick={options.onPrev}
           disabled={options.disablePrev}
@@ -583,11 +611,9 @@ export default function PlannerPage() {
 
         <Button
           type="button"
-          variant="outline"
           size="icon"
-          className={`absolute right-2 top-1/2 -translate-y-1/2 shadow-sm z-20 ${
-            options.variant === "mobile" ? "size-8" : "size-9"
-          } bg-background`}
+          className={`absolute right-2 top-1/2 -translate-y-1/2 shadow-sm z-10 ${options.variant === "mobile" ? "size-8" : "size-9"
+            } `}
           aria-label="Neste uke"
           onClick={options.onNext}
           disabled={options.disableNext}
