@@ -1,8 +1,8 @@
 "use client";
 export const dynamic = "force-dynamic";
 
-import type { DragEvent } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ComponentProps, DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
 import { Button, Card, CardContent, Input } from "@repo/ui";
 import type { inferRouterOutputs } from "@trpc/server";
@@ -77,13 +77,11 @@ function deriveWeekLabel(weekStartISO: string, currentWeekISO: string) {
     (7 * MS_PER_DAY)
   );
 
-  let prefix = "Denne uken";
-  if (diffWeeks === 1) prefix = "Neste uke";
-  else if (diffWeeks === -1) prefix = "Forrige uke";
-  else if (diffWeeks >= 2) prefix = "Kommende";
-  else if (diffWeeks <= -2) prefix = "Tidligere";
+  if (diffWeeks === 0) return "Denne uken";
+  if (diffWeeks === 1) return "Neste uke";
+  if (diffWeeks === -1) return "Forrige uke";
 
-  return `${prefix} (${formatWeekRange(weekStartISO)})`;
+  return formatWeekRange(weekStartISO);
 }
 
 function makeEmptyWeek() {
@@ -108,6 +106,10 @@ export default function PlannerPage() {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [isAutoGenerating, setIsAutoGenerating] = useState(false);
   const [lastUpdatedISO, setLastUpdatedISO] = useState<string | null>(null);
+  const [isMobileEditorOpen, setIsMobileEditorOpen] = useState(false);
+  const [mobileEditorView, setMobileEditorView] = useState<"frequent" | "longGap" | "search">(
+    "frequent"
+  );
 
   const weekPlanQuery = trpc.planner.getWeekPlan.useQuery(
     { weekStart: activeWeekStart },
@@ -331,42 +333,47 @@ export default function PlannerPage() {
 
   const VISIBLE_WEEK_COUNT = 5;
   const [visibleStart, setVisibleStart] = useState(0);
-  const carouselInitializedRef = useRef(false);
+
+  const activeWeekIndex = useMemo(
+    () => timelineWeeks.findIndex((week) => week.weekStart === activeWeekStart),
+    [timelineWeeks, activeWeekStart]
+  );
 
   useEffect(() => {
-    if (carouselInitializedRef.current) return;
     if (!timelineWeeks.length) return;
-    const currentIndex = timelineWeeks.findIndex((week) => week.weekStart === currentWeekStart);
-    if (currentIndex === -1) return;
+    if (activeWeekIndex === -1) return;
     const maxStart = Math.max(0, timelineWeeks.length - VISIBLE_WEEK_COUNT);
-    const target = Math.min(
-      Math.max(0, currentIndex - Math.floor(VISIBLE_WEEK_COUNT / 2)),
-      maxStart
+    const target = Math.max(
+      0,
+      Math.min(activeWeekIndex - Math.floor(VISIBLE_WEEK_COUNT / 2), maxStart)
     );
     setVisibleStart(target);
-    carouselInitializedRef.current = true;
-  }, [timelineWeeks, currentWeekStart]);
-
-  useEffect(() => {
-    if (!timelineWeeks.length) return;
-    const activeIndex = timelineWeeks.findIndex((week) => week.weekStart === activeWeekStart);
-    if (activeIndex === -1) return;
-    const maxStart = Math.max(0, timelineWeeks.length - VISIBLE_WEEK_COUNT);
-    setVisibleStart((prev) => {
-      if (activeIndex < prev) {
-        return Math.max(0, Math.min(activeIndex, maxStart));
-      }
-      if (activeIndex >= prev + VISIBLE_WEEK_COUNT) {
-        return Math.max(0, Math.min(activeIndex - VISIBLE_WEEK_COUNT + 1, maxStart));
-      }
-      return prev;
-    });
-  }, [activeWeekStart, timelineWeeks]);
+  }, [timelineWeeks, activeWeekIndex]);
 
   const canShowPrev = visibleStart > 0;
   const maxVisibleStart = Math.max(0, timelineWeeks.length - VISIBLE_WEEK_COUNT);
   const canShowNext = visibleStart < maxVisibleStart;
   const visibleWeeks = timelineWeeks.slice(visibleStart, visibleStart + VISIBLE_WEEK_COUNT);
+
+  const mobileVisibleWeeks = useMemo(() => {
+    if (!timelineWeeks.length) return [] as typeof timelineWeeks;
+    if (activeWeekIndex === -1) return timelineWeeks.slice(0, Math.min(3, timelineWeeks.length));
+
+    const result: typeof timelineWeeks = [];
+    const prev = timelineWeeks[activeWeekIndex - 1];
+    const current = timelineWeeks[activeWeekIndex];
+    const next = timelineWeeks[activeWeekIndex + 1];
+
+    if (prev) result.push(prev);
+    if (current) result.push(current);
+    if (next) result.push(next);
+
+    return result;
+  }, [timelineWeeks, activeWeekIndex]);
+
+  const hasPrevTimelineWeek = activeWeekIndex > 0;
+  const hasNextTimelineWeek =
+    activeWeekIndex !== -1 && activeWeekIndex < timelineWeeks.length - 1;
 
   useEffect(() => {
     if (!timelineQuery.data) return;
@@ -391,12 +398,47 @@ export default function PlannerPage() {
     return "Endringer lagres automatisk";
   }, [saveWeek.isPending, generateWeek.isPending, isAutoGenerating, lastUpdatedISO]);
 
+  const handleSelectWeek = (weekStart: string) => {
+    const normalized = startOfWeekISO(weekStart);
+    setWeek(makeEmptyWeek());
+    setLongGap([]);
+    setFrequent([]);
+    setSearchResults([]);
+    setSearchError(null);
+    setActiveWeekStart(normalized);
+  };
+
+  const renderWeekSelectorButton = (item: {
+    weekStart: string;
+    hasEntries: boolean;
+    label: string;
+  }) => {
+    const isActive = item.weekStart === activeWeekStart;
+    const isCurrent = item.weekStart === currentWeekStart;
+
+    const variant: ComponentProps<typeof Button>["variant"] =
+      isActive ? "default" : isCurrent ? "outline" : item.hasEntries ? "secondary" : "ghost";
+
+    return (
+      <Button
+        key={item.weekStart}
+        type="button"
+        variant={variant}
+        size="sm"
+        className="px-3"
+        onClick={() => handleSelectWeek(item.weekStart)}
+      >
+        {item.label}
+      </Button>
+    );
+  };
+
   const renderWeekCard = (recipe: WeekRecipe, index: number) => {
     const isDraggingTarget = dragOverIndex === index;
     return (
       <Card
         key={index}
-        className={isDraggingTarget ? "ring-2 ring-ring" : undefined}
+        className={`${isDraggingTarget ? "ring-2 ring-ring " : ""}flex h-full w-full max-w-sm xl:max-w-full items-center justify-center text-center`}
         onDragOver={(event) => {
           event.preventDefault();
           setDragOverIndex(index);
@@ -409,20 +451,18 @@ export default function PlannerPage() {
           handleDragStart(event, { source: "week", index, recipeId: recipe.id });
         }}
       >
-        <CardContent className="pt-4">
+        <CardContent className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center">
           <div className="text-xs text-muted-foreground">{DAY_NAMES[index]}</div>
-          <div className="mt-1">
-            {recipe ? (
-              <>
-                <div className="font-medium">{recipe.name}</div>
-                {recipe.category ? (
-                  <div className="text-xs text-muted-foreground">{recipe.category}</div>
-                ) : null}
-              </>
-            ) : (
-              <div className="text-sm text-muted-foreground/60">Ingen valgt</div>
-            )}
-          </div>
+          {recipe ? (
+            <div className="space-y-1">
+              <div className="font-medium line-clamp-2 break-words">{recipe.name}</div>
+              {recipe.category ? (
+                <div className="text-xs text-muted-foreground">{recipe.category}</div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground/60">Ingen valgt</div>
+          )}
         </CardContent>
       </Card>
     );
@@ -446,7 +486,7 @@ export default function PlannerPage() {
     return (
       <Card
         key={recipe.id}
-        className={isInWeek ? "cursor-not-allowed opacity-90" : "cursor-grab"}
+        className={`${isInWeek ? "cursor-not-allowed opacity-90" : "cursor-grab"} relative flex h-full w-full max-w-sm xl:max-w-full items-center justify-center text-center`}
         onClick={handlePick}
         draggable={!isInWeek}
         onDragStart={(event) => {
@@ -454,22 +494,20 @@ export default function PlannerPage() {
           handleDragStart(event, { source, index, recipeId: recipe.id });
         }}
       >
-        <CardContent className="pt-4">
-          <div className="font-medium">{recipe.name}</div>
+        <CardContent className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center">
+          <div className="font-medium line-clamp-2 break-words">{recipe.name}</div>
           {recipe.category ? (
             <div className="text-xs text-muted-foreground">{recipe.category}</div>
           ) : null}
-
-          {isInWeek && (
-            <div className="relative">
-              <div className="absolute inset-0 rounded-lg bg-background/70 backdrop-blur-xs flex items-center justify-center text-center px-3">
-                <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                  Allerede i ukeplanen
-                </span>
-              </div>
-            </div>
-          )}
         </CardContent>
+
+        {isInWeek && (
+          <div className="pointer-events-none absolute inset-0 rounded-lg bg-background/70 backdrop-blur-xs flex items-center justify-center px-3 text-center">
+            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Allerede i ukeplanen
+            </span>
+          </div>
+        )}
       </Card>
     );
   };
@@ -479,7 +517,7 @@ export default function PlannerPage() {
       <h1 className="text-xl font-bold text-center">Ukesplan</h1>
 
       <div className="space-y-3">
-        <div className="flex items-center justify-center gap-2">
+        <div className="hidden sm:flex items-center justify-center gap-2">
           <Button
             type="button"
             variant="outline"
@@ -492,43 +530,7 @@ export default function PlannerPage() {
           </Button>
 
           <div className="flex gap-2">
-            {visibleWeeks.map((item) => {
-              const isActive = item.weekStart === activeWeekStart;
-              const isCurrent = item.weekStart === currentWeekStart;
-
-              const variant: React.ComponentProps<typeof Button>["variant"] =
-                isActive ? "default" : isCurrent ? "outline" : item.hasEntries ? "secondary" : "ghost";
-
-              return (
-                <Button
-                  key={item.weekStart}
-                  type="button"
-                  variant={variant}
-                  size="sm"
-                  className="px-3"
-                  onClick={() => {
-                    setWeek(makeEmptyWeek());
-                    setLongGap([]);
-                    setFrequent([]);
-                    setSearchResults([]);
-                    setSearchError(null);
-                    const normalized = startOfWeekISO(item.weekStart);
-                    setActiveWeekStart(normalized);
-                    const index = timelineWeeks.findIndex((week) => week.weekStart === normalized);
-                    if (index !== -1) {
-                      const maxStartLocal = Math.max(0, timelineWeeks.length - VISIBLE_WEEK_COUNT);
-                      const centered = Math.min(
-                        Math.max(0, index - Math.floor(VISIBLE_WEEK_COUNT / 2)),
-                        maxStartLocal
-                      );
-                      setVisibleStart(centered);
-                    }
-                  }}
-                >
-                  {item.label}
-                </Button>
-              );
-            })}
+            {visibleWeeks.map((item) => renderWeekSelectorButton(item))}
           </div>
 
           <Button
@@ -542,86 +544,250 @@ export default function PlannerPage() {
             →
           </Button>
         </div>
+
+        <div className="sm:hidden flex items-center justify-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="size-8 p-0"
+            onClick={() => {
+              if (!hasPrevTimelineWeek) return;
+              const prevWeek = timelineWeeks[activeWeekIndex - 1];
+              if (prevWeek) handleSelectWeek(prevWeek.weekStart);
+            }}
+            disabled={!hasPrevTimelineWeek}
+          >
+            ←
+          </Button>
+
+          <div className="flex gap-2">
+            {mobileVisibleWeeks.map((item) => renderWeekSelectorButton(item))}
+          </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="size-8 p-0"
+            onClick={() => {
+              if (!hasNextTimelineWeek) return;
+              const nextWeek = timelineWeeks[activeWeekIndex + 1];
+              if (nextWeek) handleSelectWeek(nextWeek.weekStart);
+            }}
+            disabled={!hasNextTimelineWeek}
+          >
+            →
+          </Button>
+        </div>
+
         <p className="text-xs text-center text-muted-foreground">{statusText}</p>
       </div>
 
-      <div className="overflow-x-auto">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3 min-w-[840px]">
-          {week.map((recipe, index) => renderWeekCard(recipe, index))}
-        </div>
+      <div className="space-y-4 sm:hidden">
+        {isMobileEditorOpen ? (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-2">
+                {week.map((recipe, index) => renderWeekCard(recipe, index))}
+              </div>
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-2">
+                  <label htmlFor="mobile-editor-source" className="text-sm font-medium">
+                    Velg forslag
+                  </label>
+                  {mobileEditorView !== "search" ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (mobileEditorView === "longGap" || mobileEditorView === "frequent") {
+                          refreshSuggestions(mobileEditorView);
+                        }
+                      }}
+                    >
+                      Oppdater
+                    </Button>
+                  ) : null}
+                </div>
+
+                <select
+                  id="mobile-editor-source"
+                  className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={mobileEditorView}
+                  onChange={(event) =>
+                    setMobileEditorView(event.target.value as "frequent" | "longGap" | "search")
+                  }
+                >
+                  <option value="frequent">Ofte brukt</option>
+                  <option value="longGap">Lenge siden sist</option>
+                  <option value="search">Søk</option>
+                </select>
+
+                {mobileEditorView === "search" ? (
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <Input
+                        placeholder="For eksempel linsegryte"
+                        value={searchTerm}
+                        onChange={(event) => setSearchTerm(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            executeSearch();
+                          }
+                        }}
+                      />
+                      <div className="flex gap-2">
+                        <Button type="button" onClick={executeSearch} disabled={searchLoading} className="flex-1">
+                          {searchLoading ? "Søker…" : "Søk"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => {
+                            setSearchTerm("");
+                            setSearchResults([]);
+                            setSearchError(null);
+                          }}
+                          className="flex-1"
+                        >
+                          Tøm
+                        </Button>
+                      </div>
+                    </div>
+                    {searchError && <p className="text-sm text-red-500">{searchError}</p>}
+                    <div className="flex flex-col gap-2">
+                      {searchResults.length ? (
+                        searchResults.map((recipe, index) => renderSuggestionCard(recipe, "search", index))
+                      ) : (
+                        !searchError && <p className="text-sm text-gray-500">Søk for å hente forslag</p>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {(mobileEditorView === "longGap" ? longGap : frequent).length ? (
+                      (mobileEditorView === "longGap" ? longGap : frequent).map((recipe, index) =>
+                        renderSuggestionCard(recipe, mobileEditorView, index)
+                      )
+                    ) : (
+                      <p className="text-sm text-gray-500">Ingen forslag akkurat nå</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full"
+              onClick={() => setIsMobileEditorOpen(false)}
+            >
+              Ferdig med endringer
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex flex-col gap-2">
+              {week.map((recipe, index) => renderWeekCard(recipe, index))}
+            </div>
+            <Button
+              type="button"
+              className="w-full"
+              onClick={() => {
+                setMobileEditorView("frequent");
+                setIsMobileEditorOpen(true);
+              }}
+            >
+              Trykk her for å endre ukesplanen
+            </Button>
+          </div>
+        )}
       </div>
 
-      <div className="space-y-4">
-        <section className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold">Lenge siden sist</h2>
-            <Button type="button" variant="outline" onClick={() => refreshSuggestions("longGap")}>
-              Oppdater
-            </Button>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
-            {longGap.length ? longGap.map((recipe, index) => renderSuggestionCard(recipe, "longGap", index)) : (
-              <p className="text-sm text-gray-500">Ingen forslag akkurat nå</p>
-            )}
-          </div>
-        </section>
-
-        <section className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold">Ofte brukt</h2>
-            <Button type="button" variant="outline" onClick={() => refreshSuggestions("frequent")}>
-              Oppdater
-            </Button>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
-            {frequent.length ? frequent.map((recipe, index) => renderSuggestionCard(recipe, "frequent", index)) : (
-              <p className="text-sm text-gray-500">Ingen forslag akkurat nå</p>
-            )}
-          </div>
-        </section>
-
-        <section className="space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-end sm:gap-3">
-            <div className="flex-1 flex flex-col">
-              <label className="text-sm">Søk i alle oppskrifter</label>
-              <Input
-                placeholder="For eksempel linsegryte"
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    executeSearch();
-                  }
-                }}
-              />
-            </div>
-            <div className="flex gap-2 mt-2 sm:mt-0">
-              <Button type="button" onClick={executeSearch} disabled={searchLoading}>
-                {searchLoading ? "Søker…" : "Søk"}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => {
-                  setSearchTerm("");
-                  setSearchResults([]);
-                  setSearchError(null);
-                }}
-              >
-                Tøm
-              </Button>
+      <div className="hidden sm:block">
+        <div className="space-y-4">
+          <div className="overflow-x-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3 justify-items-center xl:min-w-[840px]">
+              {week.map((recipe, index) => renderWeekCard(recipe, index))}
             </div>
           </div>
-          {searchError && <p className="text-sm text-red-500">{searchError}</p>}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
-            {searchResults.length ? (
-              searchResults.map((recipe, index) => renderSuggestionCard(recipe, "search", index))
-            ) : (
-              !searchError && <p className="text-sm text-gray-500">Søk for å hente forslag</p>
-            )}
+
+          <div className="space-y-4">
+            <section className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold">Lenge siden sist</h2>
+                <Button type="button" variant="outline" onClick={() => refreshSuggestions("longGap")}>
+                  Oppdater
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 justify-items-center">
+                {longGap.length ? longGap.map((recipe, index) => renderSuggestionCard(recipe, "longGap", index)) : (
+                  <p className="text-sm text-gray-500">Ingen forslag akkurat nå</p>
+                )}
+              </div>
+            </section>
+
+            <section className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold">Ofte brukt</h2>
+                <Button type="button" variant="outline" onClick={() => refreshSuggestions("frequent")}>
+                  Oppdater
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 justify-items-center">
+                {frequent.length ? frequent.map((recipe, index) => renderSuggestionCard(recipe, "frequent", index)) : (
+                  <p className="text-sm text-gray-500">Ingen forslag akkurat nå</p>
+                )}
+              </div>
+            </section>
+
+            <section className="space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-end sm:gap-3">
+                <div className="flex-1 flex flex-col">
+                  <label className="text-sm">Søk i alle oppskrifter</label>
+                  <Input
+                    placeholder="For eksempel linsegryte"
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        executeSearch();
+                      }
+                    }}
+                  />
+                </div>
+                <div className="flex gap-2 mt-2 sm:mt-0">
+                  <Button type="button" onClick={executeSearch} disabled={searchLoading}>
+                    {searchLoading ? "Søker…" : "Søk"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setSearchTerm("");
+                      setSearchResults([]);
+                      setSearchError(null);
+                    }}
+                  >
+                    Tøm
+                  </Button>
+                </div>
+              </div>
+              {searchError && <p className="text-sm text-red-500">{searchError}</p>}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 justify-items-center">
+                {searchResults.length ? (
+                  searchResults.map((recipe, index) => renderSuggestionCard(recipe, "search", index))
+                ) : (
+                  !searchError && <p className="text-sm text-gray-500">Søk for å hente forslag</p>
+                )}
+              </div>
+            </section>
           </div>
-        </section>
+        </div>
       </div>
 
       {(weekPlanQuery.error || saveWeek.error || generateWeek.error) && (
