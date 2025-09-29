@@ -642,7 +642,7 @@ export default function PlannerPage() {
           handleDragStart(event, { source: "week", index, recipeId: recipe.id });
         }}
       >
-        <CardContent className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center">
+        <CardContent className="flex h-full min-h-[132px] flex-col items-center justify-center gap-2 p-4 text-center">
           <div className="text-xs text-muted-foreground">{DAY_NAMES[index]}</div>
           {recipe ? (
             <div className="space-y-1">
@@ -685,7 +685,7 @@ export default function PlannerPage() {
           handleDragStart(event, { source, index, recipeId: recipe.id });
         }}
       >
-        <CardContent className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center">
+        <CardContent className="flex h-full min-h-[132px] flex-col items-center justify-center gap-2 p-4 text-center">
           <div className="font-medium line-clamp-2 break-words">{recipe.name}</div>
           {recipe.category ? (
             <div className="text-xs text-muted-foreground">{recipe.category}</div>
@@ -870,11 +870,11 @@ export default function PlannerPage() {
                   Oppdater
                 </Button>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 justify-items-center">
-                {longGap.length ? longGap.map((recipe, index) => renderSuggestionCard(recipe, "longGap", index)) : (
-                  <p className="text-sm text-gray-500">Ingen forslag akkurat nå</p>
-                )}
-              </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-2 justify-items-center">
+            {longGap.length ? longGap.map((recipe, index) => renderSuggestionCard(recipe, "longGap", index)) : (
+              <p className="text-sm text-gray-500">Ingen forslag akkurat nå</p>
+            )}
+          </div>
             </section>
 
             <section className="space-y-2">
@@ -884,11 +884,11 @@ export default function PlannerPage() {
                   Oppdater
                 </Button>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 justify-items-center">
-                {frequent.length ? frequent.map((recipe, index) => renderSuggestionCard(recipe, "frequent", index)) : (
-                  <p className="text-sm text-gray-500">Ingen forslag akkurat nå</p>
-                )}
-              </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-2 justify-items-center">
+            {frequent.length ? frequent.map((recipe, index) => renderSuggestionCard(recipe, "frequent", index)) : (
+              <p className="text-sm text-gray-500">Ingen forslag akkurat nå</p>
+            )}
+          </div>
             </section>
 
             <section className="space-y-3">
@@ -925,12 +925,12 @@ export default function PlannerPage() {
                 </div>
               </div>
               {searchError && <p className="text-sm text-red-500">{searchError}</p>}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 justify-items-center">
-                {searchResults.length ? (
-                  searchResults.map((recipe, index) => renderSuggestionCard(recipe, "search", index))
-                ) : (
-                  !searchError && <p className="text-sm text-gray-500">Søk for å hente forslag</p>
-                )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-2 justify-items-center">
+            {searchResults.length ? (
+              searchResults.map((recipe, index) => renderSuggestionCard(recipe, "search", index))
+            ) : (
+              !searchError && <p className="text-sm text-gray-500">Søk for å hente forslag</p>
+            )}
               </div>
             </section>
           </div>
