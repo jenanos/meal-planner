@@ -13,6 +13,7 @@ export { Textarea } from "./components/shadcn/textarea"
 
 // magicui
 export { GridBeams } from "./components/magicui/grid-beams"
+export { MagicCard } from "./components/magicui/MagicCard"
 
 // Aliases so you can use both side-by-side
 export { Button as ShadcnButton } from "./components/shadcn/button"

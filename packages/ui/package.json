@@ -72,5 +72,8 @@
     "tailwind-merge": "^2.6.0",
     "tsup": "^8.5.0",
     "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "motion": "^12.23.22"
   }
 }
