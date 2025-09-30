@@ -1,7 +1,6 @@
 "use client";
-import type { DragEvent } from "react";
 import { MagicCard } from "@repo/ui";
-import type { WeekRecipe, DayName } from "../types";
+import type { DayName } from "../types";
 
 export type Props = {
     index: number;
@@ -26,7 +25,7 @@ export type Props = {
 };
 
 export function WeekCard({
-    index,
+    index: _index,
     dayName,
     recipe,
     isDraggingTarget,
@@ -35,20 +34,21 @@ export function WeekCard({
     onDragOver,
     onDragLeave,
 }: Props) {
-    // Høstnyanser per ukedag (lys base, blir varmere mot helgen)
-    const dayBgClass: Record<DayName, string> = {
-        Mandag: "bg-[hsl(40_90%_92%)]",   // lys gul
-        Tirsdag: "bg-[hsl(36_85%_90%)]",  // kremgul
-        Onsdag: "bg-[hsl(30_80%_88%)]",   // lys oransje
-        Torsdag: "bg-[hsl(24_75%_86%)]",  // aprikos
-        Fredag: "bg-[hsl(20_70%_85%)]",   // fersken
-        Lørdag: "bg-[hsl(16_65%_84%)]",   // terracotta lys
-        Søndag: "bg-[hsl(8_65%_84%)]",    // lys rødlig
+    // Høstnyanser per ukedag – HSL-tripletter for MagicCard sin inner-fill via CSS-variabel
+    const dayHsl: Record<DayName, string> = {
+        Mandag: "40 90% 92%",   // lys gul
+        Tirsdag: "36 85% 90%",  // kremgul
+        Onsdag: "30 80% 88%",   // lys oransje
+        Torsdag: "24 75% 86%",  // aprikos
+        Fredag: "20 70% 85%",   // fersken
+        Lørdag: "16 65% 84%",   // terracotta lys
+        Søndag: "8 65% 84%",    // lys rødlig
     };
 
     return (
         <MagicCard
-            className={`rounded-lg flex h-full w-full max-w-sm xl:max-w-full items-center justify-center text-center ${dayBgClass[dayName]} [--magic-card-bg:theme(colors.card)]`}
+            className={`rounded-lg flex h-full w-full max-w-sm xl:max-w-full items-center justify-center text-center`}
+            style={{ ["--magic-card-bg" as any]: dayHsl[dayName] }}
             gradientFrom="#F59E0B" /* amber-500 */
             gradientTo="#DC2626"   /* red-600 */
             gradientColor="#F59E0B" /* warm glow instead of dark */

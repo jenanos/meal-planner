@@ -35,7 +35,8 @@ export function DragOverlayCard({ payload, overIndex, dayNames, week, longGap, f
 
   return (
     <MagicCard
-      className="pointer-events-none select-none rounded-xl min-w-[200px] max-w-[260px] bg-[hsl(30_70%_90%)] [--magic-card-bg:theme(colors.card)]"
+      className="pointer-events-none select-none rounded-xl min-w-[200px] max-w-[260px]"
+      style={{ ["--magic-card-bg" as any]: "30 70% 90%" }}
       gradientFrom="#F59E0B"
       gradientTo="#EA580C"
       gradientColor="#F59E0B"

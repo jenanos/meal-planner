@@ -1,7 +1,5 @@
 "use client";
-import type { DragEvent } from "react";
 import { MagicCard } from "@repo/ui";
-import type { DragSource, RecipeDTO } from "../types";
 
 export type Props = {
     recipe: {
@@ -24,17 +22,34 @@ export type Props = {
 };
 
 export function SuggestionCard({ recipe, source, index, isInWeek, onPick, onDragStart }: Props) {
-    // Ulike bakgrunnsnyanser etter kilde for bedre visuell gruppering
-    const bgBySource: Record<Props["source"], string> = {
-        frequent: "bg-[hsl(34_80%_92%)]", // varm gul-krem
-        longGap: "bg-[hsl(16_70%_90%)]",  // lys terracotta
-        search: "bg-[hsl(40_30%_94%)]",   // nøytral sand (bevisst rolig for søk)
+    // Paletter per kilde; vi varierer pr. element (index) innen hver liste
+    const frequentPalette = [
+        "34 80% 92%", // kremgul
+        "30 75% 90%", // dempet oransje
+        "26 70% 88%", // varm aprikos
+    ];
+    const longGapPalette = [
+        "16 70% 90%", // lys terracotta
+        "12 65% 88%", // dempet rødlig
+        "8 60% 86%",  // lys rødlig
+    ];
+    const searchPalette = [
+        "40 30% 94%", // rolig sand
+        "38 28% 93%", // svak variasjon
+        "36 26% 92%", // svak variasjon
+    ];
+    const paletteMap: Record<Props["source"], string[]> = {
+        frequent: frequentPalette,
+        longGap: longGapPalette,
+        search: searchPalette,
     };
-    const baseBgClass = isInWeek ? "bg-card" : bgBySource[source];
+    const palette = paletteMap[source];
+    const baseHsl = isInWeek ? undefined : palette[index % palette.length];
 
     return (
         <MagicCard
-            className={`${isInWeek ? "cursor-not-allowed opacity-90" : "cursor-grab"} relative rounded-lg flex h-full w-full max-w-sm xl:max-w-full items-center justify-center text-center ${baseBgClass} [--magic-card-bg:theme(colors.card)]`}
+            className={`${isInWeek ? "cursor-not-allowed opacity-90" : "cursor-grab"} relative rounded-lg flex h-full w-full max-w-sm xl:max-w-full items-center justify-center text-center`}
+            style={baseHsl ? ({ ["--magic-card-bg" as any]: baseHsl } as React.CSSProperties) : undefined}
             gradientFrom="#F97316" /* orange-500 */
             gradientTo="#A16207"   /* amber-700 */
             gradientColor="#F97316"
