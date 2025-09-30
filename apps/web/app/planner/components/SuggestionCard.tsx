@@ -1,5 +1,6 @@
 "use client";
 import { MagicCard } from "@repo/ui";
+import { suggestionPalettes } from "../palette";
 
 export type Props = {
     recipe: {
@@ -22,28 +23,7 @@ export type Props = {
 };
 
 export function SuggestionCard({ recipe, source, index, isInWeek, onPick, onDragStart }: Props) {
-    // Paletter per kilde; vi varierer pr. element (index) innen hver liste
-    const frequentPalette = [
-        "34 80% 92%", // kremgul
-        "30 75% 90%", // dempet oransje
-        "26 70% 88%", // varm aprikos
-    ];
-    const longGapPalette = [
-        "16 70% 90%", // lys terracotta
-        "12 65% 88%", // dempet rødlig
-        "8 60% 86%",  // lys rødlig
-    ];
-    const searchPalette = [
-        "40 30% 94%", // rolig sand
-        "38 28% 93%", // svak variasjon
-        "36 26% 92%", // svak variasjon
-    ];
-    const paletteMap: Record<Props["source"], string[]> = {
-        frequent: frequentPalette,
-        longGap: longGapPalette,
-        search: searchPalette,
-    };
-    const palette = paletteMap[source];
+    const palette = suggestionPalettes[source];
     const baseHsl = isInWeek ? undefined : palette[index % palette.length];
 
     return (

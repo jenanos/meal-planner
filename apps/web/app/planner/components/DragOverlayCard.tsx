@@ -1,7 +1,8 @@
 "use client";
 
-import type { DragPayload, RecipeDTO, WeekState } from "../types";
+import type { DragPayload, RecipeDTO, WeekState, DayName } from "../types";
 import { MagicCard } from "@repo/ui";
+import { dayBaseHsl, dayHoverGradients, getDayByIndex } from "../palette";
 
 type Props = {
   payload: DragPayload | null;
@@ -33,15 +34,45 @@ export function DragOverlayCard({ payload, overIndex, dayNames, week, longGap, f
   const isAdd = payload.source !== "week";
   const targetLabel = overIndex != null ? dayNames[overIndex] : "Slipp på en dag";
 
+  // Dynamiske farger: når vi har en overIndex, bruk ukedagens palett; ellers bruk kildebasert fallback
+  let styleVar: React.CSSProperties | undefined;
+  let gradientFrom = "#EA580C";
+  let gradientTo = "#16A34A";
+  let gradientColor = "#B45309";
+
+  if (overIndex != null && Number.isFinite(overIndex)) {
+    const dayName = (dayNames[overIndex] as DayName) ?? getDayByIndex(overIndex);
+    styleVar = { ["--magic-card-bg" as any]: dayBaseHsl[dayName] } as React.CSSProperties;
+    const g = dayHoverGradients[dayName];
+    gradientFrom = g.from;
+    gradientTo = g.to;
+    gradientColor = g.color;
+  } else {
+    // Fallback etter kilde
+    if (payload.source === "frequent") {
+      gradientFrom = "#EA580C"; // orange
+      gradientTo = "#16A34A";   // green
+      gradientColor = "#EA580C";
+    } else if (payload.source === "longGap") {
+      gradientFrom = "#92400E"; // brown
+      gradientTo = "#DC2626";   // red
+      gradientColor = "#B91C1C";
+    } else {
+      gradientFrom = "#F59E0B"; // amber
+      gradientTo = "#84CC16";   // lime
+      gradientColor = "#B45309";
+    }
+  }
+
   return (
     <MagicCard
       className="pointer-events-none select-none rounded-xl min-w-[200px] max-w-[260px]"
-      style={{ ["--magic-card-bg" as any]: "30 70% 90%" }}
-      gradientFrom="#EA580C"
-      gradientTo="#16A34A"
-      gradientColor="#B45309"
-      gradientSize={280}
-      gradientOpacity={0.55}
+      style={styleVar}
+      gradientFrom={gradientFrom}
+      gradientTo={gradientTo}
+      gradientColor={gradientColor}
+      gradientSize={300}
+      gradientOpacity={0.6}
     >
       <div className="px-4 py-3">
         <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">
