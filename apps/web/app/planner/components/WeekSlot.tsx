@@ -1,13 +1,12 @@
 "use client";
 
 import { useDroppable } from "@dnd-kit/core";
-import type { RecipeDTO } from "../types";
+import type { RecipeDTO, DayName } from "../types";
 import { makeDragId } from "../utils";
 import { WeekCard } from "./WeekCard";
 import { DraggableRecipe } from "./DraggableRecipe";
 
-// Match WeekCard's expected union type
-type DayName = "Mandag" | "Tirsdag" | "Onsdag" | "Torsdag" | "Fredag" | "Lørdag" | "Søndag";
+// DayName imported from shared types
 
 type WeekSlotProps = {
   index: number;

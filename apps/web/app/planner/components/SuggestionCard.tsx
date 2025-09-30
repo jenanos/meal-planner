@@ -1,6 +1,6 @@
 "use client";
 import type { DragEvent } from "react";
-import { Card, CardContent } from "@repo/ui";
+import { MagicCard } from "@repo/ui";
 import type { DragSource, RecipeDTO } from "../types";
 
 export type Props = {
@@ -24,9 +24,22 @@ export type Props = {
 };
 
 export function SuggestionCard({ recipe, source, index, isInWeek, onPick, onDragStart }: Props) {
+    // Ulike bakgrunnsnyanser etter kilde for bedre visuell gruppering
+    const bgBySource: Record<Props["source"], string> = {
+        frequent: "bg-[hsl(34_80%_92%)]", // varm gul-krem
+        longGap: "bg-[hsl(16_70%_90%)]",  // lys terracotta
+        search: "bg-[hsl(40_30%_94%)]",   // nøytral sand (bevisst rolig for søk)
+    };
+    const baseBgClass = isInWeek ? "bg-card" : bgBySource[source];
+
     return (
-        <Card
-            className={`${isInWeek ? "cursor-not-allowed opacity-90" : "cursor-grab"} relative flex h-full w-full max-w-sm xl:max-w-full items-center justify-center text-center`}
+        <MagicCard
+            className={`${isInWeek ? "cursor-not-allowed opacity-90" : "cursor-grab"} relative rounded-lg flex h-full w-full max-w-sm xl:max-w-full items-center justify-center text-center ${baseBgClass} [--magic-card-bg:theme(colors.card)]`}
+            gradientFrom="#F97316" /* orange-500 */
+            gradientTo="#A16207"   /* amber-700 */
+            gradientColor="#F97316"
+            gradientOpacity={0.24}
+            gradientSize={220}
             onClick={() => { if (!isInWeek) onPick?.(); }}
             // Avoid native HTML5 DnD when using dnd-kit:
             draggable={false}
@@ -35,10 +48,10 @@ export function SuggestionCard({ recipe, source, index, isInWeek, onPick, onDrag
                 onDragStart?.(e);
             }}
         >
-            <CardContent className="flex h-full min-h-[132px] flex-col items-center justify-center gap-2 p-4 text-center">
+            <div className="flex h-full min-h-[132px] flex-col items-center justify-center gap-2 p-4 text-center">
                 <div className="font-medium line-clamp-2 break-words">{recipe.name}</div>
                 {recipe.category ? <div className="text-xs text-muted-foreground">{recipe.category}</div> : null}
-            </CardContent>
+            </div>
 
             {isInWeek && (
                 <div className="pointer-events-none absolute inset-0 rounded-lg bg-background/70 backdrop-blur-xs flex items-center justify-center px-3 text-center">
@@ -47,6 +60,6 @@ export function SuggestionCard({ recipe, source, index, isInWeek, onPick, onDrag
                     </span>
                 </div>
             )}
-        </Card>
+        </MagicCard>
     );
 }

@@ -4,84 +4,82 @@
 @source "./**/*.{ts,tsx,js,jsx,mdx}";
 @source "../../../packages/ui/src/**/*.{ts,tsx,js,jsx,mdx}";
 
-/* Shadcn base tokens (lys modus) */
+/* Shadcn nøytral baseline + høstpalett (lys modus) – HSL-tripletter for hsl(var(--token)) */
 :root {
-  --background: 34 90% 96%;
-  --foreground: 20 32% 20%;
+  --radius: 0.75rem;
 
-  --card: 33 65% 94%;
-  --card-foreground: 20 38% 22%;
+  --background: 35 70% 97%;       /* varm krem */
+  --foreground: 22 32% 20%;       /* dyp brun */
 
-  --popover: 33 65% 94%;
-  --popover-foreground: 20 32% 20%;
+  --card: 30 45% 90%;             /* merkbart mørkere enn bakgrunn for kontrast */
+  --card-foreground: 22 38% 22%;
 
-  --primary: 25 74% 45%;
+  --popover: 30 55% 93%;
+  --popover-foreground: 22 32% 20%;
+
+  --primary: 24 85% 52%;          /* oransje */
   --primary-foreground: 33 100% 96%;
 
-  --secondary: 142 32% 42%;
-  --secondary-foreground: 36 100% 96%;
+  --secondary: 40 35% 80%;        /* varm sand */
+  --secondary-foreground: 22 32% 20%;
 
-  --muted: 30 40% 90%;
+  --muted: 30 30% 88%;
   --muted-foreground: 24 23% 34%;
 
-  --accent: 15 55% 86%;
-  --accent-foreground: 20 32% 20%;
+  --accent: 18 55% 80%;           /* terracotta lys */
+  --accent-foreground: 22 32% 20%;
 
-  --destructive: 2 70% 45%;
+  --destructive: 5 70% 50%;
   --destructive-foreground: 33 100% 96%;
 
-  --border: 28 35% 82%;
-  --input: 28 35% 82%;
-  --ring: 25 74% 45%;
+  --border: 28 30% 62%;           /* tydeligere ramme */
+  --input: 28 25% 72%;
+  --ring: 24 85% 52%;
 
   --fall-gradient: radial-gradient(
     circle at 20% -10%,
-    hsl(36 100% 98%) 0%,
-    hsl(27 88% 92%) 35%,
-    hsl(18 76% 88%) 65%,
-    hsl(40 70% 90%) 100%
+    hsl(36 92% 98%) 0%,   /* krem */
+    hsl(28 82% 90%) 35%,  /* lys oransje */
+    hsl(18 60% 82%) 65%,  /* terracotta */
+    hsl(40 50% 88%) 100%  /* dempet beige */
   );
-
-  /* Viktig for rundinger: */
-  --radius: 0.75rem;
-  /* endre etter smak */
 }
 
-/* Shadcn base tokens (dark) */
+/* Mørk modus – varm kontrast (HSL-tripletter) */
 .dark {
-  --background: 22 34% 15%;
+  --background: 24 24% 14%;
   --foreground: 33 100% 96%;
 
-  --card: 26 32% 18%;
+  --card: 26 20% 18%;
   --card-foreground: 33 90% 96%;
 
-  --popover: 26 32% 18%;
+  --popover: 26 20% 18%;
   --popover-foreground: 33 90% 96%;
 
-  --primary: 24 80% 58%;
+  --primary: 24 85% 58%;
   --primary-foreground: 23 28% 14%;
 
-  --secondary: 145 24% 32%;
+  --secondary: 30 18% 28%;
   --secondary-foreground: 33 90% 96%;
 
-  --muted: 24 18% 28%;
+  --muted: 24 16% 28%;
   --muted-foreground: 33 22% 72%;
 
-  --accent: 18 52% 34%;
+  --accent: 18 40% 34%;
   --accent-foreground: 33 90% 96%;
 
   --destructive: 5 68% 46%;
   --destructive-foreground: 33 95% 96%;
 
-  --border: 24 26% 28%;
-  --input: 24 26% 28%;
-  --ring: 24 80% 58%;
+  --border: 24 22% 28%;
+  --input: 24 22% 28%;
+  --ring: 24 85% 58%;
 
   --fall-gradient: radial-gradient(
     circle at 10% -20%,
-    hsl(28 45% 22%) 0%,
-    hsl(24 36% 18%) 40%,
-    hsl(20 30% 14%) 100%
+    hsl(28 32% 22%) 0%,
+    hsl(24 28% 18%) 40%,
+    hsl(20 24% 14%) 100%
   );
 }
 
@@ -162,11 +160,11 @@
   }
 
   .app-shell {
-    background: hsl(var(--card) / 0.82);
+    background: hsl(var(--background) / 0.9);
     border: 1px solid hsl(var(--border) / 0.6);
     border-radius: var(--radius-xl);
     backdrop-filter: blur(20px);
-    box-shadow: 0 30px 60px -32px color-mix(in oklab, hsl(var(--primary)) 40%, transparent);
+    box-shadow: 0 30px 60px -32px color-mix(in oklab, hsl(var(--primary)) 32%, transparent);
   }
 
   .app-nav-link {

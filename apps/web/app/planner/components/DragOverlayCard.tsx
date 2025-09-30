@@ -1,6 +1,7 @@
 "use client";
 
 import type { DragPayload, RecipeDTO, WeekState } from "../types";
+import { MagicCard } from "@repo/ui";
 
 type Props = {
   payload: DragPayload | null;
@@ -33,13 +34,22 @@ export function DragOverlayCard({ payload, overIndex, dayNames, week, longGap, f
   const targetLabel = overIndex != null ? dayNames[overIndex] : "Slipp på en dag";
 
   return (
-    <div className="pointer-events-none select-none rounded-xl border bg-background/95 shadow-xl ring-1 ring-primary/30 px-4 py-3 min-w-[200px] max-w-[260px]">
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">
-        {isAdd ? "Legg til" : "Flytter"}
+    <MagicCard
+      className="pointer-events-none select-none rounded-xl min-w-[200px] max-w-[260px] bg-[hsl(30_70%_90%)] [--magic-card-bg:theme(colors.card)]"
+      gradientFrom="#F59E0B"
+      gradientTo="#EA580C"
+      gradientColor="#F59E0B"
+      gradientSize={200}
+      gradientOpacity={0.5}
+    >
+      <div className="px-4 py-3">
+        <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">
+          {isAdd ? "Legg til" : "Flytter"}
+        </div>
+        <div className="font-medium leading-snug line-clamp-2">{recipe.name}</div>
+        {recipe.category ? <div className="text-xs text-muted-foreground">{recipe.category}</div> : null}
+        <div className="mt-2 inline-block rounded-full bg-primary/10 text-primary px-2 py-1 text-[11px]">{targetLabel}</div>
       </div>
-      <div className="font-medium leading-snug line-clamp-2">{recipe.name}</div>
-      {recipe.category ? <div className="text-xs text-muted-foreground">{recipe.category}</div> : null}
-      <div className="mt-2 inline-block rounded-full bg-primary/10 text-primary px-2 py-1 text-[11px]">{targetLabel}</div>
-    </div>
+    </MagicCard>
   );
 }

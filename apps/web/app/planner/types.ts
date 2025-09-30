@@ -13,3 +13,13 @@ export type DragPayload = { source: DragSource; index: number; recipeId: string 
 
 export type TimelineWeek = { weekStart: string; hasEntries: boolean; label: string };
 export type TimelineWeekEntry = { week: TimelineWeek | null; index: number | null };
+
+// Shared day name union used by planner components
+export type DayName =
+	| "Mandag"
+	| "Tirsdag"
+	| "Onsdag"
+	| "Torsdag"
+	| "Fredag"
+	| "Lørdag"
+	| "Søndag";

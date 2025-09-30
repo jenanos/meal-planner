@@ -2,7 +2,7 @@
 
 import { Button } from "@repo/ui";
 import { makeDragId } from "../utils";
-import type { RecipeDTO, WeekState } from "../types";
+import type { RecipeDTO, WeekState, DayName } from "../types";
 import { WeekSlot } from "./WeekSlot";
 import { DraggableRecipe } from "./DraggableRecipe";
 import { SuggestionCard } from "./SuggestionCard";
@@ -10,7 +10,7 @@ import { SearchSection } from "./SearchSection";
 
 export type MobileEditorProps = {
   week: WeekState;
-  dayNames: readonly string[];
+  dayNames: readonly DayName[];
   selectedIdSet: Set<string>;
   longGap: RecipeDTO[];
   frequent: RecipeDTO[];

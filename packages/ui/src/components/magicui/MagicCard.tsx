@@ -3,9 +3,9 @@
 import React, { useCallback, useEffect } from "react"
 import { motion, useMotionTemplate, useMotionValue } from "motion/react"
 
-import { cn } from "@/lib/utils"
+import { cn } from "../../lib/utils"
 
-interface MagicCardProps {
+interface MagicCardProps extends React.HTMLAttributes<HTMLDivElement> {
     children?: React.ReactNode
     className?: string
     gradientSize?: number
@@ -23,6 +23,7 @@ export function MagicCard({
     gradientOpacity = 0.8,
     gradientFrom = "#9E7AFF",
     gradientTo = "#FE8BBB",
+    ...props
 }: MagicCardProps) {
     const mouseX = useMotionValue(-gradientSize)
     const mouseY = useMotionValue(-gradientSize)
@@ -74,6 +75,7 @@ export function MagicCard({
             onPointerMove={handlePointerMove}
             onPointerLeave={reset}
             onPointerEnter={reset}
+            {...props}
         >
             <motion.div
                 className="bg-border pointer-events-none absolute inset-0 rounded-[inherit] duration-300 group-hover:opacity-100"
@@ -87,7 +89,7 @@ export function MagicCard({
           `,
                 }}
             />
-            <div className="bg-background absolute inset-px rounded-[inherit]" />
+            <div className="absolute inset-px rounded-[inherit] bg-[hsl(var(--magic-card-bg,var(--card)))]" />
             <motion.div
                 className="pointer-events-none absolute inset-px rounded-[inherit] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
                 style={{
