@@ -9,13 +9,11 @@ export interface ScrollAreaProps extends React.ComponentPropsWithoutRef<typeof S
 }
 
 export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
-    ({ className, viewportClassName, children, ...props }, ref) => (
-        <ScrollAreaPrimitive.Root
-            className={cn("relative overflow-hidden", className)}
-            {...props}
-        >
+    ({ className, viewportClassName, children, ...props }, forwardedRef) => (
+        <ScrollAreaPrimitive.Root className={cn("relative overflow-hidden", className)} {...props}>
             <ScrollAreaPrimitive.Viewport
-                ref={ref}
+                // Cast because radix types allow ElementRef<typeof Viewport>, we constrain to div for simplicity
+                ref={forwardedRef as React.Ref<HTMLDivElement>}
                 className={cn("h-full w-full rounded-[inherit]", viewportClassName)}
             >
                 {children}
