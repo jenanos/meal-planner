@@ -2,7 +2,7 @@
 import { MagicCard } from "@repo/ui";
 import type { DayName } from "../types";
 import { dayBaseHsl, dayHoverGradients } from "../palette";
-
+//TODO: Add icons instead of text for category
 export type Props = {
     index: number;
     dayName: DayName;
