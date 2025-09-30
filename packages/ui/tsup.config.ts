@@ -9,6 +9,7 @@ export default defineConfig({
     "components/shadcn/button": "src/components/shadcn/button.tsx",
     "components/shadcn/card": "src/components/shadcn/card.tsx",
     "components/shadcn/checkbox": "src/components/shadcn/checkbox.tsx",
+    "components/shadcn/scroll-area": "src/components/shadcn/scroll-area.tsx",
     "components/shadcn/input": "src/components/shadcn/input.tsx",
     "components/shadcn/label": "src/components/shadcn/label.tsx",
     "components/shadcn/select": "src/components/shadcn/select.tsx",

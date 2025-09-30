@@ -10,6 +10,7 @@ export { Label } from "./components/shadcn/label"
 export { Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectLabel, SelectItem, SelectSeparator } from "./components/shadcn/select"
 export { Separator } from "./components/shadcn/separator"
 export { Textarea } from "./components/shadcn/textarea"
+export { ScrollArea } from "./components/shadcn/scroll-area"
 
 // magicui
 export { GridBeams } from "./components/magicui/grid-beams"

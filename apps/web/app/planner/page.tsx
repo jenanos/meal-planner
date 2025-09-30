@@ -26,7 +26,7 @@ import {
 } from "@dnd-kit/core";
 import { createPortal } from "react-dom";
 
-import type { DragPayload, RecipeDTO, TimelineWeek, TimelineWeekEntry, WeekPlanResult, WeekState } from "./types";
+import type { DragPayload, RecipeDTO, TimelineWeek, WeekPlanResult, WeekState } from "./types";
 import { clamp, lowerIdSet, makeEmptyWeek, parseDragId } from "./utils";
 
 const DAY_NAMES = [
@@ -39,8 +39,7 @@ const DAY_NAMES = [
   "Søndag",
 ] as const;
 
-const DESKTOP_WINDOW_SIZE = 5;
-const MOBILE_WINDOW_SIZE = 3;
+// Scroll-based week selector: no fixed window sizes needed
 
 function useIsTouchDevice() {
   const [isTouch, setIsTouch] = useState(false);
@@ -76,8 +75,7 @@ export default function PlannerPage() {
   const [mobileEditorView, setMobileEditorView] = useState<"frequent" | "longGap" | "search">(
     "frequent"
   );
-  const [desktopWindowStart, setDesktopWindowStart] = useState(0);
-  const [mobileWindowStart, setMobileWindowStart] = useState(0);
+  // Removed window paging state; ScrollArea handles horizontal scrolling.
 
   // dnd-kit: sensors + active id
   const sensors = useSensors(
@@ -373,121 +371,7 @@ export default function PlannerPage() {
     [timelineWeeks, activeWeekStart]
   );
 
-  const desktopWindowSize = useMemo(() => {
-    if (!timelineWeeks.length) return 0;
-    return Math.min(DESKTOP_WINDOW_SIZE, timelineWeeks.length);
-  }, [timelineWeeks.length]);
-
-  const mobileWindowSize = useMemo(() => {
-    if (!timelineWeeks.length) return 0;
-    return Math.min(MOBILE_WINDOW_SIZE, timelineWeeks.length);
-  }, [timelineWeeks.length]);
-
-  const desktopMaxStart = useMemo(() => {
-    if (!desktopWindowSize) return 0;
-    return Math.max(0, timelineWeeks.length - desktopWindowSize);
-  }, [timelineWeeks.length, desktopWindowSize]);
-
-  const mobileMaxStart = useMemo(() => {
-    if (!mobileWindowSize) return 0;
-    return Math.max(0, timelineWeeks.length - mobileWindowSize);
-  }, [timelineWeeks.length, mobileWindowSize]);
-
-  // will define initial-centering effect after centerWindowsAround
-
-  useEffect(() => {
-    if (!timelineWeeks.length) {
-      setDesktopWindowStart(0);
-      setMobileWindowStart(0);
-      return;
-    }
-
-    setDesktopWindowStart((prev) => clamp(prev, 0, desktopMaxStart));
-    setMobileWindowStart((prev) => clamp(prev, 0, mobileMaxStart));
-  }, [timelineWeeks.length, desktopMaxStart, mobileMaxStart]);
-
-  const makeWindowEntries = useCallback(
-    (start: number, size: number): TimelineWeekEntry[] => {
-      if (!size) return [];
-      const entries: TimelineWeekEntry[] = [];
-      for (let i = 0; i < size; i += 1) {
-        const index = start + i;
-        const week = timelineWeeks[index] ?? null;
-        entries.push({ week, index: week ? index : null });
-      }
-      return entries;
-    },
-    [timelineWeeks]
-  );
-
-  const desktopVisibleWeeks = useMemo(
-    () => makeWindowEntries(desktopWindowStart, desktopWindowSize),
-    [makeWindowEntries, desktopWindowStart, desktopWindowSize]
-  );
-
-  const mobileVisibleWeeks = useMemo(
-    () => makeWindowEntries(mobileWindowStart, mobileWindowSize),
-    [makeWindowEntries, mobileWindowStart, mobileWindowSize]
-  );
-
-  const centerWindowsAround = useCallback(
-    (targetIndex: number) => {
-      if (desktopWindowSize) {
-        const centeredDesktop = clamp(
-          targetIndex - Math.floor(desktopWindowSize / 2),
-          0,
-          desktopMaxStart
-        );
-        setDesktopWindowStart(centeredDesktop);
-      }
-      if (mobileWindowSize) {
-        const centeredMobile = clamp(
-          targetIndex - Math.floor(mobileWindowSize / 2),
-          0,
-          mobileMaxStart
-        );
-        setMobileWindowStart(centeredMobile);
-      }
-    },
-    [desktopWindowSize, mobileWindowSize, desktopMaxStart, mobileMaxStart]
-  );
-
-  const canDesktopPagePrev = desktopWindowStart > 0;
-  const canDesktopPageNext = desktopWindowStart < desktopMaxStart;
-  const canMobilePagePrev = mobileWindowStart > 0;
-  const canMobilePageNext = mobileWindowStart < mobileMaxStart;
-
-  const pageDesktop = useCallback(
-    (delta: number) => {
-      if (!desktopWindowSize) return;
-      setDesktopWindowStart((prev) => {
-        const maxStart = Math.max(0, timelineWeeks.length - desktopWindowSize);
-        return clamp(prev + delta, 0, maxStart);
-      });
-    },
-    [timelineWeeks.length, desktopWindowSize]
-  );
-
-  const pageMobile = useCallback(
-    (delta: number) => {
-      if (!mobileWindowSize) return;
-      setMobileWindowStart((prev) => {
-        const maxStart = Math.max(0, timelineWeeks.length - mobileWindowSize);
-        return clamp(prev + delta, 0, maxStart);
-      });
-    },
-    [timelineWeeks.length, mobileWindowSize]
-  );
-
-  // Initial centering around active week when timeline is ready
-  const didInitialCenter = useRef(false);
-  useEffect(() => {
-    if (didInitialCenter.current) return;
-    if (!timelineWeeks.length) return;
-    if (activeWeekIndex < 0) return;
-    centerWindowsAround(activeWeekIndex);
-    didInitialCenter.current = true;
-  }, [timelineWeeks.length, activeWeekIndex, centerWindowsAround]);
+  // ScrollArea centers active week within WeekSelector itself.
 
   useEffect(() => {
     if (!timelineQuery.data) return;
@@ -534,11 +418,6 @@ export default function PlannerPage() {
     }
 
     setActiveWeekStart(normalized);
-    const targetIndex =
-      typeof indexHint === "number" ? indexHint : timelineWeeks.findIndex((week) => week.weekStart === normalized);
-    if (targetIndex !== -1) {
-      centerWindowsAround(targetIndex);
-    }
   };
 
   // Periodic autosave if there are changes
@@ -594,37 +473,12 @@ export default function PlannerPage() {
         <h1 className="text-xl font-bold text-center">Ukesplan</h1>
 
         <div className="space-y-3">
-          <div className="hidden sm:block">
-            <WeekSelector
-              weeks={desktopVisibleWeeks}
-              variant="desktop"
-              onPrev={() => pageDesktop(-1)}
-              onNext={() => pageDesktop(1)}
-              disablePrev={!canDesktopPagePrev}
-              disableNext={!canDesktopPageNext}
-              activeWeekStart={activeWeekStart}
-              activeWeekIndex={activeWeekIndex}
-              mobileWindowStart={mobileWindowStart}
-              mobileMaxStart={mobileMaxStart}
-              onSelectWeek={handleSelectWeek}
-            />
-          </div>
-
-          <div className="sm:hidden">
-            <WeekSelector
-              weeks={mobileVisibleWeeks}
-              variant="mobile"
-              onPrev={() => pageMobile(-1)}
-              onNext={() => pageMobile(1)}
-              disablePrev={!canMobilePagePrev}
-              disableNext={!canMobilePageNext}
-              activeWeekStart={activeWeekStart}
-              activeWeekIndex={activeWeekIndex}
-              mobileWindowStart={mobileWindowStart}
-              mobileMaxStart={mobileMaxStart}
-              onSelectWeek={handleSelectWeek}
-            />
-          </div>
+          <WeekSelector
+            weeks={timelineWeeks.map((w, i) => ({ week: w, index: i }))}
+            activeWeekStart={activeWeekStart}
+            activeWeekIndex={activeWeekIndex}
+            onSelectWeek={handleSelectWeek}
+          />
 
           <p className="text-xs text-center text-muted-foreground">{statusText}</p>
         </div>
