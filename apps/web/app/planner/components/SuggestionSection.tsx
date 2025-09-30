@@ -44,14 +44,22 @@ export function SuggestionSection({
         {recipes.length ? (
           recipes.map((recipe, index) => (
             <DraggableRecipe key={recipe.id} id={makeDragId({ source, index, recipeId: recipe.id })}>
-              {({ setNodeRef, listeners, attributes, style }) => (
-                <div ref={setNodeRef} style={style} {...listeners} {...attributes}>
+              {({ setNodeRef, listeners, attributes, style, isDragging }) => (
+                <div
+                  ref={setNodeRef}
+                  style={{ ...style, cursor: isDragging ? "grabbing" : style.cursor }}
+                  {...listeners}
+                  {...attributes}
+                >
                   <SuggestionCard
                     recipe={recipe}
                     source={source}
                     index={index}
                     isInWeek={selectedIdSet.has(recipe.id)}
-                    onPick={() => onPick(recipe)}
+                    onPick={() => {
+                      if (isDragging) return; // don't trigger pick while dragging
+                      onPick(recipe);
+                    }}
                   />
                 </div>
               )}

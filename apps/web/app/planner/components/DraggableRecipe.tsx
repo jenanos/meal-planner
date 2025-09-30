@@ -12,6 +12,7 @@ type DraggableRecipeProps = {
     listeners: SafeListeners;        // spread-safe
     attributes: DraggableAttributes; // spread-safe
     style: CSSProperties;
+    isDragging: boolean;
   }) => ReactNode;
 };
 
@@ -30,5 +31,6 @@ export function DraggableRecipe({ id, children }: DraggableRecipeProps) {
     listeners: safeListeners,
     attributes: safeAttributes,
     style,
+    isDragging,
   });
 }

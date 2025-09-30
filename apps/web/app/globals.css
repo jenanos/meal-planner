@@ -142,6 +142,15 @@
     background-image: var(--fall-gradient);
     background-attachment: fixed;
   }
+
+  /* global CSS */
+  body.dragging {
+    overflow: hidden;
+    touch-action: none;
+  }
+  html, body {
+    overscroll-behavior: none;
+  }
 }
 
 @layer components {

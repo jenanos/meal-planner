@@ -33,7 +33,7 @@ export function DragOverlayCard({ payload, overIndex, dayNames, week, longGap, f
   const targetLabel = overIndex != null ? dayNames[overIndex] : "Slipp på en dag";
 
   return (
-    <div className="pointer-events-none select-none rounded-xl border bg-background/95 shadow-2xl ring-2 ring-primary/40 transform-gpu scale-105 rotate-2 px-4 py-3 min-w-[200px] max-w-[260px]">
+    <div className="pointer-events-none select-none rounded-xl border bg-background/95 shadow-xl ring-1 ring-primary/30 px-4 py-3 min-w-[200px] max-w-[260px]">
       <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">
         {isAdd ? "Legg til" : "Flytter"}
       </div>

@@ -20,6 +20,8 @@ import {
   useSensor,
   useSensors,
   closestCenter,
+  rectIntersection,
+  pointerWithin,
 } from "@dnd-kit/core";
 import { createPortal } from "react-dom";
 
@@ -38,6 +40,35 @@ const DAY_NAMES = [
 
 const DESKTOP_WINDOW_SIZE = 5;
 const MOBILE_WINDOW_SIZE = 3;
+
+function useIsTouchDevice() {
+  const [isTouch, setIsTouch] = useState(false);
+  useEffect(() => {
+    setIsTouch(
+      typeof window !== "undefined" &&
+      // coarse pointer ~ touch
+      (window.matchMedia?.("(pointer: coarse)")?.matches || navigator.maxTouchPoints > 0)
+    );
+  }, []);
+  return isTouch;
+}
+
+function useVisualViewportOffset() {
+  const [offset, setOffset] = useState<{ left: number; top: number }>({ left: 0, top: 0 });
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.visualViewport) return;
+    const vv = window.visualViewport;
+    const handler = () => setOffset({ left: vv!.offsetLeft || 0, top: vv!.offsetTop || 0 });
+    handler();
+    vv.addEventListener("scroll", handler);
+    vv.addEventListener("resize", handler);
+    return () => {
+      vv.removeEventListener("scroll", handler);
+      vv.removeEventListener("resize", handler);
+    };
+  }, []);
+  return offset;
+}
 
 export default function PlannerPage() {
   const utils = trpc.useUtils();
@@ -246,6 +277,8 @@ export default function PlannerPage() {
   const onDragStart = useCallback((event: any) => {
     setActiveId(String(event.active.id));
     setOverIndex(null);
+    // lås scroll for å unngå toolbar-hop på mobil
+    document?.body.classList.add("dragging");
   }, []);
 
   const onDragOver = useCallback((event: any) => {
@@ -261,12 +294,14 @@ export default function PlannerPage() {
   const onDragCancel = useCallback(() => {
     setActiveId(null);
     setOverIndex(null);
+    document?.body.classList.remove("dragging");
   }, []);
 
   const onDragEnd = useCallback(async (event: any) => {
     const { active, over } = event;
     setActiveId(null);
     setOverIndex(null);
+    document?.body.classList.remove("dragging");
     if (!over) return;
 
     const overId = String(over.id);
@@ -495,12 +530,23 @@ export default function PlannerPage() {
   useEffect(() => setMounted(true), []);
   const portalTarget = typeof document === "undefined" ? null : document.body;
 
+  const isTouch = useIsTouchDevice();
+
+  // Prefer intersection when the pointer/overlay overlaps a day; otherwise fall back to closest center
+  const collisionAlgo = useCallback((args: any) => {
+    const pointerHits = pointerWithin(args);
+    if (pointerHits.length) return pointerHits;
+    const intersections = rectIntersection(args);
+    return intersections.length ? intersections : closestCenter(args);
+  }, []);
+
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={collisionAlgo}
+      autoScroll={!isTouch}
       onDragStart={onDragStart}
-      onDragOver={onDragOver}    // NY: oppdaterer overIndex fortløpende
+      onDragOver={onDragOver}
       onDragCancel={onDragCancel}
       onDragEnd={onDragEnd}
     >
@@ -619,9 +665,15 @@ export default function PlannerPage() {
       </div>
 
       {/* DragOverlay i portal */}
-      {mounted && portalTarget &&
+      {mounted &&
         createPortal(
-          <DragOverlay dropAnimation={null} style={{ pointerEvents: "none", zIndex: 1000 }}>
+          <DragOverlay
+            dropAnimation={null}
+            style={{
+              pointerEvents: "none",
+              zIndex: 1000,
+            }}
+          >
             <DragOverlayCard
               payload={overlayPayload}
               overIndex={overIndex}
@@ -632,7 +684,7 @@ export default function PlannerPage() {
               searchResults={searchResults}
             />
           </DragOverlay>,
-          portalTarget
+          document.body
         )}
     </DndContext>
   );
