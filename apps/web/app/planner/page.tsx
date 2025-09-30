@@ -172,22 +172,8 @@ export default function PlannerPage() {
     [activeWeekStart, saveWeek, applyWeekData, timelineQuery]
   );
 
-  const refreshSuggestions = useCallback(
-    async (type: "longGap" | "frequent") => {
-      try {
-        const data = (await utils.planner.suggestions.fetch({
-          type,
-          excludeIds: selectedIds,
-          limit: type === "longGap" ? 6 : 6,
-        })) as RecipeDTO[];
-        if (type === "longGap") setLongGap(data);
-        else setFrequent(data);
-      } catch (err) {
-        console.error("Failed to refresh suggestions", err);
-      }
-    },
-    [utils, selectedIds]
-  );
+  // Suggestions are provided server-side with getWeekPlan/applyWeekData,
+  // and updated on save/applyWeekData. No manual refresh button or effect needed.
 
   const executeSearch = useCallback(async () => {
     const term = searchTerm.trim();
@@ -498,10 +484,7 @@ export default function PlannerPage() {
             isMobileEditorOpen={isMobileEditorOpen}
             onToggleEditor={setIsMobileEditorOpen}
             onChangeView={setMobileEditorView}
-            onRefreshSuggestion={refreshSuggestions}
             onSearchTermChange={setSearchTerm}
-            onSearch={executeSearch}
-            onClearSearch={clearSearch}
             onPickFromSource={handlePickFromSource}
           />
         </div>
@@ -522,7 +505,6 @@ export default function PlannerPage() {
                 recipes={longGap}
                 source="longGap"
                 selectedIdSet={selectedIdSet}
-                onRefresh={() => refreshSuggestions("longGap")}
                 onPick={(recipe) => handlePickFromSource("longGap", recipe)}
               />
 
@@ -531,7 +513,6 @@ export default function PlannerPage() {
                 recipes={frequent}
                 source="frequent"
                 selectedIdSet={selectedIdSet}
-                onRefresh={() => refreshSuggestions("frequent")}
                 onPick={(recipe) => handlePickFromSource("frequent", recipe)}
               />
 
@@ -543,8 +524,6 @@ export default function PlannerPage() {
                 searchError={searchError}
                 searchResults={searchResults}
                 selectedIdSet={selectedIdSet}
-                onSearch={executeSearch}
-                onClear={clearSearch}
                 onPick={(recipe) => handlePickFromSource("search", recipe)}
               />
             </div>

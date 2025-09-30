@@ -22,10 +22,7 @@ export type MobileEditorProps = {
   isMobileEditorOpen: boolean;
   onToggleEditor: (_open: boolean) => void;
   onChangeView: (_view: "frequent" | "longGap" | "search") => void;
-  onRefreshSuggestion: (_type: "frequent" | "longGap") => void;
   onSearchTermChange: (_value: string) => void;
-  onSearch: () => void;
-  onClearSearch: () => void;
   onPickFromSource: (
     _source: "longGap" | "frequent" | "search",
     _recipe: RecipeDTO
@@ -46,10 +43,7 @@ export function MobileEditor({
   isMobileEditorOpen,
   onToggleEditor,
   onChangeView,
-  onRefreshSuggestion,
   onSearchTermChange,
-  onSearch,
-  onClearSearch,
   onPickFromSource,
 }: MobileEditorProps) {
   if (!isMobileEditorOpen) {
@@ -85,20 +79,10 @@ export function MobileEditor({
           ))}
         </div>
         <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-2">
-            <label htmlFor="mobile-editor-source" className="text-sm font-medium">
+          <div className="flex items-center justify-center gap-2">
+            <label htmlFor="mobile-editor-source" className="text-sm font-medium text-center">
               Velg forslag
             </label>
-            {mobileEditorView !== "search" ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => onRefreshSuggestion(mobileEditorView)}
-              >
-                Oppdater
-              </Button>
-            ) : null}
           </div>
 
           <select
@@ -121,8 +105,6 @@ export function MobileEditor({
               searchError={searchError}
               searchResults={searchResults}
               selectedIdSet={selectedIdSet}
-              onSearch={onSearch}
-              onClear={onClearSearch}
               onPick={(recipe) => onPickFromSource("search", recipe)}
             />
           ) : (

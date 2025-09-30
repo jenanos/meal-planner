@@ -132,12 +132,12 @@ function buildSuggestionBuckets(pool: RecipeDTO[], exclude: string[]): WeekPlanS
   return {
     longGap: buildSuggestions(pool, {
       kind: "longGap",
-      limit: 6,
+      limit: 7,
       exclude,
     }),
     frequent: buildSuggestions(pool, {
       kind: "frequent",
-      limit: 6,
+      limit: 7,
       exclude,
     }),
   };

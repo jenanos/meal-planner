@@ -1,6 +1,5 @@
 "use client";
 
-import { Button } from "@repo/ui";
 import type { RecipeDTO } from "../types";
 import { makeDragId } from "../utils";
 import { DraggableRecipe } from "./DraggableRecipe";
@@ -11,7 +10,6 @@ export type SuggestionSectionProps = {
   recipes: RecipeDTO[];
   source: "longGap" | "frequent";
   selectedIdSet: Set<string>;
-  onRefresh: () => void;
   onPick: (_recipe: RecipeDTO) => Promise<void> | void;
   emptyText?: string;
   layout?: "grid" | "list";
@@ -22,7 +20,6 @@ export function SuggestionSection({
   recipes,
   source,
   selectedIdSet,
-  onRefresh,
   onPick,
   emptyText = "Ingen forslag akkurat nå",
   layout = "grid",
@@ -34,12 +31,7 @@ export function SuggestionSection({
 
   return (
     <section className="space-y-2">
-      <div className="flex items-center justify-between">
-        <h2 className="font-semibold">{title}</h2>
-        <Button type="button" variant="outline" onClick={onRefresh}>
-          Oppdater
-        </Button>
-      </div>
+      <h2 className="font-semibold text-center">{title}</h2>
       <div className={containerClass}>
         {recipes.length ? (
           recipes.map((recipe, index) => (
