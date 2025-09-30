@@ -2,7 +2,7 @@
 /* eslint-env browser */
 export const dynamic = "force-dynamic";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
 import { WeekSelector } from "./components/WeekSelector";
 import { WeekSlot } from "./components/WeekSlot";
@@ -71,6 +71,7 @@ export default function PlannerPage() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [isAutoGenerating, setIsAutoGenerating] = useState(false);
   const [lastUpdatedISO, setLastUpdatedISO] = useState<string | null>(null);
+  const [lastSavedIds, setLastSavedIds] = useState<Array<string | null> | null>(null);
   const [isMobileEditorOpen, setIsMobileEditorOpen] = useState(false);
   const [mobileEditorView, setMobileEditorView] = useState<"frequent" | "longGap" | "search">(
     "frequent"
@@ -112,6 +113,7 @@ export default function PlannerPage() {
       setFrequent(res.suggestions.frequent.filter((item) => !currentSet.has(item.id)));
       setSearchError(null);
       setLastUpdatedISO(res.updatedAt);
+      setLastSavedIds(res.days.map((d) => d.recipe?.id ?? null));
       utils.planner.getWeekPlan.setData({ weekStart: res.weekStart }, res);
     },
     [utils]
@@ -161,6 +163,7 @@ export default function PlannerPage() {
           recipeIdsByDay: ids,
         });
         applyWeekData(payload);
+        setLastSavedIds(payload.days.map((d) => d.recipe?.id ?? null));
         if (!opts?.suppressRefetch) {
           timelineQuery.refetch().catch(() => undefined);
         }
@@ -390,6 +393,8 @@ export default function PlannerPage() {
     return Math.max(0, timelineWeeks.length - mobileWindowSize);
   }, [timelineWeeks.length, mobileWindowSize]);
 
+  // will define initial-centering effect after centerWindowsAround
+
   useEffect(() => {
     if (!timelineWeeks.length) {
       setDesktopWindowStart(0);
@@ -474,6 +479,16 @@ export default function PlannerPage() {
     [timelineWeeks.length, mobileWindowSize]
   );
 
+  // Initial centering around active week when timeline is ready
+  const didInitialCenter = useRef(false);
+  useEffect(() => {
+    if (didInitialCenter.current) return;
+    if (!timelineWeeks.length) return;
+    if (activeWeekIndex < 0) return;
+    centerWindowsAround(activeWeekIndex);
+    didInitialCenter.current = true;
+  }, [timelineWeeks.length, activeWeekIndex, centerWindowsAround]);
+
   useEffect(() => {
     if (!timelineQuery.data) return;
     const { currentWeekStart: apiCurrentWeek, weeks } = timelineQuery.data;
@@ -497,13 +512,27 @@ export default function PlannerPage() {
     return "Endringer lagres automatisk";
   }, [saveWeek.isPending, generateWeek.isPending, isAutoGenerating, lastUpdatedISO]);
 
-  const handleSelectWeek = (weekStart: string, indexHint?: number | null) => {
+  const handleSelectWeek = async (weekStart: string, indexHint?: number | null) => {
     const normalized = startOfWeekISO(weekStart);
-    setWeek(makeEmptyWeek());
-    setLongGap([]);
-    setFrequent([]);
-    setSearchResults([]);
-    setSearchError(null);
+    // If clicking the same week, do nothing
+    if (normalized === activeWeekStart) return;
+
+    // Save current week if there are unsaved changes before navigating
+    const currentIds = week.map((r) => r?.id ?? null);
+    const isDirty = !lastSavedIds || currentIds.length !== lastSavedIds.length || currentIds.some((id, i) => id !== lastSavedIds[i]);
+    if (isDirty && !saveWeek.isPending) {
+      try {
+        const payload = await saveWeek.mutateAsync({
+          weekStart: activeWeekStart,
+          recipeIdsByDay: currentIds,
+        });
+        applyWeekData(payload);
+        setLastSavedIds(payload.days.map((d) => d.recipe?.id ?? null));
+      } catch (err) {
+        console.error("Kunne ikke lagre uke før navigasjon", err);
+      }
+    }
+
     setActiveWeekStart(normalized);
     const targetIndex =
       typeof indexHint === "number" ? indexHint : timelineWeeks.findIndex((week) => week.weekStart === normalized);
@@ -511,6 +540,29 @@ export default function PlannerPage() {
       centerWindowsAround(targetIndex);
     }
   };
+
+  // Periodic autosave if there are changes
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const interval = window.setInterval(async () => {
+      const currentIds = week.map((r) => r?.id ?? null);
+      const isDirty = !lastSavedIds || currentIds.length !== lastSavedIds.length || currentIds.some((id, i) => id !== lastSavedIds[i]);
+      if (isDirty && !saveWeek.isPending) {
+        try {
+          const payload = await saveWeek.mutateAsync({
+            weekStart: activeWeekStart,
+            recipeIdsByDay: currentIds,
+          });
+          applyWeekData(payload);
+          setLastSavedIds(payload.days.map((d) => d.recipe?.id ?? null));
+          timelineQuery.refetch().catch(() => undefined);
+        } catch (err) {
+          // ignore transient errors
+        }
+      }
+    }, 30000); // every 30s
+    return () => window.clearInterval(interval);
+  }, [week, lastSavedIds, saveWeek, activeWeekStart, applyWeekData, timelineQuery]);
 
   const overlayPayload = useMemo(() => (activeId ? parseDragId(activeId) : null), [activeId]);
 
