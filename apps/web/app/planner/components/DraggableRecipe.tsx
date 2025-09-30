@@ -7,7 +7,9 @@ type SafeListeners = Record<string, any>;
 
 type DraggableRecipeProps = {
   id: string;
+  // eslint-disable-next-line no-unused-vars
   children: (args: {
+    // eslint-disable-next-line no-unused-vars
     setNodeRef: (node: HTMLElement | null) => void;
     listeners: SafeListeners;        // spread-safe
     attributes: DraggableAttributes; // spread-safe

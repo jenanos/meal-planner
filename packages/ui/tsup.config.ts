@@ -15,7 +15,8 @@ export default defineConfig({
     "components/shadcn/separator": "src/components/shadcn/separator.tsx",
     "components/shadcn/textarea": "src/components/shadcn/textarea.tsx",
     // magicui
-    "components/magicui/grid-beams": "src/components/magicui/grid-beams.tsx",
+  "components/magicui/grid-beams": "src/components/magicui/grid-beams.tsx",
+  "components/magicui/MagicCard": "src/components/magicui/MagicCard.tsx",
     // lib (for components.json aliases.utils/lib)
     "lib/utils": "src/lib/utils.ts"
   },

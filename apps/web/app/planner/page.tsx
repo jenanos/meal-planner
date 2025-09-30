@@ -1,4 +1,5 @@
 "use client";
+/* eslint-env browser */
 export const dynamic = "force-dynamic";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -47,27 +48,14 @@ function useIsTouchDevice() {
     setIsTouch(
       typeof window !== "undefined" &&
       // coarse pointer ~ touch
-      (window.matchMedia?.("(pointer: coarse)")?.matches || navigator.maxTouchPoints > 0)
+      (window.matchMedia?.("(pointer: coarse)")?.matches || (typeof navigator !== "undefined" && navigator.maxTouchPoints > 0))
     );
   }, []);
   return isTouch;
 }
 
 function useVisualViewportOffset() {
-  const [offset, setOffset] = useState<{ left: number; top: number }>({ left: 0, top: 0 });
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.visualViewport) return;
-    const vv = window.visualViewport;
-    const handler = () => setOffset({ left: vv!.offsetLeft || 0, top: vv!.offsetTop || 0 });
-    handler();
-    vv.addEventListener("scroll", handler);
-    vv.addEventListener("resize", handler);
-    return () => {
-      vv.removeEventListener("scroll", handler);
-      vv.removeEventListener("resize", handler);
-    };
-  }, []);
-  return offset;
+  // removed unused useVisualViewportOffset to satisfy lint
 }
 
 export default function PlannerPage() {
@@ -278,7 +266,7 @@ export default function PlannerPage() {
     setActiveId(String(event.active.id));
     setOverIndex(null);
     // lås scroll for å unngå toolbar-hop på mobil
-    document?.body.classList.add("dragging");
+    if (typeof document !== "undefined") document.body.classList.add("dragging");
   }, []);
 
   const onDragOver = useCallback((event: any) => {
@@ -294,14 +282,14 @@ export default function PlannerPage() {
   const onDragCancel = useCallback(() => {
     setActiveId(null);
     setOverIndex(null);
-    document?.body.classList.remove("dragging");
+    if (typeof document !== "undefined") document.body.classList.remove("dragging");
   }, []);
 
   const onDragEnd = useCallback(async (event: any) => {
     const { active, over } = event;
     setActiveId(null);
     setOverIndex(null);
-    document?.body.classList.remove("dragging");
+    if (typeof document !== "undefined") document.body.classList.remove("dragging");
     if (!over) return;
 
     const overId = String(over.id);
@@ -563,7 +551,6 @@ export default function PlannerPage() {
               disablePrev={!canDesktopPagePrev}
               disableNext={!canDesktopPageNext}
               activeWeekStart={activeWeekStart}
-              currentWeekStart={currentWeekStart}
               activeWeekIndex={activeWeekIndex}
               mobileWindowStart={mobileWindowStart}
               mobileMaxStart={mobileMaxStart}
@@ -580,7 +567,6 @@ export default function PlannerPage() {
               disablePrev={!canMobilePagePrev}
               disableNext={!canMobilePageNext}
               activeWeekStart={activeWeekStart}
-              currentWeekStart={currentWeekStart}
               activeWeekIndex={activeWeekIndex}
               mobileWindowStart={mobileWindowStart}
               mobileMaxStart={mobileMaxStart}
@@ -665,7 +651,7 @@ export default function PlannerPage() {
       </div>
 
       {/* DragOverlay i portal */}
-      {mounted &&
+      {mounted && portalTarget &&
         createPortal(
           <DragOverlay
             dropAnimation={null}
@@ -684,7 +670,7 @@ export default function PlannerPage() {
               searchResults={searchResults}
             />
           </DragOverlay>,
-          document.body
+          portalTarget
         )}
     </DndContext>
   );

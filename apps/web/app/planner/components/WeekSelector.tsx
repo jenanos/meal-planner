@@ -11,7 +11,7 @@ type Props = {
     disablePrev: boolean;
     disableNext: boolean;
     activeWeekStart: string;
-    currentWeekStart: string;
+    // currentWeekStart: string; // unused
     activeWeekIndex: number;
     mobileWindowStart: number;
     mobileMaxStart: number;
@@ -26,7 +26,7 @@ export function WeekSelector({
     disablePrev,
     disableNext,
     activeWeekStart,
-    currentWeekStart,
+    // currentWeekStart,
     activeWeekIndex,
     mobileWindowStart,
     mobileMaxStart,
