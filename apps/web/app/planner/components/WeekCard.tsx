@@ -45,15 +45,26 @@ export function WeekCard({
         Søndag: "8 65% 84%",    // lys rødlig
     };
 
+    // Kraftigere hover-gradienter per dag (inkluderer brun, grønn og tydelig rød)
+    const dayGradients: Record<DayName, { from: string; to: string; color: string }> = {
+        Mandag: { from: "#F59E0B", to: "#84CC16", color: "#F59E0B" },  // amber -> lime, varm start
+        Tirsdag: { from: "#F97316", to: "#16A34A", color: "#F97316" }, // orange -> green
+        Onsdag: { from: "#16A34A", to: "#92400E", color: "#16A34A" },  // green -> brown
+        Torsdag: { from: "#92400E", to: "#DC2626", color: "#DC2626" }, // brown -> red
+        Fredag: { from: "#DC2626", to: "#7C2D12", color: "#DC2626" },  // red -> deep brown
+        Lørdag: { from: "#92400E", to: "#16A34A", color: "#92400E" },  // brown -> green (jordlig)
+        Søndag: { from: "#B91C1C", to: "#F59E0B", color: "#B91C1C" },  // deep red -> amber
+    };
+
     return (
         <MagicCard
             className={`rounded-lg flex h-full w-full max-w-sm xl:max-w-full items-center justify-center text-center`}
             style={{ ["--magic-card-bg" as any]: dayHsl[dayName] }}
-            gradientFrom="#F59E0B" /* amber-500 */
-            gradientTo="#DC2626"   /* red-600 */
-            gradientColor="#F59E0B" /* warm glow instead of dark */
-            gradientOpacity={isDraggingTarget ? 0.6 : 0.28}
-            gradientSize={240}
+            gradientFrom={dayGradients[dayName].from}
+            gradientTo={dayGradients[dayName].to}
+            gradientColor={dayGradients[dayName].color}
+            gradientOpacity={isDraggingTarget ? 0.7 : 0.5}
+            gradientSize={320}
             draggable={!!onDragStart}
             onDragStart={(e) => { onDragStart?.(e); }}
             onDragOver={(e) => { e.preventDefault(); onDragOver?.(e); }}

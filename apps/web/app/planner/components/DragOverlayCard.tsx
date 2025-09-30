@@ -37,11 +37,11 @@ export function DragOverlayCard({ payload, overIndex, dayNames, week, longGap, f
     <MagicCard
       className="pointer-events-none select-none rounded-xl min-w-[200px] max-w-[260px]"
       style={{ ["--magic-card-bg" as any]: "30 70% 90%" }}
-      gradientFrom="#F59E0B"
-      gradientTo="#EA580C"
-      gradientColor="#F59E0B"
-      gradientSize={200}
-      gradientOpacity={0.5}
+      gradientFrom="#EA580C"
+      gradientTo="#16A34A"
+      gradientColor="#B45309"
+      gradientSize={280}
+      gradientOpacity={0.55}
     >
       <div className="px-4 py-3">
         <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">

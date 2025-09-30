@@ -50,11 +50,11 @@ export function SuggestionCard({ recipe, source, index, isInWeek, onPick, onDrag
         <MagicCard
             className={`${isInWeek ? "cursor-not-allowed opacity-90" : "cursor-grab"} relative rounded-lg flex h-full w-full max-w-sm xl:max-w-full items-center justify-center text-center`}
             style={baseHsl ? ({ ["--magic-card-bg" as any]: baseHsl } as React.CSSProperties) : undefined}
-            gradientFrom="#F97316" /* orange-500 */
-            gradientTo="#A16207"   /* amber-700 */
-            gradientColor="#F97316"
-            gradientOpacity={0.24}
-            gradientSize={220}
+            gradientFrom={source === "frequent" ? "#EA580C" : source === "longGap" ? "#92400E" : "#F59E0B"}
+            gradientTo={source === "frequent" ? "#16A34A" : source === "longGap" ? "#DC2626" : "#84CC16"}
+            gradientColor={source === "longGap" ? "#B91C1C" : source === "frequent" ? "#EA580C" : "#84CC16"}
+            gradientOpacity={0.5}
+            gradientSize={280}
             onClick={() => { if (!isInWeek) onPick?.(); }}
             // Avoid native HTML5 DnD when using dnd-kit:
             draggable={false}
