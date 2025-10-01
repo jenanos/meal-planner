@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
-import { Button, Input, Textarea, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter, RainbowButton } from "@repo/ui";
+import { Button, Input, Textarea, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter, RainbowButton, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@repo/ui";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@repo/api";
 import { RecipeCard } from "./components/RecipeCard";
@@ -113,13 +113,18 @@ export default function RecipesPage() {
                 </div>
                 <div className="flex flex-col">
                   <label className="text-sm">Kategori</label>
-                  <select className="border px-2 py-2 rounded-sm bg-white dark:bg-neutral-900" value={cat} onChange={(e) => setCat(e.target.value as any)}>
-                    {CATEGORIES.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={cat} onValueChange={(v) => setCat(v as any)}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Velg kategori" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CATEGORIES.map((c) => (
+                        <SelectItem key={c} value={c}>
+                          {c}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="flex flex-col">
                   <label className="text-sm">Hverdags-score</label>
