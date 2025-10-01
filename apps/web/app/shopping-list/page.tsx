@@ -7,59 +7,6 @@ import { Button } from "@repo/ui";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@repo/api";
 
-const MS_PER_DAY = 86_400_000;
-
-function startOfWeekISO(dateInput?: string | Date) {
-  const date = dateInput ? new Date(dateInput) : new Date();
-  if (Number.isNaN(date.getTime())) {
-    throw new Error("Invalid date value");
-  }
-  const utc = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  const day = utc.getUTCDay();
-  const diff = (day === 0 ? -6 : 1) - day;
-  utc.setUTCDate(utc.getUTCDate() + diff);
-  utc.setUTCHours(0, 0, 0, 0);
-  return utc.toISOString();
-}
-
-function addWeeksISO(weekStartISO: string, weeks: number) {
-  const date = new Date(weekStartISO);
-  date.setUTCDate(date.getUTCDate() + weeks * 7);
-  return startOfWeekISO(date);
-}
-
-function addDays(date: Date, days: number) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
-function formatWeekRange(weekStartISO: string) {
-  const formatter = new Intl.DateTimeFormat("nb-NO", {
-    day: "2-digit",
-    month: "short",
-  });
-
-  const start = new Date(weekStartISO);
-  const end = addDays(new Date(weekStartISO), 6);
-  return `${formatter.format(start)}–${formatter.format(end)}`;
-}
-
-function deriveWeekLabel(weekStartISO: string, currentWeekISO: string) {
-  const diffWeeks = Math.round(
-    (new Date(weekStartISO).getTime() - new Date(currentWeekISO).getTime()) /
-      (7 * MS_PER_DAY)
-  );
-
-  let prefix = "Denne uken";
-  if (diffWeeks === 1) prefix = "Neste uke";
-  else if (diffWeeks === -1) prefix = "Forrige uke";
-  else if (diffWeeks >= 2) prefix = "Kommende";
-  else if (diffWeeks <= -2) prefix = "Tidligere";
-
-  return `${prefix} (${formatWeekRange(weekStartISO)})`;
-}
-
 function formatQuantity(quantity: number, unit: string | null) {
   const formatter = new Intl.NumberFormat("nb-NO", {
     maximumFractionDigits: 2,
@@ -74,8 +21,9 @@ type ShoppingListResult = PlannerOutputs["shoppingList"];
 type ShoppingListItem = ShoppingListResult["items"][number];
 
 export default function ShoppingListPage() {
-  const currentWeekStart = useMemo(() => startOfWeekISO(), []);
-  const [activeWeekStart, setActiveWeekStart] = useState(currentWeekStart);
+  // Lock to current week only; backend can handle includeNextWeek
+  const currentWeekStart = useMemo(() => new Date().toISOString(), []);
+  const activeWeekStart = currentWeekStart;
   const [includeNextWeek, setIncludeNextWeek] = useState(false);
   const [checkedMap, setCheckedMap] = useState<Record<string, boolean>>({});
 
@@ -113,38 +61,10 @@ export default function ShoppingListPage() {
     return [...unchecked, ...checked];
   }, [items, checkedMap]);
 
-  const weekLabel = useMemo(
-    () => deriveWeekLabel(activeWeekStart, currentWeekStart),
-    [activeWeekStart, currentWeekStart]
-  );
-
-  const diffWeeks = useMemo(
-    () =>
-      Math.round(
-        (new Date(activeWeekStart).getTime() - new Date(currentWeekStart).getTime()) /
-          (7 * MS_PER_DAY)
-      ),
-    [activeWeekStart, currentWeekStart]
-  );
-
-  const maxAhead = includeNextWeek ? 3 : 4;
-  const canGoPrev = diffWeeks > -4;
-  const canGoNext = diffWeeks < maxAhead;
-
   const includedWeekLabels = useMemo(() => {
     const weeks = shoppingQuery.data?.includedWeekStarts ?? (shoppingQuery.data?.weekStart ? [shoppingQuery.data.weekStart] : []);
-    return weeks.map((week) => deriveWeekLabel(week, currentWeekStart));
-  }, [shoppingQuery.data?.includedWeekStarts, shoppingQuery.data?.weekStart, currentWeekStart]);
-
-  function changeWeek(delta: number) {
-    const target = addWeeksISO(activeWeekStart, delta);
-    const offset = Math.round(
-      (new Date(target).getTime() - new Date(currentWeekStart).getTime()) / (7 * MS_PER_DAY)
-    );
-    if (offset < -4 || offset > 4) return;
-    if (includeNextWeek && offset + 1 > 4) return;
-    setActiveWeekStart(target);
-  }
+    return weeks;
+  }, [shoppingQuery.data?.includedWeekStarts, shoppingQuery.data?.weekStart]);
 
   const updateShoppingItem = trpc.planner.updateShoppingItem.useMutation();
 
@@ -187,15 +107,6 @@ export default function ShoppingListPage() {
       <h1 className="text-xl font-bold text-center sm:text-left">Handleliste</h1>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={() => changeWeek(-1)} disabled={!canGoPrev}>
-            Forrige uke
-          </Button>
-          <div className="text-sm font-medium text-gray-700">{weekLabel}</div>
-          <Button type="button" variant="outline" size="sm" onClick={() => changeWeek(1)} disabled={!canGoNext}>
-            Neste uke
-          </Button>
-        </div>
         <div className="flex items-center gap-3">
           <Button
             type="button"
@@ -211,9 +122,7 @@ export default function ShoppingListPage() {
       </div>
 
       {includeNextWeek && includedWeekLabels.length ? (
-        <p className="text-xs text-gray-500">
-          Viser varer for {includedWeekLabels.join(" og ")}.
-        </p>
+        <p className="text-xs text-gray-500">Viser varer for {includedWeekLabels.join(" og ")}.</p>
       ) : null}
 
       {isLoading ? (
@@ -230,9 +139,8 @@ export default function ShoppingListPage() {
             return (
               <li
                 key={key}
-                className={`border rounded-lg p-3 transition ${
-                  checked ? "bg-gray-100 border-gray-200" : "bg-white"
-                }`}
+                className={`border rounded-lg p-3 transition ${checked ? "bg-gray-100 border-gray-200" : "bg-white"
+                  }`}
               >
                 <label className={`flex items-start gap-3 cursor-pointer ${checked ? "text-gray-400" : ""}`}>
                   <input
