@@ -43,6 +43,13 @@
     hsl(18 60% 82%) 65%,  /* terracotta */
     hsl(40 50% 88%) 100%  /* dempet beige */
   );
+
+  /* Rainbow button hues */
+  --color-1: 0 100% 63%;
+  --color-2: 270 100% 63%;
+  --color-3: 210 100% 63%;
+  --color-4: 195 100% 63%;
+  --color-5: 90 100% 63%;
 }
 
 /* Mørk modus – varm kontrast (HSL-tripletter) */
@@ -128,6 +135,13 @@
   };
   --animate-accordion-down: accordion-down 0.2s ease-out;
   --animate-accordion-up: accordion-up 0.2s ease-out;
+
+  /* Rainbow animation */
+  --animate-rainbow: rainbow var(--speed, 2s) infinite linear;
+  @keyframes rainbow {
+    0% { background-position: 0%; }
+    100% { background-position: 200%; }
+  }
 }
 
 @layer base {

@@ -11,10 +11,12 @@ export { Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectL
 export { Separator } from "./components/shadcn/separator"
 export { Textarea } from "./components/shadcn/textarea"
 export { ScrollArea } from "./components/shadcn/scroll-area"
+export { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription, DialogClose } from "./components/shadcn/dialog"
 
 // magicui
 export { GridBeams } from "./components/magicui/grid-beams"
 export { MagicCard } from "./components/magicui/MagicCard"
+export { RainbowButton } from "./components/magicui/rainbow-button"
 
 // Aliases so you can use both side-by-side
 export { Button as ShadcnButton } from "./components/shadcn/button"
