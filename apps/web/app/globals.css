@@ -164,6 +164,14 @@
   html, body {
     overscroll-behavior: none;
   }
+
+  /* Make Twemoji icons small and aligned with text */
+  img.twemoji, .twemoji {
+    height: 2em;
+    width: 2em;
+    vertical-align: -0.12em;
+    display: inline-block;
+  }
 }
 
 @layer components {

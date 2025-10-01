@@ -2,6 +2,7 @@
 import { MagicCard } from "@repo/ui";
 import type { DayName } from "../types";
 import { dayBaseHsl, dayHoverGradients } from "../palette";
+import { CategoryEmoji } from "../../components/CategoryEmoji";
 //TODO: Add icons instead of text for category
 export type Props = {
     index: number;
@@ -59,7 +60,7 @@ export function WeekCard({
                 {recipe ? (
                     <div className="space-y-1">
                         <div className="font-medium line-clamp-2 break-words">{recipe.name}</div>
-                        {recipe.category ? <div className="text-xs text-muted-foreground">{recipe.category}</div> : null}
+                        {recipe.category ? <CategoryEmoji category={recipe.category as any} /> : null}
                     </div>
                 ) : (
                     <div className="text-sm text-muted-foreground/60">Ingen valgt</div>

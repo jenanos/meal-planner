@@ -3,6 +3,7 @@
 import type { DragPayload, RecipeDTO, WeekState, DayName } from "../types";
 import { MagicCard } from "@repo/ui";
 import { dayBaseHsl, dayHoverGradients, getDayByIndex } from "../palette";
+import { CategoryEmoji } from "../../components/CategoryEmoji";
 
 type Props = {
   payload: DragPayload | null;
@@ -79,7 +80,7 @@ export function DragOverlayCard({ payload, overIndex, dayNames, week, longGap, f
           {isAdd ? "Legg til" : "Flytter"}
         </div>
         <div className="font-medium leading-snug line-clamp-2">{recipe.name}</div>
-        {recipe.category ? <div className="text-xs text-muted-foreground">{recipe.category}</div> : null}
+        {recipe.category ? <CategoryEmoji category={recipe.category as any} /> : null}
         <div className="mt-2 inline-block rounded-full bg-primary/10 text-primary px-2 py-1 text-[11px]">{targetLabel}</div>
       </div>
     </MagicCard>

@@ -27,7 +27,8 @@
   "name": "with-prisma",
   "dependencies": {
     "@prisma/client": "latest",
-    "framer-motion": "^12.23.0"
+    "framer-motion": "^12.23.0",
+    "react-twemoji": "^0.6.0"
   },
   "packageManager": "pnpm@10.15.0"
 }

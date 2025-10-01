@@ -1,6 +1,7 @@
 "use client";
 import { MagicCard } from "@repo/ui";
 import { suggestionPalettes } from "../../planner/palette";
+import { CategoryEmoji } from "../../components/CategoryEmoji";
 
 export type RecipeCardProps = {
     recipe: {
@@ -31,7 +32,7 @@ export function RecipeCard({ recipe, index, onClick }: RecipeCardProps) {
             <div className="flex h-full min-h-[132px] flex-col items-center justify-center gap-2 p-4 text-center">
                 <div className="font-medium line-clamp-2 break-words">{recipe.name}</div>
                 {recipe.category ? (
-                    <div className="text-xs text-muted-foreground">{recipe.category}</div>
+                    <CategoryEmoji category={recipe.category as any} />
                 ) : null}
             </div>
         </MagicCard>
