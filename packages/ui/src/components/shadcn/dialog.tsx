@@ -9,7 +9,7 @@ const Dialog = DialogPrimitive.Root;
 const DialogTrigger = DialogPrimitive.Trigger;
 
 const DialogPortal = (props: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Portal>) => (
-    <DialogPrimitive.Portal {...props} />
+    <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
 );
 DialogPortal.displayName = DialogPrimitive.Portal.displayName;
 
@@ -19,9 +19,11 @@ const DialogOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
     <DialogPrimitive.Overlay
         ref={ref}
+        data-slot="dialog-overlay"
         className={cn(
-            "fixed inset-0 z-40 bg-black/60 data-[state=open]:animate-in data-[state=closed]:animate-out",
+            "data-[state=open]:animate-in data-[state=closed]:animate-out",
             "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+            "fixed inset-0 z-[1000] bg-black/60",
             className
         )}
         {...props}
@@ -37,15 +39,13 @@ const DialogContent = React.forwardRef<
         <DialogOverlay />
         <DialogPrimitive.Content
             ref={ref}
+            data-slot="dialog-content"
             className={cn(
-                "fixed left-1/2 top-1/2 z-50 grid w-[95vw] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4",
-                "isolate border ring-1 ring-border bg-card p-6 shadow-2xl duration-200 supports-[backdrop-filter]:bg-card/90",
+                "bg-background",
                 "data-[state=open]:animate-in data-[state=closed]:animate-out",
                 "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
                 "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
-                "data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%]",
-                "data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]",
-                "rounded-lg",
+                "fixed top-[50%] left-[50%] z-[1001] grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 sm:max-w-lg",
                 className
             )}
             {...props}

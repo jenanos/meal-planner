@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
-import { Button, Input, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter, RainbowButton } from "@repo/ui";
+import { Button, Input, Textarea, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter, RainbowButton } from "@repo/ui";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@repo/api";
 import { RecipeCard } from "./components/RecipeCard";
@@ -78,7 +78,7 @@ export default function RecipesPage() {
           <DialogTrigger asChild>
             <RainbowButton variant="outline" className="min-w-[12rem]">Legg til oppskrift</RainbowButton>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground ring-1 ring-border rounded-xl p-6 shadow-2xl sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>Ny oppskrift</DialogTitle>
               <DialogDescription>Fyll ut feltene under og lagre for å legge til oppskriften.</DialogDescription>
@@ -109,11 +109,11 @@ export default function RecipesPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="flex flex-col">
                   <label className="text-sm">Navn</label>
-                  <input className="border px-2 py-1" value={name} onChange={(e) => setName(e.target.value)} required />
+                  <Input value={name} onChange={(e) => setName(e.target.value)} required />
                 </div>
                 <div className="flex flex-col">
                   <label className="text-sm">Kategori</label>
-                  <select className="border px-2 py-1" value={cat} onChange={(e) => setCat(e.target.value as any)}>
+                  <select className="border px-2 py-2 rounded-sm bg-white dark:bg-neutral-900" value={cat} onChange={(e) => setCat(e.target.value as any)}>
                     {CATEGORIES.map((c) => (
                       <option key={c} value={c}>
                         {c}
@@ -123,37 +123,35 @@ export default function RecipesPage() {
                 </div>
                 <div className="flex flex-col">
                   <label className="text-sm">Hverdags-score</label>
-                  <input
+                  <Input
                     type="number"
                     min={1}
                     max={5}
-                    className="border px-2 py-1"
                     value={everyday}
                     onChange={(e) => setEveryday(parseInt(e.target.value, 10) || 1)}
                   />
                 </div>
                 <div className="flex flex-col">
                   <label className="text-sm">Helse-score</label>
-                  <input
+                  <Input
                     type="number"
                     min={1}
                     max={5}
-                    className="border px-2 py-1"
                     value={health}
                     onChange={(e) => setHealth(parseInt(e.target.value, 10) || 1)}
                   />
                 </div>
                 <div className="flex flex-col sm:col-span-2">
                   <label className="text-sm">Beskrivelse</label>
-                  <textarea className="border px-2 py-1" value={desc} onChange={(e) => setDesc(e.target.value)} />
+                  <Textarea value={desc} onChange={(e) => setDesc(e.target.value)} />
                 </div>
               </div>
 
               <div className="flex flex-col gap-2">
                 <label className="text-sm">Ingredienser</label>
                 <div className="flex gap-2">
-                  <input
-                    className="border px-2 py-1 flex-1"
+                  <Input
+                    className="flex-1"
                     value={ingName}
                     onChange={(e) => setIngName(e.target.value)}
                     placeholder="f.eks. løk"
