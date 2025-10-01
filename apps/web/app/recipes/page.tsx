@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
-import { Button, Input, Textarea, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter, RainbowButton, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Badge, ScrollArea } from "@repo/ui";
+import { Button, Input, Textarea, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Badge, ScrollArea } from "@repo/ui";
 import { X } from "lucide-react";
 import { EVERYDAY_LABELS, HEALTH_LABELS } from "../../lib/scoreLabels";
 import type { inferRouterOutputs } from "@trpc/server";
@@ -211,7 +211,7 @@ export default function RecipesPage() {
 
         <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) setEditId(null); }}>
           <DialogTrigger asChild>
-            <RainbowButton variant="outline" className="min-w-[12rem]" onClick={(e) => { e.preventDefault(); openCreate(); }}>Legg til oppskrift</RainbowButton>
+            <Button variant="outline" size="sm" className="min-w-[12rem]" onClick={(e) => { e.preventDefault(); openCreate(); }} type="button">Legg til oppskrift</Button>
           </DialogTrigger>
           <DialogContent className="isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground ring-1 ring-border rounded-xl p-6 shadow-2xl sm:max-w-lg">
             <DialogHeader>

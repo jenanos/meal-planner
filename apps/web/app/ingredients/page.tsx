@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
-import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, RainbowButton, ScrollArea } from "@repo/ui";
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, ScrollArea } from "@repo/ui";
 import { IngredientCard } from "./components/IngredientCard";
 
 export default function IngredientsPage() {
@@ -44,13 +44,15 @@ export default function IngredientsPage() {
                         onChange={(e) => setSearch(e.target.value)}
                     />
                 </div>
-                <RainbowButton
+                <Button
                     variant="outline"
+                    size="sm"
                     className="min-w-[12rem]"
                     onClick={() => setIsDialogOpen(true)}
+                    type="button"
                 >
                     Legg til ingrediens
-                </RainbowButton>
+                </Button>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3 justify-items-center xl:min-w-[840px]">
