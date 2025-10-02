@@ -1,6 +1,6 @@
 import { prisma } from "@repo/database";
 import { router, publicProcedure } from "../trpc";
-import { PlannerConstraints, WeekPlanInput } from "../schemas";
+import { PlannerConstraints, WeekPlanInput, ExtraItemSuggest, ExtraItemUpsert, ExtraShoppingToggle, ExtraShoppingRemove } from "../schemas";
 import { z } from "zod";
 
 /** Day + meta (kan utvides senere) */
@@ -132,12 +132,12 @@ function buildSuggestionBuckets(pool: RecipeDTO[], exclude: string[]): WeekPlanS
   return {
     longGap: buildSuggestions(pool, {
       kind: "longGap",
-      limit: 6,
+      limit: 7,
       exclude,
     }),
     frequent: buildSuggestions(pool, {
       kind: "frequent",
-      limit: 6,
+      limit: 7,
       exclude,
     }),
   };
@@ -696,10 +696,25 @@ export const plannerRouter = router({
         }))
         .sort((a, b) => a.name.localeCompare(b.name, "nb", { sensitivity: "base" }));
 
+      // Include extra shopping items for these weeks
+      const extraItems = await prisma.extraShoppingItem.findMany({
+        where: { weekStart: { in: weekStarts } },
+        include: { catalogItem: true },
+        orderBy: { createdAt: "asc" },
+      });
+
+      const extras = extraItems.map((e) => ({
+        id: e.id,
+        name: e.catalogItem.name,
+        weekStart: e.weekStart.toISOString(),
+        checked: e.checked,
+      }));
+
       return {
         weekStart: weekStart.toISOString(),
         includedWeekStarts: weekStarts.map((week) => week.toISOString()),
         items,
+        extras,
       };
     }),
 
@@ -712,7 +727,7 @@ export const plannerRouter = router({
     }))
     .mutation(async ({ input }) => {
       const weekDates = input.weeks.map((week) => startOfWeek(week));
-      const unit = input.unit ?? null;
+      const unitKey = input.unit ?? ""; // alltid string
 
       await prisma.$transaction(
         weekDates.map((week) =>
@@ -721,13 +736,13 @@ export const plannerRouter = router({
               weekStart_ingredientId_unit: {
                 weekStart: week,
                 ingredientId: input.ingredientId,
-                unit,
+                unit: unitKey, // endret fra null|string
               },
             },
             create: {
               weekStart: week,
               ingredientId: input.ingredientId,
-              unit,
+              unit: unitKey, // endret fra null|string
               checked: input.checked,
             },
             update: {
@@ -764,5 +779,66 @@ export const plannerRouter = router({
         entries: persisted.entries,
         suggestions,
       });
+    }),
+
+  // Suggest extra items by prefix
+  extraSuggest: publicProcedure
+    .input(ExtraItemSuggest.optional())
+    .query(async ({ input }) => {
+      const q = (input?.search ?? "").trim();
+      if (!q) return [] as { id: string; name: string }[];
+      const all = await prisma.extraItemCatalog.findMany({
+        where: { name: { contains: q } },
+        orderBy: { name: "asc" },
+        take: 20,
+      });
+      return all.map((x) => ({ id: x.id, name: x.name }));
+    }),
+
+  // Add an extra item to the current week's list (upsert into catalog)
+  extraAdd: publicProcedure
+    .input(ExtraItemUpsert)
+    .mutation(async ({ input }) => {
+      const name = input.name.trim();
+      const catalog = await prisma.extraItemCatalog.upsert({
+        where: { name },
+        update: {},
+        create: { name },
+      });
+      return { id: catalog.id, name: catalog.name };
+    }),
+
+  // Toggle or set check on an extra item for a given week
+  extraToggle: publicProcedure
+    .input(ExtraShoppingToggle)
+    .mutation(async ({ input }) => {
+      const week = startOfWeek(input.weekStart);
+      enforceFutureLimit(week);
+      const catalog = await prisma.extraItemCatalog.upsert({
+        where: { name: input.name.trim() },
+        update: {},
+        create: { name: input.name.trim() },
+      });
+      const existing = await prisma.extraShoppingItem.findUnique({
+        where: { weekStart_catalogItemId: { weekStart: week, catalogItemId: catalog.id } },
+      });
+      const checked = input.checked ?? !existing?.checked;
+      const saved = await prisma.extraShoppingItem.upsert({
+        where: { weekStart_catalogItemId: { weekStart: week, catalogItemId: catalog.id } },
+        create: { weekStart: week, catalogItemId: catalog.id, checked },
+        update: { checked },
+      });
+      return { id: saved.id, checked: saved.checked };
+    }),
+
+  // Remove an extra item from a specific week (keeps catalog)
+  extraRemove: publicProcedure
+    .input(ExtraShoppingRemove)
+    .mutation(async ({ input }) => {
+      const week = startOfWeek(input.weekStart);
+      const catalog = await prisma.extraItemCatalog.findUnique({ where: { name: input.name.trim() } });
+      if (!catalog) return { ok: true };
+      await prisma.extraShoppingItem.deleteMany({ where: { weekStart: week, catalogItemId: catalog.id } });
+      return { ok: true };
     }),
 });

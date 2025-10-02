@@ -48,14 +48,14 @@ model RecipeIngredient {
 }
 
 model WeekPlan {
-  id        String   @id @default(uuid())
-  weekStart DateTime @unique
-  weekIndexId String? @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(uuid())
+  weekStart   DateTime @unique
+  weekIndexId String?  @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  entries WeekPlanEntry[]
-  weekIndex WeekIndex? @relation(fields: [weekIndexId], references: [id], onDelete: Cascade)
+  entries   WeekPlanEntry[]
+  weekIndex WeekIndex?      @relation(fields: [weekIndexId], references: [id], onDelete: Cascade)
 }
 
 model WeekIndex {
@@ -88,4 +88,28 @@ model ShoppingState {
   updatedAt    DateTime @updatedAt
 
   @@unique([weekStart, ingredientId, unit])
+}
+
+// Catalog of user-added extra shopping items (not tied to recipes)
+model ExtraItemCatalog {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  extras ExtraShoppingItem[]
+}
+
+// Extra shopping items added for specific weeks
+model ExtraShoppingItem {
+  id            String   @id @default(uuid())
+  weekStart     DateTime
+  catalogItemId String
+  checked       Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  catalogItem ExtraItemCatalog @relation(fields: [catalogItemId], references: [id], onDelete: Cascade)
+
+  @@unique([weekStart, catalogItemId])
 }

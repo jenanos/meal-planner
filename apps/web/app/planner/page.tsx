@@ -1,13 +1,33 @@
 "use client";
+/* eslint-env browser */
 export const dynamic = "force-dynamic";
 
-import type { DragEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
-import { Button } from "@repo/ui";
-import type { inferRouterOutputs } from "@trpc/server";
-import type { AppRouter } from "@repo/api";
-import { describeEveryday, describeHealth } from "../../lib/scoreLabels";
+import { WeekSelector } from "./components/WeekSelector";
+import { WeekSlot } from "./components/WeekSlot";
+import { SuggestionSection } from "./components/SuggestionSection";
+import { SearchSection } from "./components/SearchSection";
+import { MobileEditor } from "./components/MobileEditor";
+import { DragOverlayCard } from "./components/DragOverlayCard";
+import { startOfWeekISO, addWeeksISO, deriveWeekLabel } from "../../lib/week";
+
+import {
+  DndContext,
+  DragOverlay,
+  MouseSensor,
+  TouchSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  rectIntersection,
+  pointerWithin,
+} from "@dnd-kit/core";
+import { createPortal } from "react-dom";
+
+import type { DragPayload, RecipeDTO, TimelineWeek, WeekPlanResult, WeekState } from "./types";
+import { clamp, lowerIdSet, makeEmptyWeek, parseDragId } from "./utils";
 
 const DAY_NAMES = [
   "Mandag",
@@ -19,80 +39,22 @@ const DAY_NAMES = [
   "Søndag",
 ] as const;
 
-const MS_PER_DAY = 86_400_000;
+// Scroll-based week selector: no fixed window sizes needed
 
-type PlannerOutputs = inferRouterOutputs<AppRouter>["planner"];
-type WeekPlanResult = PlannerOutputs["getWeekPlan"];
-type WeekDay = WeekPlanResult["days"][number];
-type WeekRecipe = WeekDay["recipe"];
-type RecipeDTO = NonNullable<WeekRecipe>;
-type WeekState = (RecipeDTO | null)[];
-
-type DragSource = "week" | "longGap" | "frequent" | "search";
-
-type DragPayload = {
-  source: DragSource;
-  index: number;
-  recipeId: string;
-};
-
-function startOfWeekISO(dateInput?: string | Date) {
-  const date = dateInput ? new Date(dateInput) : new Date();
-  if (Number.isNaN(date.getTime())) {
-    throw new Error("Invalid date value");
-  }
-  const utc = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  const day = utc.getUTCDay();
-  const diff = (day === 0 ? -6 : 1) - day;
-  utc.setUTCDate(utc.getUTCDate() + diff);
-  utc.setUTCHours(0, 0, 0, 0);
-  return utc.toISOString();
+function useIsTouchDevice() {
+  const [isTouch, setIsTouch] = useState(false);
+  useEffect(() => {
+    setIsTouch(
+      typeof window !== "undefined" &&
+      // coarse pointer ~ touch
+      (window.matchMedia?.("(pointer: coarse)")?.matches || (typeof navigator !== "undefined" && navigator.maxTouchPoints > 0))
+    );
+  }, []);
+  return isTouch;
 }
 
-function addWeeksISO(weekStartISO: string, weeks: number) {
-  const date = new Date(weekStartISO);
-  date.setUTCDate(date.getUTCDate() + weeks * 7);
-  return startOfWeekISO(date);
-}
-
-function addDays(date: Date, days: number) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
-function formatWeekRange(weekStartISO: string) {
-  const formatter = new Intl.DateTimeFormat("nb-NO", {
-    day: "2-digit",
-    month: "short",
-  });
-
-  const start = new Date(weekStartISO);
-  const end = addDays(new Date(weekStartISO), 6);
-  return `${formatter.format(start)}–${formatter.format(end)}`;
-}
-
-function deriveWeekLabel(weekStartISO: string, currentWeekISO: string) {
-  const diffWeeks = Math.round(
-    (new Date(weekStartISO).getTime() - new Date(currentWeekISO).getTime()) /
-      (7 * MS_PER_DAY)
-  );
-
-  let prefix = "Denne uken";
-  if (diffWeeks === 1) prefix = "Neste uke";
-  else if (diffWeeks === -1) prefix = "Forrige uke";
-  else if (diffWeeks >= 2) prefix = "Kommende";
-  else if (diffWeeks <= -2) prefix = "Tidligere";
-
-  return `${prefix} (${formatWeekRange(weekStartISO)})`;
-}
-
-function makeEmptyWeek() {
-  return Array.from({ length: 7 }, () => null) as WeekState;
-}
-
-function lowerIdSet(items: RecipeDTO[]) {
-  return new Set(items.map((item) => item.id));
+function useVisualViewportOffset() {
+  // removed unused useVisualViewportOffset to satisfy lint
 }
 
 export default function PlannerPage() {
@@ -106,9 +68,23 @@ export default function PlannerPage() {
   const [searchResults, setSearchResults] = useState<RecipeDTO[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [isAutoGenerating, setIsAutoGenerating] = useState(false);
   const [lastUpdatedISO, setLastUpdatedISO] = useState<string | null>(null);
+  const [lastSavedIds, setLastSavedIds] = useState<Array<string | null> | null>(null);
+  const [isMobileEditorOpen, setIsMobileEditorOpen] = useState(false);
+  const [mobileEditorView, setMobileEditorView] = useState<"frequent" | "longGap" | "search">(
+    "frequent"
+  );
+  // Removed window paging state; ScrollArea handles horizontal scrolling.
+
+  // dnd-kit: sensors + active id
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } }),
+    useSensor(KeyboardSensor)
+  );
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null); // NY: hvilken dag vi er over
 
   const weekPlanQuery = trpc.planner.getWeekPlan.useQuery(
     { weekStart: activeWeekStart },
@@ -123,6 +99,7 @@ export default function PlannerPage() {
     () => week.filter((recipe): recipe is RecipeDTO => Boolean(recipe)).map((recipe) => recipe.id),
     [week]
   );
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
   const applyWeekData = useCallback(
     (res: WeekPlanResult) => {
@@ -134,6 +111,7 @@ export default function PlannerPage() {
       setFrequent(res.suggestions.frequent.filter((item) => !currentSet.has(item.id)));
       setSearchError(null);
       setLastUpdatedISO(res.updatedAt);
+      setLastSavedIds(res.days.map((d) => d.recipe?.id ?? null));
       utils.planner.getWeekPlan.setData({ weekStart: res.weekStart }, res);
     },
     [utils]
@@ -183,6 +161,7 @@ export default function PlannerPage() {
           recipeIdsByDay: ids,
         });
         applyWeekData(payload);
+        setLastSavedIds(payload.days.map((d) => d.recipe?.id ?? null));
         if (!opts?.suppressRefetch) {
           timelineQuery.refetch().catch(() => undefined);
         }
@@ -193,22 +172,8 @@ export default function PlannerPage() {
     [activeWeekStart, saveWeek, applyWeekData, timelineQuery]
   );
 
-  const refreshSuggestions = useCallback(
-    async (type: "longGap" | "frequent") => {
-      try {
-        const data = (await utils.planner.suggestions.fetch({
-          type,
-          excludeIds: selectedIds,
-          limit: type === "longGap" ? 6 : 6,
-        })) as RecipeDTO[];
-        if (type === "longGap") setLongGap(data);
-        else setFrequent(data);
-      } catch (err) {
-        console.error("Failed to refresh suggestions", err);
-      }
-    },
-    [utils, selectedIds]
-  );
+  // Suggestions are provided server-side with getWeekPlan/applyWeekData,
+  // and updated on save/applyWeekData. No manual refresh button or effect needed.
 
   const executeSearch = useCallback(async () => {
     const term = searchTerm.trim();
@@ -243,6 +208,10 @@ export default function PlannerPage() {
       return;
     }
 
+    if (typeof window === "undefined") {
+      return;
+    }
+
     const handle = window.setTimeout(() => {
       executeSearch();
     }, 300);
@@ -250,64 +219,117 @@ export default function PlannerPage() {
     return () => window.clearTimeout(handle);
   }, [searchTerm, executeSearch]);
 
-  const handleWeekCardDrop = useCallback(
-    async (event: DragEvent<HTMLDivElement>, targetIndex: number) => {
-      event.preventDefault();
-      setDragOverIndex(null);
-      const payloadRaw = event.dataTransfer.getData("application/json");
-      if (!payloadRaw) return;
+  const clearSearch = useCallback(() => {
+    setSearchTerm("");
+    setSearchResults([]);
+    setSearchError(null);
+  }, []);
 
-      let payload: DragPayload | null = null;
-      try {
-        payload = JSON.parse(payloadRaw) as DragPayload;
-      } catch (err) {
-        console.error("Unknown drag payload", err);
-        return;
+  const addRecipeToFirstAvailableSlot = useCallback(
+    async (recipe: RecipeDTO) => {
+      const firstEmpty = week.findIndex((slot) => !slot);
+      const targetIndex = firstEmpty === -1 ? 0 : firstEmpty;
+      const next = [...week];
+      next[targetIndex] = recipe;
+      await commitWeekPlan(next);
+    },
+    [week, commitWeekPlan]
+  );
+
+  const handlePickFromSource = useCallback(
+    async (source: "longGap" | "frequent" | "search", recipe: RecipeDTO) => {
+      await addRecipeToFirstAvailableSlot(recipe);
+      if (source === "longGap") {
+        setLongGap((prev) => prev.filter((item) => item.id !== recipe.id));
+      } else if (source === "frequent") {
+        setFrequent((prev) => prev.filter((item) => item.id !== recipe.id));
       }
-      if (!payload) return;
+    },
+    [addRecipeToFirstAvailableSlot]
+  );
 
+  // dnd-kit handlers
+  const onDragStart = useCallback((event: any) => {
+    setActiveId(String(event.active.id));
+    setOverIndex(null);
+    // lås scroll for å unngå toolbar-hop på mobil
+    if (typeof document !== "undefined") document.body.classList.add("dragging");
+  }, []);
+
+  const onDragOver = useCallback((event: any) => {
+    const overId: string | null = event.over ? String(event.over.id) : null;
+    if (overId && overId.startsWith("day-")) {
+      const idx = Number(overId.slice(4));
+      setOverIndex(Number.isFinite(idx) ? idx : null);
+    } else {
+      setOverIndex(null);
+    }
+  }, []);
+
+  const onDragCancel = useCallback(() => {
+    setActiveId(null);
+    setOverIndex(null);
+    if (typeof document !== "undefined") document.body.classList.remove("dragging");
+  }, []);
+
+  const onDragEnd = useCallback(async (event: any) => {
+    const { active, over } = event;
+    setActiveId(null);
+    setOverIndex(null);
+    if (typeof document !== "undefined") document.body.classList.remove("dragging");
+    if (!over) return;
+
+    const overId = String(over.id);
+    if (!overId.startsWith("day-")) return;
+
+    const targetIndex = Number(overId.slice(4));
+    if (!Number.isFinite(targetIndex)) return;
+
+    const payload = parseDragId(String(active.id));
+    if (!payload) return;
+
+    // Helper to resolve the dragged recipe
+    const getRecipe = (): RecipeDTO | null => {
       if (payload.source === "week") {
-        if (payload.index === targetIndex) return;
-        const next = [...week];
-        const [moved] = next.splice(payload.index, 1);
-        next.splice(targetIndex, 0, moved);
-        await commitWeekPlan(next);
-        return;
+        return week[payload.index] ?? null;
       }
-
-      const sourceLists: Record<DragSource, RecipeDTO[]> = {
-        week: [],
+      const lists: Record<Exclude<DragPayload["source"], "week">, RecipeDTO[]> = {
         longGap,
         frequent,
         search: searchResults,
       };
+      const list = lists[payload.source as Exclude<DragPayload["source"], "week">];
+      return list[payload.index] ?? list.find((r) => r.id === payload.recipeId) ?? null;
+    };
 
-      const sourceList = sourceLists[payload.source];
-      const recipe = sourceList[payload.index];
-      if (!recipe) return;
+    const recipe = getRecipe();
+    if (!recipe) return;
 
+    if (payload.source === "week") {
+      if (payload.index === targetIndex) return;
+      const next = [...week];
+      const [moved] = next.splice(payload.index, 1);
+      next.splice(targetIndex, 0, moved);
+      await commitWeekPlan(next);
+      return;
+    }
+
+    // From suggestions -> into week
+    {
       const next = [...week];
       next[targetIndex] = recipe;
       await commitWeekPlan(next);
 
       if (payload.source === "longGap") {
-        setLongGap((prev) => prev.filter((item) => item.id !== recipe.id));
+        setLongGap((prev) => prev.filter((x) => x.id !== recipe.id));
       } else if (payload.source === "frequent") {
-        setFrequent((prev) => prev.filter((item) => item.id !== recipe.id));
+        setFrequent((prev) => prev.filter((x) => x.id !== recipe.id));
       }
+    }
+  }, [week, longGap, frequent, searchResults, commitWeekPlan]);
 
-    },
-    [week, commitWeekPlan, longGap, frequent, searchResults]
-  );
-
-  const handleDragStart = useCallback((event: DragEvent, data: DragPayload) => {
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("application/json", JSON.stringify(data));
-    event.dataTransfer.setData("text/plain", data.recipeId);
-  }, []);
-
-  const timelineWeeks = useMemo(() => {
-    if (!timelineQuery.data) return [] as Array<{ weekStart: string; hasEntries: boolean; label: string }>;
+  const timelineWeeks = useMemo<TimelineWeek[]>(() => {
+    if (!timelineQuery.data) return [];
 
     const map = new Map<string, { hasEntries: boolean }>();
     timelineQuery.data.weeks.forEach((weekInfo) => {
@@ -316,7 +338,7 @@ export default function PlannerPage() {
       });
     });
 
-    const items: Array<{ weekStart: string; hasEntries: boolean; label: string }> = [];
+    const items: TimelineWeek[] = [];
     for (let offset = -4; offset <= 4; offset += 1) {
       const weekIso = addWeeksISO(currentWeekStart, offset);
       const info = map.get(weekIso);
@@ -330,44 +352,12 @@ export default function PlannerPage() {
     return items;
   }, [timelineQuery.data, currentWeekStart]);
 
-  const VISIBLE_WEEK_COUNT = 5;
-  const [visibleStart, setVisibleStart] = useState(0);
-  const carouselInitializedRef = useRef(false);
+  const activeWeekIndex = useMemo(
+    () => timelineWeeks.findIndex((week) => week.weekStart === activeWeekStart),
+    [timelineWeeks, activeWeekStart]
+  );
 
-  useEffect(() => {
-    if (carouselInitializedRef.current) return;
-    if (!timelineWeeks.length) return;
-    const currentIndex = timelineWeeks.findIndex((week) => week.weekStart === currentWeekStart);
-    if (currentIndex === -1) return;
-    const maxStart = Math.max(0, timelineWeeks.length - VISIBLE_WEEK_COUNT);
-    const target = Math.min(
-      Math.max(0, currentIndex - Math.floor(VISIBLE_WEEK_COUNT / 2)),
-      maxStart
-    );
-    setVisibleStart(target);
-    carouselInitializedRef.current = true;
-  }, [timelineWeeks, currentWeekStart]);
-
-  useEffect(() => {
-    if (!timelineWeeks.length) return;
-    const activeIndex = timelineWeeks.findIndex((week) => week.weekStart === activeWeekStart);
-    if (activeIndex === -1) return;
-    const maxStart = Math.max(0, timelineWeeks.length - VISIBLE_WEEK_COUNT);
-    setVisibleStart((prev) => {
-      if (activeIndex < prev) {
-        return Math.max(0, Math.min(activeIndex, maxStart));
-      }
-      if (activeIndex >= prev + VISIBLE_WEEK_COUNT) {
-        return Math.max(0, Math.min(activeIndex - VISIBLE_WEEK_COUNT + 1, maxStart));
-      }
-      return prev;
-    });
-  }, [activeWeekStart, timelineWeeks]);
-
-  const canShowPrev = visibleStart > 0;
-  const maxVisibleStart = Math.max(0, timelineWeeks.length - VISIBLE_WEEK_COUNT);
-  const canShowNext = visibleStart < maxVisibleStart;
-  const visibleWeeks = timelineWeeks.slice(visibleStart, visibleStart + VISIBLE_WEEK_COUNT);
+  // ScrollArea centers active week within WeekSelector itself.
 
   useEffect(() => {
     if (!timelineQuery.data) return;
@@ -392,251 +382,181 @@ export default function PlannerPage() {
     return "Endringer lagres automatisk";
   }, [saveWeek.isPending, generateWeek.isPending, isAutoGenerating, lastUpdatedISO]);
 
-  const renderWeekCard = (recipe: WeekRecipe, index: number) => {
-    const isDraggingTarget = dragOverIndex === index;
-    return (
-      <div
-        key={index}
-        className={`border rounded p-3 bg-white transition-colors ${
-          isDraggingTarget ? "ring-2 ring-blue-400" : ""
-        }`}
-        onDragOver={(event) => {
-          event.preventDefault();
-          setDragOverIndex(index);
-        }}
-        onDragLeave={() => setDragOverIndex((prev) => (prev === index ? null : prev))}
-        onDrop={(event) => handleWeekCardDrop(event, index)}
-        draggable={Boolean(recipe)}
-        onDragStart={(event) => {
-          if (!recipe) return;
-          handleDragStart(event, { source: "week", index, recipeId: recipe.id });
-        }}
-      >
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <div className="text-xs text-gray-500">{DAY_NAMES[index]}</div>
-            <div className="font-medium">{recipe?.name ?? "—"}</div>
-            <div className="text-xs text-gray-500">{recipe?.category ?? ""}</div>
-          </div>
-        </div>
-        {recipe ? (
-          <div className="text-xs text-gray-400">
-            {describeEveryday(recipe.everydayScore)} • {describeHealth(recipe.healthScore)}
-          </div>
-        ) : (
-          <div className="text-xs text-gray-300">Ingen valgt</div>
-        )}
-        {recipe?.ingredients?.length ? (
-          <ul className="list-disc pl-5 text-xs mt-2 space-y-1">
-            {recipe.ingredients.map((ingredient) => (
-              <li key={ingredient.ingredientId}>{ingredient.name}</li>
-            ))}
-          </ul>
-        ) : null}
-      </div>
-    );
+  const handleSelectWeek = async (weekStart: string, indexHint?: number | null) => {
+    const normalized = startOfWeekISO(weekStart);
+    // If clicking the same week, do nothing
+    if (normalized === activeWeekStart) return;
+
+    // Save current week if there are unsaved changes before navigating
+    const currentIds = week.map((r) => r?.id ?? null);
+    const isDirty = !lastSavedIds || currentIds.length !== lastSavedIds.length || currentIds.some((id, i) => id !== lastSavedIds[i]);
+    if (isDirty && !saveWeek.isPending) {
+      try {
+        const payload = await saveWeek.mutateAsync({
+          weekStart: activeWeekStart,
+          recipeIdsByDay: currentIds,
+        });
+        applyWeekData(payload);
+        setLastSavedIds(payload.days.map((d) => d.recipe?.id ?? null));
+      } catch (err) {
+        console.error("Kunne ikke lagre uke før navigasjon", err);
+      }
+    }
+
+    setActiveWeekStart(normalized);
   };
 
-  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  // Periodic autosave if there are changes
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const interval = window.setInterval(async () => {
+      const currentIds = week.map((r) => r?.id ?? null);
+      const isDirty = !lastSavedIds || currentIds.length !== lastSavedIds.length || currentIds.some((id, i) => id !== lastSavedIds[i]);
+      if (isDirty && !saveWeek.isPending) {
+        try {
+          const payload = await saveWeek.mutateAsync({
+            weekStart: activeWeekStart,
+            recipeIdsByDay: currentIds,
+          });
+          applyWeekData(payload);
+          setLastSavedIds(payload.days.map((d) => d.recipe?.id ?? null));
+          timelineQuery.refetch().catch(() => undefined);
+        } catch (err) {
+          // ignore transient errors
+        }
+      }
+    }, 30000); // every 30s
+    return () => window.clearInterval(interval);
+  }, [week, lastSavedIds, saveWeek, activeWeekStart, applyWeekData, timelineQuery]);
 
-  const renderSuggestionCard = (recipe: RecipeDTO, source: DragSource, index: number) => {
-    const isInWeek = selectedIdSet.has(recipe.id);
-    const handlePick = async () => {
-      if (isInWeek) return;
-      const firstEmpty = week.findIndex((slot) => !slot);
-      const targetIndex = firstEmpty === -1 ? 0 : firstEmpty;
-      const next = [...week];
-      next[targetIndex] = recipe;
-      await commitWeekPlan(next);
-      if (source === "longGap") setLongGap((prev) => prev.filter((item) => item.id !== recipe.id));
-      if (source === "frequent") setFrequent((prev) => prev.filter((item) => item.id !== recipe.id));
-    };
+  const overlayPayload = useMemo(() => (activeId ? parseDragId(activeId) : null), [activeId]);
 
-    return (
-      <button
-        key={recipe.id}
-        className={`relative overflow-hidden text-left border rounded p-2 transition-colors ${
-          isInWeek ? "cursor-not-allowed bg-gray-100" : "hover:bg-gray-50 cursor-grab"
-        }`}
-        onClick={handlePick}
-        draggable={!isInWeek}
-        onDragStart={(event) => {
-          if (isInWeek) return;
-          handleDragStart(event, { source, index, recipeId: recipe.id });
-        }}
-        type="button"
-      >
-        <div className="font-medium">{recipe.name}</div>
-        <div className="text-xs text-gray-500">
-          {recipe.category} • {describeEveryday(recipe.everydayScore)} • {describeHealth(recipe.healthScore)}
-        </div>
-        {isInWeek && (
-          <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center text-center px-3">
-            <span className="text-[11px] font-medium uppercase tracking-wide text-gray-600">
-              Allerede i ukeplanen
-            </span>
-            <span className="mt-1 text-sm font-medium text-gray-700">{recipe.name}</span>
-          </div>
-        )}
-      </button>
-    );
-  };
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const portalTarget = typeof document === "undefined" ? null : document.body;
+
+  const isTouch = useIsTouchDevice();
+
+  // Prefer intersection when the pointer/overlay overlaps a day; otherwise fall back to closest center
+  const collisionAlgo = useCallback((args: any) => {
+    const pointerHits = pointerWithin(args);
+    if (pointerHits.length) return pointerHits;
+    const intersections = rectIntersection(args);
+    return intersections.length ? intersections : closestCenter(args);
+  }, []);
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-xl font-bold text-center">Ukesplan</h1>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={collisionAlgo}
+      autoScroll={!isTouch}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragCancel={onDragCancel}
+      onDragEnd={onDragEnd}
+    >
+      <div className="space-y-6">
+        <h1 className="text-xl font-bold text-center">Ukesplan</h1>
 
-      <div className="space-y-3">
-        <div className="flex items-center justify-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8 w-8 p-0"
-            onClick={() => setVisibleStart((prev) => Math.max(0, prev - 1))}
-            disabled={!canShowPrev}
-          >
-            ←
-          </Button>
-          <div className="flex gap-2">
-            {visibleWeeks.map((item) => {
-              const isActive = item.weekStart === activeWeekStart;
-              const isCurrent = item.weekStart === currentWeekStart;
-              const baseClass = isActive
-                ? "bg-slate-900 text-white border-slate-900"
-                : isCurrent
-                ? "border-slate-900 text-slate-900"
-                : item.hasEntries
-                ? "border-slate-400 text-slate-700"
-                : "border-dashed border-slate-300 text-slate-500";
+        <div className="space-y-3">
+          <WeekSelector
+            weeks={timelineWeeks.map((w, i) => ({ week: w, index: i }))}
+            activeWeekStart={activeWeekStart}
+            activeWeekIndex={activeWeekIndex}
+            onSelectWeek={handleSelectWeek}
+          />
 
-              return (
-                <button
-                  key={item.weekStart}
-                  type="button"
-                  onClick={() => {
-                    setWeek(makeEmptyWeek());
-                    setLongGap([]);
-                    setFrequent([]);
-                    setSearchResults([]);
-                    setSearchError(null);
-                    const normalized = startOfWeekISO(item.weekStart);
-                    setActiveWeekStart(normalized);
-                    const index = timelineWeeks.findIndex((week) => week.weekStart === normalized);
-                    if (index !== -1) {
-                      const maxStartLocal = Math.max(0, timelineWeeks.length - VISIBLE_WEEK_COUNT);
-                      const centered = Math.min(
-                        Math.max(0, index - Math.floor(VISIBLE_WEEK_COUNT / 2)),
-                        maxStartLocal
-                      );
-                      setVisibleStart(centered);
-                    }
-                  }}
-                  className={`whitespace-nowrap rounded-full border px-3 py-1 text-sm transition ${baseClass}`}
-                  aria-current={isActive ? "date" : undefined}
-                >
-                  {item.label}
-                </button>
-              );
-            })}
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8 w-8 p-0"
-            onClick={() => setVisibleStart((prev) => Math.min(maxVisibleStart, prev + 1))}
-            disabled={!canShowNext}
-          >
-            →
-          </Button>
+          <p className="text-xs text-center text-muted-foreground">{statusText}</p>
         </div>
-        <p className="text-xs text-center text-gray-500">{statusText}</p>
-      </div>
 
-      <div className="overflow-x-auto">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3 min-w-[840px]">
-          {week.map((recipe, index) => renderWeekCard(recipe, index))}
+        <div className="space-y-4 sm:hidden">
+          <MobileEditor
+            week={week}
+            dayNames={DAY_NAMES}
+            selectedIdSet={selectedIdSet}
+            longGap={longGap}
+            frequent={frequent}
+            searchTerm={searchTerm}
+            searchResults={searchResults}
+            searchLoading={searchLoading}
+            searchError={searchError}
+            mobileEditorView={mobileEditorView}
+            isMobileEditorOpen={isMobileEditorOpen}
+            onToggleEditor={setIsMobileEditorOpen}
+            onChangeView={setMobileEditorView}
+            onSearchTermChange={setSearchTerm}
+            onPickFromSource={handlePickFromSource}
+          />
         </div>
-      </div>
 
-      <div className="space-y-4">
-        <section className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold">Lenge siden sist</h2>
-            <Button type="button" variant="outline" onClick={() => refreshSuggestions("longGap")}>
-              Oppdater
-            </Button>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
-            {longGap.length ? longGap.map((recipe, index) => renderSuggestionCard(recipe, "longGap", index)) : (
-              <p className="text-sm text-gray-500">Ingen forslag akkurat nå</p>
-            )}
-          </div>
-        </section>
+        <div className="hidden sm:block">
+          <div className="space-y-4">
+            <div className="overflow-x-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3 justify-items-center xl:min-w-[840px]">
+                {week.map((recipe, index) => (
+                  <WeekSlot key={index} index={index} dayName={DAY_NAMES[index]} recipe={recipe} />
+                ))}
+              </div>
+            </div>
 
-        <section className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold">Ofte brukt</h2>
-            <Button type="button" variant="outline" onClick={() => refreshSuggestions("frequent")}>
-              Oppdater
-            </Button>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
-            {frequent.length ? frequent.map((recipe, index) => renderSuggestionCard(recipe, "frequent", index)) : (
-              <p className="text-sm text-gray-500">Ingen forslag akkurat nå</p>
-            )}
-          </div>
-        </section>
+            <div className="space-y-4">
+              <SuggestionSection
+                title="Lenge siden sist"
+                recipes={longGap}
+                source="longGap"
+                selectedIdSet={selectedIdSet}
+                onPick={(recipe) => handlePickFromSource("longGap", recipe)}
+              />
 
-        <section className="space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-end sm:gap-3">
-            <div className="flex-1 flex flex-col">
-              <label className="text-sm">Søk i alle oppskrifter</label>
-              <input
-                className="border px-2 py-1"
-                placeholder="For eksempel linsegryte"
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    executeSearch();
-                  }
-                }}
+              <SuggestionSection
+                title="Ofte brukt"
+                recipes={frequent}
+                source="frequent"
+                selectedIdSet={selectedIdSet}
+                onPick={(recipe) => handlePickFromSource("frequent", recipe)}
+              />
+
+              <SearchSection
+                title="Søk i alle oppskrifter"
+                searchTerm={searchTerm}
+                onSearchTermChange={setSearchTerm}
+                searchLoading={searchLoading}
+                searchError={searchError}
+                searchResults={searchResults}
+                selectedIdSet={selectedIdSet}
+                onPick={(recipe) => handlePickFromSource("search", recipe)}
               />
             </div>
-            <div className="flex gap-2 mt-2 sm:mt-0">
-              <Button type="button" onClick={executeSearch} disabled={searchLoading}>
-                {searchLoading ? "Søker…" : "Søk"}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => {
-                  setSearchTerm("");
-                  setSearchResults([]);
-                  setSearchError(null);
-                }}
-              >
-                Tøm
-              </Button>
-            </div>
           </div>
-          {searchError && <p className="text-sm text-red-500">{searchError}</p>}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
-            {searchResults.length ? (
-              searchResults.map((recipe, index) => renderSuggestionCard(recipe, "search", index))
-            ) : (
-              !searchError && <p className="text-sm text-gray-500">Søk for å hente forslag</p>
-            )}
-          </div>
-        </section>
+        </div>
+
+        {(weekPlanQuery.error || saveWeek.error || generateWeek.error) && (
+          <p className="text-center text-sm text-red-500">Noe gikk galt. Prøv igjen.</p>
+        )}
       </div>
 
-      {(weekPlanQuery.error || saveWeek.error || generateWeek.error) && (
-        <p className="text-center text-sm text-red-500">Noe gikk galt. Prøv igjen.</p>
-      )}
-    </div>
+      {/* DragOverlay i portal */}
+      {mounted && portalTarget &&
+        createPortal(
+          <DragOverlay
+            dropAnimation={null}
+            style={{
+              pointerEvents: "none",
+              zIndex: 1000,
+            }}
+          >
+            <DragOverlayCard
+              payload={overlayPayload}
+              overIndex={overIndex}
+              dayNames={DAY_NAMES}
+              week={week}
+              longGap={longGap}
+              frequent={frequent}
+              searchResults={searchResults}
+            />
+          </DragOverlay>,
+          portalTarget
+        )}
+    </DndContext>
   );
 }

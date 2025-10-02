@@ -1,21 +1,24 @@
 "use client";
 export const dynamic = "force-dynamic";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
-import { Button } from "@repo/ui";
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, ScrollArea } from "@repo/ui";
+import { IngredientCard } from "./components/IngredientCard";
 
 export default function IngredientsPage() {
     const [search, setSearch] = useState("");
+    const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [name, setName] = useState("");
     const [unit, setUnit] = useState("");
-    const [selectedId, setSelectedId] = useState<string | null>(null);
 
-    const list = trpc.ingredient.list.useQuery({ search: search || undefined });
+    const list = trpc.ingredient.list.useQuery({ search: undefined });
     const create = trpc.ingredient.create.useMutation({
         onSuccess: () => {
             setName("");
             setUnit("");
+            setIsDialogOpen(false);
             list.refetch();
         },
     });
@@ -24,90 +27,105 @@ export default function IngredientsPage() {
         { enabled: !!selectedId }
     );
 
+    const items = list.data ?? [];
+    const filtered = useMemo(() => {
+        const term = search.trim().toLowerCase();
+        if (!term) return items;
+        return items.filter((i) => `${i.name} ${i.unit ?? ""}`.toLowerCase().includes(term));
+    }, [items, search]);
+
     return (
         <div className="space-y-6">
-            <h1 className="text-xl font-bold">Ingredients</h1>
-
-            <div className="flex gap-2 items-end">
-                <div className="flex flex-col">
-                    <label className="text-sm">Search</label>
-                    <input className="border px-2 py-1" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <h1 className="text-xl font-bold text-center">Ingredienser</h1>
+            <div className="flex items-center justify-between gap-4">
+                <div className="flex-1 max-w-md">
+                    <Input
+                        placeholder="Søk etter ingredienser"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                    />
                 </div>
-                <Button type="button" onClick={() => list.refetch()}>
-                    Filter
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="min-w-[12rem]"
+                    onClick={() => setIsDialogOpen(true)}
+                    type="button"
+                >
+                    Legg til ingrediens
                 </Button>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                    <h2 className="font-semibold mb-2">All ingredients</h2>
-                    <ul className="divide-y border rounded">
-                        {(list.data ?? []).map((i: any) => (
-                            <li key={i.id} className="p-2 flex justify-between items-center">
-                                <button
-                                    className="text-left hover:underline"
-                                    onClick={() => setSelectedId(i.id)}
-                                >
-                                    {i.name} {i.unit ? <span className="text-xs text-gray-500">({i.unit})</span> : null}
-                                </button>
-                                <span className="text-xs text-gray-500">{i.usageCount} recipes</span>
-                            </li>
-                        ))}
-                        {!list.data?.length && (
-                            <li className="p-2 text-sm text-gray-500">No ingredients</li>
-                        )}
-                    </ul>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3 justify-items-center xl:min-w-[840px]">
+                {filtered.map((i, idx) => (
+                    <IngredientCard
+                        key={i.id}
+                        ingredient={{ id: i.id, name: i.name, unit: i.unit, usageCount: i.usageCount }}
+                        index={idx}
+                        selected={i.id === selectedId}
+                        onClick={() => setSelectedId(i.id)}
+                    />
+                ))}
+                {!filtered.length && (
+                    <div className="col-span-full text-sm text-muted-foreground">Ingen ingredienser</div>
+                )}
+            </div>
 
-                    <form
-                        className="mt-4 flex gap-2"
-                        onSubmit={(e) => {
-                            e.preventDefault();
-                            if (!name.trim()) return;
-                            create.mutate({ name, unit: unit || undefined });
-                        }}
-                    >
-                        <input
-                            className="border px-2 py-1 flex-1"
-                            placeholder="Name"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                        />
-                        <input
-                            className="border px-2 py-1 w-32"
-                            placeholder="Unit"
-                            value={unit}
-                            onChange={(e) => setUnit(e.target.value)}
-                        />
-                        <Button type="submit" disabled={create.isPending}>
-                            {create.isPending ? "Adding…" : "Add"}
-                        </Button>
-                    </form>
-                </div>
-
-                <div>
-                    <h2 className="font-semibold mb-2">Recipes using selected</h2>
-                    {!selectedId && <p className="text-sm text-gray-500">Select an ingredient</p>}
-                    {selectedId && detail.isLoading && <p>Loading…</p>}
-                    {selectedId && detail.data && (
-                        <div className="space-y-2">
-                            <div className="text-sm">
-                                <span className="font-medium">{detail.data.name}</span>{" "}
-                                {detail.data.unit ? (
-                                    <span className="text-gray-500">({detail.data.unit})</span>
-                                ) : null}
-                            </div>
+            <div className="rounded-lg border p-4">
+                <h2 className="font-semibold mb-2">Oppskrifter med valgt ingrediens</h2>
+                {!selectedId && <p className="text-sm text-muted-foreground">Velg en ingrediens</p>}
+                {selectedId && detail.isLoading && <p>Laster…</p>}
+                {selectedId && detail.data && (
+                    <div className="space-y-2">
+                        <div className="text-sm">
+                            <span className="font-medium">{detail.data.name}</span>{" "}
+                            {detail.data.unit ? (
+                                <span className="text-muted-foreground">({detail.data.unit})</span>
+                            ) : null}
+                        </div>
+                        <ScrollArea className="max-h-64 pr-2">
                             <ul className="list-disc pl-6">
                                 {detail.data.recipes.map((r: any) => (
                                     <li key={r.id}>
-                                        {r.name}{" "}
-                                        <span className="text-xs text-gray-500">({r.category})</span>
+                                        {r.name} {r.category ? <span className="text-xs text-muted-foreground">({r.category})</span> : null}
                                     </li>
                                 ))}
                             </ul>
-                        </div>
-                    )}
-                </div>
+                        </ScrollArea>
+                    </div>
+                )}
             </div>
+
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <DialogContent className="isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground ring-1 ring-border rounded-xl p-6 shadow-2xl sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Ny ingrediens</DialogTitle>
+                        <DialogDescription>Legg til en ny ingrediens i databasen.</DialogDescription>
+                    </DialogHeader>
+                    <form
+                        className="space-y-3"
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            if (!name.trim()) return;
+                            create.mutate({ name: name.trim(), unit: unit.trim() || undefined });
+                        }}
+                    >
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div className="sm:col-span-2">
+                                <label className="text-sm">Navn</label>
+                                <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+                            </div>
+                            <div>
+                                <label className="text-sm">Enhet</label>
+                                <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="f.eks. g, ml, stk" />
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button type="submit" disabled={create.isPending}>{create.isPending ? "Legger til…" : "Legg til"}</Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

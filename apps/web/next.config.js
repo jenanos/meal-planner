@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Ikke bruk: output: "export"
+  transpilePackages: ['@repo/ui'],
   reactStrictMode: true,
 };
 

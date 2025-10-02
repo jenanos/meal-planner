@@ -31,7 +31,7 @@ export const recipeRouter = router({
       const { page = 1, pageSize = 20, category, search } = input;
       const where: any = {
         ...(category ? { category } : {}),
-        ...(search ? { name: { contains: search, mode: "insensitive" as const } } : {}),
+        ...(search ? { name: { contains: search } } : {}),
       };
       const [total, items] = await Promise.all([
         prisma.recipe.count({ where }),

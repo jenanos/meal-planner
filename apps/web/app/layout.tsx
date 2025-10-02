@@ -4,22 +4,28 @@ import Link from "next/link";
 
 export const metadata = { title: "Meal Planner" };
 
+const NAV_ITEMS = [
+  { href: "/", label: "Ukesplan" },
+  { href: "/recipes", label: "Oppskrifter" },
+  { href: "/ingredients", label: "Ingredienser" },
+  { href: "/shopping-list", label: "Handleliste" },
+];
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>
+      <body className="min-h-screen antialiased">
         <Providers>
-          <header className="border-b">
-            <nav className="mx-auto max-w-6xl px-4 py-3 flex gap-4">
-              <Link href="/">Home</Link>
-              <Link href="/recipes">Recipes</Link>
-              <Link href="/ingredients">Ingredients</Link>
-              <Link href="/shopping-list">Shopping list</Link>
+          <header className="app-header border-b">
+            <nav className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3">
+              {NAV_ITEMS.map(({ href, label }) => (
+                <Link key={href} href={href} className="app-nav-link">
+                  {label}
+                </Link>
+              ))}
             </nav>
           </header>
-          <main className="mx-auto max-w-6xl px-4 py-6">
-            {children}
-          </main>
+          <main className="app-shell mx-auto my-10 max-w-6xl px-6 py-10">{children}</main>
         </Providers>
       </body>
     </html>

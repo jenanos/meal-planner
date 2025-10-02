@@ -305,6 +305,24 @@ async function main() {
     });
   }
 
+  // Seed some extra shopping catalog items (non-recipe)
+  const EXTRAS = [
+    "vaskemiddel",
+    "toalettpapir",
+    "tannkrem",
+    "oppvaskmiddel",
+    "sjampo",
+    "aluminiumsfolie",
+    "plastposer",
+  ];
+  for (const name of EXTRAS) {
+    await prisma.extraItemCatalog.upsert({
+      where: { name },
+      update: {},
+      create: { name },
+    });
+  }
+
   for (const r of RECIPES) {
     // Upsert oppskrift på navn (idempotent)
     const recipe = await prisma.recipe.upsert({
