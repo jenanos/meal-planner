@@ -27,7 +27,6 @@ export type Props = {
 };
 
 export function WeekCard({
-    index: _index,
     dayName,
     recipe,
     isDraggingTarget,

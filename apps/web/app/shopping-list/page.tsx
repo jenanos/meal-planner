@@ -50,8 +50,8 @@ export default function ShoppingListPage() {
 
   // Suggest extras based on input
   useEffect(() => {
-    const t = window.setTimeout(() => setDebouncedExtra(extraInput), 250);
-    return () => window.clearTimeout(t);
+    const t = setTimeout(() => setDebouncedExtra(extraInput), 250);
+    return () => clearTimeout(t);
   }, [extraInput]);
 
   const extraSuggest = trpc.planner.extraSuggest.useQuery(

@@ -2,7 +2,7 @@
 /* eslint-env browser */
 export const dynamic = "force-dynamic";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
 import { WeekSelector } from "./components/WeekSelector";
 import { WeekSlot } from "./components/WeekSlot";
@@ -27,7 +27,7 @@ import {
 import { createPortal } from "react-dom";
 
 import type { DragPayload, RecipeDTO, TimelineWeek, WeekPlanResult, WeekState } from "./types";
-import { clamp, lowerIdSet, makeEmptyWeek, parseDragId } from "./utils";
+import { lowerIdSet, makeEmptyWeek, parseDragId } from "./utils";
 
 const DAY_NAMES = [
   "Mandag",
@@ -51,10 +51,6 @@ function useIsTouchDevice() {
     );
   }, []);
   return isTouch;
-}
-
-function useVisualViewportOffset() {
-  // removed unused useVisualViewportOffset to satisfy lint
 }
 
 export default function PlannerPage() {
@@ -219,12 +215,6 @@ export default function PlannerPage() {
     return () => window.clearTimeout(handle);
   }, [searchTerm, executeSearch]);
 
-  const clearSearch = useCallback(() => {
-    setSearchTerm("");
-    setSearchResults([]);
-    setSearchError(null);
-  }, []);
-
   const addRecipeToFirstAvailableSlot = useCallback(
     async (recipe: RecipeDTO) => {
       const firstEmpty = week.findIndex((slot) => !slot);
@@ -382,7 +372,7 @@ export default function PlannerPage() {
     return "Endringer lagres automatisk";
   }, [saveWeek.isPending, generateWeek.isPending, isAutoGenerating, lastUpdatedISO]);
 
-  const handleSelectWeek = async (weekStart: string, indexHint?: number | null) => {
+  const handleSelectWeek = async (weekStart: string) => {
     const normalized = startOfWeekISO(weekStart);
     // If clicking the same week, do nothing
     if (normalized === activeWeekStart) return;
