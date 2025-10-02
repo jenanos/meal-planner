@@ -65,3 +65,27 @@ export const WeekPlanInput = z.object({
   recipeIdsByDay: z.array(z.string().uuid().nullable()).length(7),
 });
 export type WeekPlanInput = z.infer<typeof WeekPlanInput>;
+
+// Extra shopping items
+export const ExtraItemUpsert = z.object({
+  name: z.string().min(1),
+});
+export type ExtraItemUpsert = z.infer<typeof ExtraItemUpsert>;
+
+export const ExtraItemSuggest = z.object({
+  search: z.string().optional(),
+});
+export type ExtraItemSuggest = z.infer<typeof ExtraItemSuggest>;
+
+export const ExtraShoppingToggle = z.object({
+  weekStart: z.string().min(1),
+  name: z.string().min(1),
+  checked: z.boolean().optional(),
+});
+export type ExtraShoppingToggle = z.infer<typeof ExtraShoppingToggle>;
+
+export const ExtraShoppingRemove = z.object({
+  weekStart: z.string().min(1),
+  name: z.string().min(1),
+});
+export type ExtraShoppingRemove = z.infer<typeof ExtraShoppingRemove>;

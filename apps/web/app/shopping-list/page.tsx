@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
-import { Button, Badge } from "@repo/ui";
+import { Button, Badge, Input, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter, Separator } from "@repo/ui";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@repo/api";
 import { X } from "lucide-react";
@@ -38,11 +38,26 @@ export default function ShoppingListPage() {
   const [includeNextWeek, setIncludeNextWeek] = useState(false);
   const [checkedMap, setCheckedMap] = useState<Record<string, boolean>>({});
   const [removedKeys, setRemovedKeys] = useState<Set<string>>(new Set());
+  // Extras UI state
+  const [isAddExtraOpen, setIsAddExtraOpen] = useState(false);
+  const [extraInput, setExtraInput] = useState("");
+  const [debouncedExtra, setDebouncedExtra] = useState("");
 
   const shoppingQuery = trpc.planner.shoppingList.useQuery({
     weekStart: activeWeekStart,
     includeNextWeek,
   });
+
+  // Suggest extras based on input
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedExtra(extraInput), 250);
+    return () => window.clearTimeout(t);
+  }, [extraInput]);
+
+  const extraSuggest = trpc.planner.extraSuggest.useQuery(
+    { search: debouncedExtra.trim() || undefined } as any,
+    { enabled: debouncedExtra.trim().length > 0, staleTime: 5_000 }
+  );
 
   const includedWeeksSignature = useMemo(
     () => (shoppingQuery.data?.includedWeekStarts ?? (shoppingQuery.data?.weekStart ? [shoppingQuery.data.weekStart] : [])).join("|"),
@@ -59,6 +74,8 @@ export default function ShoppingListPage() {
   }, [includedWeeksSignature, shoppingQuery.data?.items]);
 
   const items = shoppingQuery.data?.items ?? [];
+  const extrasAll = ((shoppingQuery.data as any)?.extras ?? []) as Array<{ id: string; name: string; weekStart: string; checked: boolean }>;
+  const extras = extrasAll.filter((e: { weekStart: string }) => e.weekStart === (shoppingQuery.data?.weekStart ?? activeWeekStart));
   const isLoading = shoppingQuery.isLoading;
   const isFetching = shoppingQuery.isFetching;
 
@@ -79,6 +96,9 @@ export default function ShoppingListPage() {
   }, [shoppingQuery.data?.includedWeekStarts, shoppingQuery.data?.weekStart]);
 
   const updateShoppingItem = trpc.planner.updateShoppingItem.useMutation();
+  const extraToggle = trpc.planner.extraToggle.useMutation();
+  const extraRemove = trpc.planner.extraRemove.useMutation();
+  const extraAdd = trpc.planner.extraAdd.useMutation();
 
   function toggleItem(item: ShoppingListItem) {
     const key = `${item.ingredientId}::${item.unit ?? ""}`;
@@ -140,6 +160,33 @@ export default function ShoppingListPage() {
     );
   }
 
+  async function addOrToggleExtra(name: string) {
+    const clean = name.trim();
+    if (!clean) return;
+    // Ensure it's in catalog, then ensure it's present for active week (unchecked)
+    try {
+      if (!extraAdd.isPending) {
+        await extraAdd.mutateAsync({ name: clean } as any);
+      }
+    } catch (_) {
+      // ignore if already exists
+    }
+    await extraToggle.mutateAsync({ weekStart: activeWeekStart, name: clean, checked: false } as any);
+    setExtraInput("");
+    setIsAddExtraOpen(false);
+    shoppingQuery.refetch().catch(() => undefined);
+  }
+
+  async function toggleExtra(name: string, checked: boolean) {
+    await extraToggle.mutateAsync({ weekStart: activeWeekStart, name, checked: !checked } as any);
+    shoppingQuery.refetch().catch(() => undefined);
+  }
+
+  async function removeExtra(name: string) {
+    await extraRemove.mutateAsync({ weekStart: activeWeekStart, name } as any);
+    shoppingQuery.refetch().catch(() => undefined);
+  }
+
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-bold text-center sm:text-left">Handleliste</h1>
@@ -156,6 +203,56 @@ export default function ShoppingListPage() {
             {includeNextWeek ? "Fjern neste ukes plan" : "Inkluder neste ukes plan"}
           </Button>
           {isFetching && <span className="text-xs text-gray-500">Oppdaterer…</span>}
+        </div>
+        <div className="flex items-center gap-3">
+          <Dialog open={isAddExtraOpen} onOpenChange={setIsAddExtraOpen}>
+            <DialogTrigger asChild>
+              <Button type="button" variant="outline" size="sm">Legg til element</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Legg til i handlelisten</DialogTitle>
+                <DialogDescription>Skriv inn et element. Tidligere elementer dukker opp som forslag.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3">
+                <Input
+                  autoFocus
+                  placeholder="F.eks. vaskemiddel"
+                  value={extraInput}
+                  onChange={(e) => setExtraInput(e.target.value)}
+                />
+                {extraInput.trim().length > 0 && (
+                  <div className="min-h-6">
+                    {extraSuggest.isLoading ? (
+                      <p className="text-xs text-muted-foreground">Søker…</p>
+                    ) : (
+                      (() => {
+                        const suggestions = (extraSuggest.data ?? []) as Array<{ id: string; name: string }>;
+                        const exists = suggestions.some((s) => s.name.toLowerCase() === extraInput.trim().toLowerCase());
+                        return (
+                          <div className="flex flex-wrap gap-2">
+                            {suggestions.map((s) => (
+                              <Badge key={s.id} className="cursor-pointer" onClick={() => addOrToggleExtra(s.name)}>
+                                {s.name}
+                              </Badge>
+                            ))}
+                            {!exists && (
+                              <Badge className="cursor-pointer" onClick={() => addOrToggleExtra(extraInput.trim())}>
+                                Legg til "{extraInput.trim()}"
+                              </Badge>
+                            )}
+                          </div>
+                        );
+                      })()
+                    )}
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button type="button" onClick={() => addOrToggleExtra(extraInput.trim())} disabled={!extraInput.trim()}>Legg til</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -236,6 +333,42 @@ export default function ShoppingListPage() {
               );
             })}
           </ul>
+          {/* Extras section */}
+          <div className="my-6">
+            <Separator className="my-4" />
+            <h2 className="text-sm font-semibold mb-2">Andre ting</h2>
+            {extras.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Ingen egne elementer ennå.</p>
+            ) : (
+              <ul className="space-y-3">
+                {extras.map((e: { id: string; name: string; checked: boolean }) => (
+                  <li key={e.id} className="border rounded-lg p-3 bg-white">
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        className="h-5 w-5"
+                        checked={e.checked}
+                        onChange={() => toggleExtra(e.name, e.checked)}
+                        aria-label={`Marker ${e.name} som kjøpt`}
+                      />
+                      <div className={`flex-1 ${e.checked ? "text-gray-400" : "text-gray-900"}`}>{e.name}</div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-600 shrink-0"
+                        onClick={() => removeExtra(e.name)}
+                        aria-label={`Fjern ${e.name}`}
+                        title={`Fjern ${e.name}`}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       )}
     </div>

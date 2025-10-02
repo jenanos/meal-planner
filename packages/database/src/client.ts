@@ -18,11 +18,12 @@ function normalizeDevSqliteUrl() {
     url = `file:${defaultDb}`;
   } else if (url.startsWith("file:")) {
     const raw = url.slice("file:".length);
-    // Kandidater: relativ til CWD og relativ til database-pakken (stabilt)
-    const candidates = [
-      path.isAbsolute(raw) ? raw : path.resolve(process.cwd(), raw),
-      path.isAbsolute(raw) ? raw : path.resolve(__dirname, "../prisma", raw.replace(/^(\.\/)?/, "")),
-    ];
+    // Kandidater: foretrekk prisma-mappen først for å matche CLI, deretter CWD
+    const prismaPath = path.isAbsolute(raw)
+      ? raw
+      : path.resolve(__dirname, "../prisma", raw.replace(/^(\.\/)?/, ""));
+    const cwdPath = path.isAbsolute(raw) ? raw : path.resolve(process.cwd(), raw);
+    const candidates = [prismaPath, cwdPath];
     const pick = candidates.find((p) => fs.existsSync(path.dirname(p))) ?? defaultDb;
     url = `file:${pick}`;
   }
