@@ -189,7 +189,7 @@ export default function ShoppingListPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-bold text-center sm:text-left">Handleliste</h1>
+      <h1 className="text-xl font-bold text-center">Handleliste</h1>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">

@@ -5,10 +5,10 @@ import Link from "next/link";
 export const metadata = { title: "Meal Planner" };
 
 const NAV_ITEMS = [
-  { href: "/", label: "Home" },
-  { href: "/recipes", label: "Recipes" },
-  { href: "/ingredients", label: "Ingredients" },
-  { href: "/shopping-list", label: "Shopping list" },
+  { href: "/", label: "Ukesplan" },
+  { href: "/recipes", label: "Oppskrifter" },
+  { href: "/ingredients", label: "Ingredienser" },
+  { href: "/shopping-list", label: "Handleliste" },
 ];
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
