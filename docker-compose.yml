@@ -1,19 +1,24 @@
-version: "3"
+version: "3.9"
 
 volumes:
-  database:
+  postgres-data:
     driver: local
 
 services:
-  mysql:
-    platform: linux/amd64
-    image: mysql:8.0.32
-    container_name: turborepo_mysql
-    restart: always
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
     ports:
-      - 3306:3306
+      - "${POSTGRES_PORT:-5432}:5432"
     environment:
-      MYSQL_DATABASE: turborepo
-      MYSQL_ALLOW_EMPTY_PASSWORD: 1
+      POSTGRES_DB: ${POSTGRES_DB:-meal_planner_dev}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD env var is required}
     volumes:
-      - database:/var/lib/mysql
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    shm_size: 128mb

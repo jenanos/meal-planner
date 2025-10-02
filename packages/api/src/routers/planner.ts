@@ -11,6 +11,9 @@ interface DayMeta {
 const DAYS = [0, 1, 2, 3, 4, 5, 6] as const;
 export type DayIndex = typeof DAYS[number];
 
+const CATEGORY_KEYS = ["FISK", "VEGETAR", "KYLLING", "STORFE", "ANNET"] as const;
+type MealCategoryKey = typeof CATEGORY_KEYS[number];
+
 const DAY_META: Record<DayIndex, DayMeta> = {
   0: { label: "Mon" },
   1: { label: "Tue" },
@@ -28,7 +31,7 @@ function getDayMeta(d: DayIndex) {
 type RecipeDTO = {
   id: string;
   name: string;
-  category: string;
+  category: MealCategoryKey;
   everydayScore: number;
   healthScore: number;
   lastUsed: Date | null;
@@ -54,6 +57,8 @@ type WeekPlanResponse = {
   suggestions: WeekPlanSuggestionBuckets;
 };
 
+type PlannerConfig = ReturnType<typeof resolveConstraints>;
+
 function toNumber(value: any): number | null {
   if (value == null) return null;
   const num = typeof value === "number" ? value : Number(value);
@@ -64,7 +69,7 @@ function toDTO(r: any): RecipeDTO {
   return {
     id: r.id,
     name: r.name,
-    category: r.category,
+    category: normalizeDiet(String(r.category)),
     everydayScore: r.everydayScore,
     healthScore: r.healthScore,
     lastUsed: r.lastUsed ?? null,
@@ -347,7 +352,7 @@ function scoreRecipe(
   dayIndex: DayIndex,
   cfg: ReturnType<typeof resolveConstraints>,
   usedIngredients: Set<string>,
-  target: Record<string, number>
+  target: Record<MealCategoryKey, number>
 ) {
   const meta = getDayMeta(dayIndex);
   void meta;
@@ -376,7 +381,7 @@ function scoreRecipe(
   if (ds >= cfg.preferRecentGapDays) s += 2;
   else if (ds < 7) s -= 2;
 
-  if ((target[r.category] ?? 0) <= 0 && r.category !== "ANNET") s -= 5;
+  if (target[r.category] <= 0 && r.category !== "ANNET") s -= 5;
 
   return s;
 }
@@ -389,6 +394,93 @@ function resolveConstraints(input?: z.infer<typeof PlannerConstraints>) {
     beef: input?.beef ?? 1,
     preferRecentGapDays: input?.preferRecentGapDays ?? 21,
   };
+}
+
+function makeTargetMap(cfg: PlannerConfig): Record<MealCategoryKey, number> {
+  return {
+    FISK: cfg.fish,
+    VEGETAR: cfg.vegetarian,
+    KYLLING: cfg.chicken,
+    STORFE: cfg.beef,
+    ANNET: 0,
+  };
+}
+
+function pickWeekRecipes(pool: RecipeDTO[], cfg: PlannerConfig) {
+  const usedIngredients = new Set<string>();
+  const selected: RecipeDTO[] = [];
+  const selectedIds = new Set<string>();
+  const target = makeTargetMap(cfg);
+
+  for (const dayIndex of DAYS) {
+    const available = pool.filter((recipe) => !selectedIds.has(recipe.id));
+    if (!available.length) {
+      throw new Error("No recipes available for planner selection");
+    }
+
+    const wantsCategory = (recipe: RecipeDTO) =>
+      target[recipe.category] > 0 || recipe.category === "ANNET";
+
+    const prioritized = available.filter(wantsCategory);
+    const candidates = (prioritized.length ? prioritized : available).map((recipe) => ({
+      recipe,
+      score: scoreRecipe(recipe, dayIndex, cfg, usedIngredients, target),
+    }));
+
+    const pick = candidates.sort((a, b) => b.score - a.score)[0]?.recipe;
+    if (!pick) {
+      throw new Error("Failed to select recipe for day");
+    }
+
+    selected.push(pick);
+    selectedIds.add(pick.id);
+    target[pick.category] = Math.max(0, target[pick.category] - 1);
+    pick.ingredients.forEach((ingredient) => usedIngredients.add(ingredient.ingredientId));
+  }
+
+  return selected;
+}
+
+type SimpleRecipeInput = { id: string; diet: string } & Record<string, unknown>;
+
+function normalizeDiet(value: string): MealCategoryKey {
+  const upper = value.toUpperCase();
+  if (upper === "MEAT" || upper === "BEEF" || upper === "STORFE") return "STORFE";
+  if (upper === "CHICKEN" || upper === "KYLLING") return "KYLLING";
+  if (upper === "FISH" || upper === "FISK") return "FISK";
+  if (upper === "VEG" || upper === "VEGETAR" || upper === "VEGETARIAN") return "VEGETAR";
+  return "ANNET";
+}
+
+export function selectRecipes(recipes: SimpleRecipeInput[], targets: Record<string, number>) {
+  const pool: RecipeDTO[] = recipes.map((recipe) => {
+    const category = normalizeDiet(String(recipe.diet));
+    return {
+      id: recipe.id,
+      name: (recipe as { title?: string }).title ?? recipe.id,
+      category,
+      everydayScore: 3,
+      healthScore: 3,
+      lastUsed: null,
+      usageCount: 0,
+      ingredients: [],
+    } satisfies RecipeDTO;
+  });
+
+  const cfg = resolveConstraints({
+    fish: targets.FISH ?? targets.FISK ?? 0,
+    vegetarian: targets.VEG ?? targets.VEGETAR ?? 0,
+    chicken: targets.CHICKEN ?? targets.KYLLING ?? 0,
+    beef: targets.MEAT ?? targets.BEEF ?? targets.STORFE ?? 0,
+    preferRecentGapDays: 21,
+  });
+
+  const selected = pickWeekRecipes(pool, cfg);
+  const lookup = new Map(recipes.map((r) => [r.id, r]));
+  return selected.map((recipe) => {
+    const base = lookup.get(recipe.id);
+    return base ? { ...base } : { id: recipe.id, diet: recipe.category };
+  });
 }
 
 async function ensureWeekPlanResponse(weekStart: Date): Promise<WeekPlanResponse> {
@@ -443,41 +535,8 @@ export const plannerRouter = router({
       const cfg = resolveConstraints(input?.constraints);
 
       const pool = await fetchAllRecipes();
-      const usedIngredients = new Set<string>();
-      const selected: (RecipeDTO | null)[] = [];
-      const selectedIds = new Set<string>();
-
-      const target: Record<string, number> = {
-        FISK: cfg.fish,
-        VEGETAR: cfg.vegetarian,
-        KYLLING: cfg.chicken,
-        STORFE: cfg.beef,
-        ANNET: 0,
-      };
-
-      for (const dayIndex of DAYS) {
-        const candidates = pool
-          .filter((recipe) => !selectedIds.has(recipe.id))
-          .filter((recipe) => (target[recipe.category] ?? 0) > 0 || recipe.category === "ANNET");
-
-        const scored = candidates
-          .map((recipe) => ({ recipe, score: scoreRecipe(recipe, dayIndex, cfg, usedIngredients, target) }))
-          .sort((a, b) => b.score - a.score);
-
-        const pick = scored.length ? scored[0].recipe : null;
-        selected.push(pick);
-        if (pick) {
-          selectedIds.add(pick.id);
-          target[pick.category] = Math.max(0, (target[pick.category] ?? 0) - 1);
-          pick.ingredients.forEach((ingredient) => usedIngredients.add(ingredient.ingredientId));
-        }
-      }
-
-      const recipeIds = selected.map((recipe) => recipe?.id ?? null);
-      if (recipeIds.some((id) => !id)) {
-        throw new Error("Failed to generate a full week plan");
-      }
-
+      const selected = pickWeekRecipes(pool, cfg);
+      const recipeIds = selected.map((recipe) => recipe.id);
       const persisted = await writeWeekPlan(weekStart, recipeIds);
 
       const suggestions = buildSuggestionBuckets(

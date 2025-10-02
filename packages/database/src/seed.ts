@@ -1,4 +1,4 @@
-import { prisma } from "./client";
+import { Prisma, prisma } from "./client";
 
 type Cat = "FISK" | "VEGETAR" | "KYLLING" | "STORFE" | "ANNET";
 
@@ -298,10 +298,11 @@ const RECIPES: RecipeSeed[] = [
 async function main() {
   // Upsert ingredienser
   for (const ing of INGREDIENTS) {
+    const trimmedName = ing.name.trim();
     await prisma.ingredient.upsert({
-      where: { name: ing.name },
-      update: { unit: ing.unit },
-      create: { name: ing.name, unit: ing.unit },
+      where: { name: trimmedName },
+      update: { unit: ing.unit ?? null },
+      create: { name: trimmedName, unit: ing.unit ?? null },
     });
   }
 
@@ -316,20 +317,22 @@ async function main() {
     "plastposer",
   ];
   for (const name of EXTRAS) {
+    const trimmed = name.trim();
     await prisma.extraItemCatalog.upsert({
-      where: { name },
+      where: { name: trimmed },
       update: {},
-      create: { name },
+      create: { name: trimmed },
     });
   }
 
   for (const r of RECIPES) {
+    const trimmedName = r.name.trim();
     // Upsert oppskrift på navn (idempotent)
     const recipe = await prisma.recipe.upsert({
-      where: { name: r.name },
+      where: { name: trimmedName },
       update: {
         category: r.category,
-        description: r.description ?? null,
+        description: r.description?.trim() ?? null,
         everydayScore: r.everydayScore,
         healthScore: r.healthScore,
         usageCount: r.usageCount ?? 0,
@@ -337,9 +340,9 @@ async function main() {
           r.lastUsedDaysAgo == null ? null : daysAgo(r.lastUsedDaysAgo),
       },
       create: {
-        name: r.name,
+        name: trimmedName,
         category: r.category,
-        description: r.description ?? null,
+        description: r.description?.trim() ?? null,
         everydayScore: r.everydayScore,
         healthScore: r.healthScore,
         usageCount: r.usageCount ?? 0,
@@ -351,14 +354,14 @@ async function main() {
     // Koble ingredienser (fjern eksisterende koblinger og lag på nytt)
     await prisma.recipeIngredient.deleteMany({ where: { recipeId: recipe.id } });
     for (const iu of r.ingredients) {
-      const ing = await prisma.ingredient.findUnique({ where: { name: iu.name } });
+      const ing = await prisma.ingredient.findUnique({ where: { name: iu.name.trim() } });
       if (!ing) continue;
       await prisma.recipeIngredient.create({
         data: {
           recipeId: recipe.id,
           ingredientId: ing.id,
-          quantity: iu.quantity == null ? null : String(iu.quantity),
-          notes: iu.notes ?? null,
+          quantity: iu.quantity == null ? null : new Prisma.Decimal(String(iu.quantity)),
+          notes: iu.notes?.trim() ?? null,
         },
       });
     }

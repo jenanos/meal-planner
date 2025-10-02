@@ -6,7 +6,7 @@ import { TRPCError } from "@trpc/server";
 export const ingredientRouter = router({
     list: publicProcedure.input(IngredientListQuery.optional()).query(async ({ input }) => {
         const where = input?.search
-            ? { name: { contains: input.search } }
+            ? { name: { contains: input.search.trim() } }
             : {};
         const items = await prisma.ingredient.findMany({
             where,
@@ -23,10 +23,11 @@ export const ingredientRouter = router({
 
     create: publicProcedure.input(IngredientCreate).mutation(async ({ input }) => {
         try {
+            const trimmedName = input.name.trim();
             const up = await prisma.ingredient.upsert({
-                where: { name: input.name.trim() },
-                update: { unit: input.unit ?? null },
-                create: { name: input.name.trim(), unit: input.unit ?? null },
+                where: { name: trimmedName },
+                update: { unit: input.unit?.trim() ?? null },
+                create: { name: trimmedName, unit: input.unit?.trim() ?? null },
             });
             return { id: up.id, name: up.name, unit: up.unit ?? undefined };
         } catch (e: any) {

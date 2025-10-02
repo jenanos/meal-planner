@@ -1,5 +1,5 @@
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -7,17 +7,25 @@ generator client {
   provider = "prisma-client-js"
 }
 
+enum MealCategory {
+  FISK
+  VEGETAR
+  KYLLING
+  STORFE
+  ANNET
+}
+
 model Recipe {
-  id            String    @id @default(uuid())
-  name          String    @unique
-  description   String?
-  category      String // "FISK" | "VEGETAR" | "KYLLING" | "STORFE" | "ANNET" (valider i API/Zod)
+  id            String         @id @default(uuid()) @db.Uuid
+  name          String         @unique @db.Citext
+  description   String?        @db.Text
+  category      MealCategory
   everydayScore Int
   healthScore   Int
   lastUsed      DateTime?
-  usageCount    Int       @default(0)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  usageCount    Int            @default(0)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
   ingredients RecipeIngredient[]
   weekEntries WeekPlanEntry[]
@@ -27,19 +35,19 @@ model Recipe {
 }
 
 model Ingredient {
-  id   String  @id @default(uuid())
-  name String  @unique
-  unit String?
+  id   String  @id @default(uuid()) @db.Uuid
+  name String  @unique @db.Citext
+  unit String? @db.VarChar(32)
 
   recipes RecipeIngredient[]
 }
 
 model RecipeIngredient {
-  recipeId     String
-  ingredientId String
+  recipeId     String @db.Uuid
+  ingredientId String @db.Uuid
 
-  quantity Decimal?
-  notes    String?
+  quantity Decimal? @db.Decimal(12, 2)
+  notes    String?  @db.Text
 
   recipe     Recipe     @relation(fields: [recipeId], references: [id], onDelete: Cascade)
   ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
@@ -48,9 +56,9 @@ model RecipeIngredient {
 }
 
 model WeekPlan {
-  id          String   @id @default(uuid())
+  id          String   @id @default(uuid()) @db.Uuid
   weekStart   DateTime @unique
-  weekIndexId String?  @unique
+  weekIndexId String?  @unique @db.Uuid
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -59,7 +67,7 @@ model WeekPlan {
 }
 
 model WeekIndex {
-  id        String   @id @default(uuid())
+  id        String   @id @default(uuid()) @db.Uuid
   weekStart DateTime @unique
   createdAt DateTime @default(now())
 
@@ -67,10 +75,10 @@ model WeekIndex {
 }
 
 model WeekPlanEntry {
-  id         String @id @default(uuid())
-  weekPlanId String
+  id         String @id @default(uuid()) @db.Uuid
+  weekPlanId String @db.Uuid
   dayIndex   Int
-  recipeId   String
+  recipeId   String @db.Uuid
 
   weekPlan WeekPlan @relation(fields: [weekPlanId], references: [id], onDelete: Cascade)
   recipe   Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
@@ -79,21 +87,22 @@ model WeekPlanEntry {
 }
 
 model ShoppingState {
-  id           String   @id @default(uuid())
+  id           String   @id @default(uuid()) @db.Uuid
   weekStart    DateTime
-  ingredientId String
-  unit         String?
+  ingredientId String @db.Uuid
+  unit         String? @db.VarChar(32)
   checked      Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   @@unique([weekStart, ingredientId, unit])
+  @@index([weekStart])
 }
 
 // Catalog of user-added extra shopping items (not tied to recipes)
 model ExtraItemCatalog {
-  id        String   @id @default(uuid())
-  name      String   @unique
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique @db.Citext
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -102,9 +111,9 @@ model ExtraItemCatalog {
 
 // Extra shopping items added for specific weeks
 model ExtraShoppingItem {
-  id            String   @id @default(uuid())
+  id            String   @id @default(uuid()) @db.Uuid
   weekStart     DateTime
-  catalogItemId String
+  catalogItemId String   @db.Uuid
   checked       Boolean  @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -112,4 +121,5 @@ model ExtraShoppingItem {
   catalogItem ExtraItemCatalog @relation(fields: [catalogItemId], references: [id], onDelete: Cascade)
 
   @@unique([weekStart, catalogItemId])
+  @@index([weekStart])
 }
