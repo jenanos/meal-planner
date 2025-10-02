@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@repo/ui";
+import { Button, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@repo/ui";
 import { makeDragId } from "../utils";
 import type { RecipeDTO, WeekState, DayName } from "../types";
 import { WeekSlot } from "./WeekSlot";
@@ -85,16 +85,16 @@ export function MobileEditor({
             </label>
           </div>
 
-          <select
-            id="mobile-editor-source"
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-            value={mobileEditorView}
-            onChange={(event) => onChangeView(event.target.value as typeof mobileEditorView)}
-          >
-            <option value="frequent">Ofte brukt</option>
-            <option value="longGap">Lenge siden sist</option>
-            <option value="search">Søk</option>
-          </select>
+          <Select value={mobileEditorView} onValueChange={(v) => onChangeView(v as typeof mobileEditorView)}>
+            <SelectTrigger id="mobile-editor-source" className="w-full">
+              <SelectValue placeholder="Velg forslag" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="frequent">Ofte brukt</SelectItem>
+              <SelectItem value="longGap">Lenge siden sist</SelectItem>
+              <SelectItem value="search">Søk</SelectItem>
+            </SelectContent>
+          </Select>
 
           {mobileEditorView === "search" ? (
             <SearchSection
