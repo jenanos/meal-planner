@@ -5,6 +5,10 @@ ENV PNPM_HOME=/usr/local/share/pnpm
 ENV PATH="${PNPM_HOME}:$PATH"
 RUN corepack enable
 
+# Prisma requires OpenSSL at generate/runtime
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Workspace manifests first (better layer caching)
@@ -13,7 +17,8 @@ COPY packages/api/package.json packages/api/package.json
 COPY packages/database/package.json packages/database/package.json
 COPY apps/server/package.json apps/server/package.json
 
-RUN pnpm install --frozen-lockfile
+# Install deps without running scripts yet (Prisma postinstall needs schema files)
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 FROM base AS builder
 WORKDIR /app
@@ -21,10 +26,8 @@ COPY packages ./packages
 COPY apps/server ./apps/server
 COPY tsconfig.json ./tsconfig.json
 
-RUN pnpm --filter server... build
-
-# Remove dev deps to shrink runtime node_modules
-RUN pnpm prune --prod
+# Now that sources are present, generate Prisma client
+RUN pnpm --filter @repo/database run generate
 
 FROM node:20-slim AS runner
 ENV NODE_ENV=production
@@ -32,12 +35,18 @@ ENV PNPM_HOME=/usr/local/share/pnpm
 ENV PATH="${PNPM_HOME}:$PATH"
 RUN corepack enable
 
+# Prisma query engine needs OpenSSL at runtime
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/apps/server/dist ./apps/server/dist
+# Include workspace sources (for linked packages) and server sources
+COPY --from=builder /app/packages ./packages
+COPY --from=builder /app/apps/server ./apps/server
 COPY apps/server/package.json ./apps/server/package.json
 
 EXPOSE 4000
 
-CMD ["node", "apps/server/dist/apps/server/src/index.js"]
+CMD ["node", "--import", "tsx", "apps/server/src/index.ts"]

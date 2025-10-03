@@ -5,6 +5,10 @@ ENV PNPM_HOME=/usr/local/share/pnpm
 ENV PATH="${PNPM_HOME}:$PATH"
 RUN corepack enable
 
+# Prisma (via workspace) might need OpenSSL when generating during build
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
@@ -14,7 +18,8 @@ COPY packages/ui/package.json packages/ui/package.json
 COPY apps/server/package.json apps/server/package.json
 COPY apps/web/package.json apps/web/package.json
 
-RUN pnpm install --frozen-lockfile
+# Avoid running postinstall before prisma schema is available
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 FROM base AS builder
 WORKDIR /app
@@ -22,6 +27,7 @@ WORKDIR /app
 COPY packages ./packages
 COPY apps ./apps
 COPY tsconfig.json ./tsconfig.json
+RUN pnpm --filter @repo/database run generate
 
 ARG NEXT_PUBLIC_API_URL=http://localhost:4000
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
@@ -33,21 +39,17 @@ RUN pnpm prune --prod
 FROM node:20-slim AS runner
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV PNPM_HOME=/usr/local/share/pnpm
-ENV PATH="${PNPM_HOME}:$PATH"
 RUN corepack enable
 
 WORKDIR /app
 
-COPY --from=builder /app/node_modules ./node_modules
-COPY apps/web/package.json ./apps/web/package.json
-COPY apps/web/next.config.js ./apps/web/next.config.js
-COPY apps/web/postcss.config.mjs ./apps/web/postcss.config.mjs
-COPY --from=builder /app/apps/web/.next ./apps/web/.next
-COPY --from=builder /app/apps/web/public ./apps/web/public
+## Copy Next standalone output
+COPY --from=builder /app/apps/web/.next/standalone ./
+COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
+# public folder is optional; copy if it exists in future
 
 WORKDIR /app/apps/web
 
 EXPOSE 3000
 
-CMD ["pnpm", "start"]
+CMD ["node", "server.js"]

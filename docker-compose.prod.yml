@@ -1,22 +1,22 @@
-version: "3.9"
+name: meal-planner-prod
 
 volumes:
   postgres-data:
+    name: postgres-data-prod
 
 networks:
   internal:
     driver: bridge
+  cf_edge:
+    external: true
 
 services:
   postgres:
     image: postgres:16
     restart: unless-stopped
+    container_name: postgres-prod
     env_file:
       - .env.production
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-meal_planner}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD env var is required}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -32,12 +32,13 @@ services:
       context: .
       dockerfile: apps/server/Dockerfile
     restart: unless-stopped
+    container_name: meals-api
     env_file:
       - .env.production
     environment:
       NODE_ENV: production
       PORT: 4000
-      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-meal_planner}}
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD env var is required}@postgres:5432/${POSTGRES_DB:-meal_planner}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -45,19 +46,23 @@ services:
       - internal
 
   web:
+    container_name: meals-frontend
+    restart: unless-stopped
     build:
       context: .
       dockerfile: apps/web/Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://meals.jenanos.xyz}
-    restart: unless-stopped
+        # Bruk /api (via Next rewrites) i stedet for full URL – unngår CORS
+        NEXT_PUBLIC_API_URL: /api
     env_file:
       - apps/web/.env.production
     environment:
       NODE_ENV: production
-      API_URL: ${API_URL:-http://api:4000}
+      # Serverside-kall (Next server → api) går internt
+      API_URL: http://api:4000
     depends_on:
       api:
         condition: service_started
     networks:
       - internal
+      - cf_edge
