@@ -1,41 +1,26 @@
 import { PrismaClient } from "@prisma/client";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+export { Prisma } from "@prisma/client";
 
-// Sett en fornuftig default i dev hvis env ikke er satt
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+function ensureDatabaseUrl() {
+  const url = process.env.DATABASE_URL?.trim();
+  if (url) return;
 
-// Normaliser SQLite-URL i dev til absolutt sti og sørg for at katalogen finnes
-function normalizeDevSqliteUrl() {
-  if (process.env.NODE_ENV === "production") return;
-
-  const defaultDb = path.resolve(__dirname, "../prisma/dev.db");
-  let url = process.env.DATABASE_URL;
-
-  if (!url) {
-    url = `file:${defaultDb}`;
-  } else if (url.startsWith("file:")) {
-    const raw = url.slice("file:".length);
-    // Kandidater: foretrekk prisma-mappen først for å matche CLI, deretter CWD
-    const prismaPath = path.isAbsolute(raw)
-      ? raw
-      : path.resolve(__dirname, "../prisma", raw.replace(/^(\.\/)?/, ""));
-    const cwdPath = path.isAbsolute(raw) ? raw : path.resolve(process.cwd(), raw);
-    const candidates = [prismaPath, cwdPath];
-    const pick = candidates.find((p) => fs.existsSync(path.dirname(p))) ?? defaultDb;
-    url = `file:${pick}`;
+  if (process.env.NODE_ENV === "test") {
+    process.env.DATABASE_URL =
+      process.env.TEST_DATABASE_URL?.trim() ??
+      "postgresql://localhost:5432/placeholder_test_db";
+    return;
   }
 
-  const dbPath = url.replace(/^file:/, "");
-  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-  process.env.DATABASE_URL = url;
+  const hint =
+    process.env.NODE_ENV === "production"
+      ? "Set DATABASE_URL in your production environment (e.g. secret manager, container env vars)."
+      : "Create packages/database/prisma/.env based on .env.example and set DATABASE_URL for your local Postgres instance.";
 
-  // For debugging ved behov:
-  // console.log(`[database] Using ${process.env.DATABASE_URL}`);
+  throw new Error(`DATABASE_URL is not set. ${hint}`);
 }
-normalizeDevSqliteUrl();
+
+ensureDatabaseUrl();
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 

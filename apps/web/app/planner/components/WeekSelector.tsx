@@ -7,7 +7,7 @@ type Props = {
     weeks: TimelineWeekEntry[];
     activeWeekStart: string;
     activeWeekIndex: number;
-    onSelectWeek: (weekStart: string, indexHint?: number | null) => void;
+    onSelectWeek: (_weekStart: string, _indexHint?: number | null) => void;
 };
 
 export function WeekSelector({ weeks, activeWeekStart, activeWeekIndex, onSelectWeek }: Props) {

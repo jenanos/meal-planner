@@ -13,7 +13,7 @@ En moderne monorepo-app for å:
 | Område        | Valg |
 |---------------|------|
 | Monorepo      | pnpm workspaces |
-| Database      | SQLite (Prisma) |
+| Database      | PostgreSQL (Docker + Prisma) |
 | API           | tRPC + Fastify |
 | Frontend      | Next.js (App Router) |
 | UI            | Tailwind + interne komponenter |
@@ -37,23 +37,26 @@ npm i -g pnpm
 pnpm install
 
 # 4. Sett opp miljøvariabler
-# (disse filene finnes allerede – verifiser)
-# apps/web/.env.local
-#   NEXT_PUBLIC_API_URL=http://localhost:4000
-#
-# packages/database/prisma/.env
-#   DATABASE_URL="file:./dev.db"
+#   cp .env.example .env
+#   cp packages/database/prisma/.env.example packages/database/prisma/.env
+#   cp apps/server/.env.example apps/server/.env
+#   cp apps/web/.env.local.example apps/web/.env.local
+#   # Fyll inn egne verdier (bruk <db-host>, <db-port>, <db-name>, <your-password> som hint)
 
-# 5. Kjør migrasjoner (lager / oppdaterer dev.db)
-pnpm -C packages/database exec prisma migrate dev -n mealplanner_core
+# 5. Start Postgres (Docker Desktop må kjøre)
+POSTGRES_PASSWORD=<ditt-passord> docker compose up -d postgres
+# eller kopier `.env.example` til `.env` i rotkatalogen og fyll inn Postgres-verdiene først
 
-# 6. Seed eksempeldata
-pnpm -C packages/database exec prisma db seed
+# 6. Kjør migrasjoner mot Postgres
+pnpm --filter @repo/database db:migrate:deploy
 
-# 7. Start API-server
+# 7. Seed eksempeldata
+pnpm --filter @repo/database db:seed
+
+# 8. Start API-server
 pnpm --filter server dev
 
-# 8. Start web (ny terminal)
+# 9. Start web (ny terminal)
 pnpm --filter web dev
 
 # Åpne: http://localhost:3000
@@ -122,29 +125,41 @@ Data hentes via [`ingredientRouter`](packages/api/src/routers/ingredient.ts).
 
 ## 🔄 Resette databasen (dev)
 
-Bruk hvis schema endres kraftig eller dev.db blir inkonsistent.
+Bruk hvis schema endres kraftig eller du vil starte utviklingsdatabasen på nytt.
 
 ```bash
-pnpm -C packages/database exec prisma migrate reset -f
-pnpm -C packages/database exec prisma db seed
+pnpm --filter @repo/database prisma migrate reset -f
+pnpm --filter @repo/database db:seed
 ```
 
 Alternativ uten migrasjoner (force push):
 ```bash
-pnpm -C packages/database exec prisma db push --force-reset
-pnpm -C packages/database exec prisma db seed
+pnpm --filter @repo/database prisma db push --force-reset
+pnpm --filter @repo/database db:seed
 ```
 
 ---
 
 ## 🧵 Miljøvariabler
 
-| App | Fil | Viktig |
-|-----|-----|--------|
-| Web | `apps/web/.env.local` | NEXT_PUBLIC_API_URL |
-| DB  | `packages/database/prisma/.env` | DATABASE_URL |
+| Miljø | Fil (ikke sjekk inn) | Beskrivelse |
+|-------|----------------------|-------------|
+| Dev   | `.env`                               | Delte variabler for Docker Compose (`POSTGRES_*`). |
+| Dev   | `packages/database/prisma/.env`      | `DATABASE_URL` for lokal Postgres (bruk samme verdier som i `.env`). |
+| Dev   | `apps/server/.env`                   | Serverens `DATABASE_URL` (bruk samme verdier som over). |
+| Dev   | `apps/web/.env.local`                | Frontend-URLer (f.eks. `NEXT_PUBLIC_API_URL`). |
+| Prod  | `.env.production`                    | Compose-variabler for prod-stack. Kjør `docker compose --env-file .env.production …`. |
+| Prod  | `packages/database/prisma/.env.production` | Brukes av Prisma CLI mot prod (`--env-file prisma/.env.production`). |
+| Prod  | `apps/server/.env.production`        | Prod-runtime for server (settes gjerne som secrets). |
+| Prod  | `apps/web/.env.production`           | Next.js build/runtime-variabler for prod (f.eks. ekstern API-URL). |
 
-For lokal utvikling er standardene allerede satt.
+Malfilene `*.env.example` viser hvilke variabler som trengs. Kopiér til ønsket fil og fyll inn hemmelige verdier. For å bytte mellom dev/prod ved bruk av Prisma CLI kan du f.eks. kjøre:
+
+```bash
+pnpm --filter @repo/database prisma migrate deploy --env-file prisma/.env.production
+```
+
+I prod anbefales det å bruke container-/plattform-secrets i stedet for `.env`-filer.
 
 ---
 
@@ -173,7 +188,7 @@ Datasettet er lite → frontend kan hente “alt” (pageSize=1000) og filtrere 
 - ✅ Drag & drop i planner (egen komponent)
 - 📊 Historikkside: kategori- og ingrediensfordeling
 - 👥 Multi-husholdning / preferanser
-- ☁️ Postgres-migrering (prod)
+- ☁️ Prod-compose med Postgres + backup-rutiner
 - 🔒 Auth + roller
 - 📱 PWA / offline caching
 
@@ -197,4 +212,3 @@ Datasettet er lite → frontend kan hente “alt” (pageSize=1000) og filtrere 
 ---
 
 God hacking! 🧪 Si fra hvis du ønsker automatiserte tester, Postgres-oppsett eller dnd-forbedringer.
-

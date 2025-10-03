@@ -1,4 +1,4 @@
-import { prisma } from "@repo/database";
+import { Prisma, prisma } from "@repo/database";
 import { router, publicProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -18,10 +18,17 @@ function toDTO(r: any) {
       ingredientId: ri.ingredientId,
       name: ri.ingredient.name,
       unit: ri.ingredient.unit ?? undefined,
-      quantity: ri.quantity ?? undefined,
+      quantity: ri.quantity == null ? undefined : Number(ri.quantity),
       notes: ri.notes ?? undefined,
     })),
   };
+}
+
+function toDecimalInput(value: unknown) {
+  if (value == null) return null;
+  const raw = typeof value === "string" ? value.trim() : String(value);
+  if (raw === "") return null;
+  return new Prisma.Decimal(raw);
 }
 
 export const recipeRouter = router({
@@ -31,7 +38,7 @@ export const recipeRouter = router({
       const { page = 1, pageSize = 20, category, search } = input;
       const where: any = {
         ...(category ? { category } : {}),
-        ...(search ? { name: { contains: search } } : {}),
+        ...(search ? { name: { contains: search.trim() } } : {}),
       };
       const [total, items] = await Promise.all([
         prisma.recipe.count({ where }),
@@ -67,12 +74,12 @@ export const recipeRouter = router({
             ...data,
             ingredients: {
               create: ingredients.map((i) => ({
-                notes: i.notes ?? null,
-                quantity: i.quantity == null ? null : String(i.quantity),
+                notes: i.notes?.trim() ?? null,
+                quantity: toDecimalInput(i.quantity),
                 ingredient: {
                   connectOrCreate: {
                     where: { name: i.name.trim() },
-                    create: { name: i.name.trim(), unit: i.unit ?? null },
+                    create: { name: i.name.trim(), unit: i.unit?.trim() ?? null },
                   },
                 },
               })),
@@ -100,12 +107,12 @@ export const recipeRouter = router({
           ingredients: {
             deleteMany: {},
             create: ingredients.map((i) => ({
-              notes: i.notes ?? null,
-              quantity: i.quantity == null ? null : String(i.quantity),
+              notes: i.notes?.trim() ?? null,
+              quantity: toDecimalInput(i.quantity),
               ingredient: {
                 connectOrCreate: {
                   where: { name: i.name.trim() },
-                  create: { name: i.name.trim(), unit: i.unit ?? null },
+                  create: { name: i.name.trim(), unit: i.unit?.trim() ?? null },
                 },
               },
             })),

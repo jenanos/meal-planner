@@ -1,0 +1,16 @@
+# General
+node_modules
+.turbo
+.pnpm-store
+pnpm-debug.log
+.env*
+
+# Build outputs
+apps/web/.next
+apps/web/out
+apps/server/dist
+packages/**/dist
+
+# Runtime caches
+**/.DS_Store
+**/Thumbs.db

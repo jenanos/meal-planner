@@ -1,0 +1,68 @@
+name: meal-planner-prod
+
+volumes:
+  postgres-data:
+    name: postgres-data-prod
+
+networks:
+  internal:
+    driver: bridge
+  cf_edge:
+    external: true
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    container_name: postgres-prod
+    env_file:
+      - .env.production
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    restart: unless-stopped
+    container_name: meals-api
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD env var is required}@postgres:5432/${POSTGRES_DB:-meal_planner}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+
+  web:
+    container_name: meals-frontend
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # Bruk /api (via Next rewrites) i stedet for full URL – unngår CORS
+        NEXT_PUBLIC_API_URL: /api
+    env_file:
+      - apps/web/.env.production
+    environment:
+      NODE_ENV: production
+      # Serverside-kall (Next server → api) går internt
+      API_URL: http://api:4000
+    depends_on:
+      api:
+        condition: service_started
+    networks:
+      - internal
+      - cf_edge

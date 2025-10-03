@@ -39,8 +39,8 @@ export default function RecipesPage() {
 
   // Ingredient autosuggest (live as you type)
   useEffect(() => {
-    const t = window.setTimeout(() => setDebouncedIngSearch(ingSearch), 250);
-    return () => window.clearTimeout(t);
+    const t = setTimeout(() => setDebouncedIngSearch(ingSearch), 250);
+    return () => clearTimeout(t);
   }, [ingSearch]);
 
   const ingredientQuery = trpc.ingredient.list.useQuery(
