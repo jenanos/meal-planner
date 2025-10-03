@@ -58,6 +58,8 @@ services:
       - apps/web/.env.production
     environment:
       NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
       # Serverside-kall (Next server → api) går internt
       API_URL: http://api:4000
     depends_on:

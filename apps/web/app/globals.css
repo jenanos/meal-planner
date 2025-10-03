@@ -190,13 +190,23 @@
     box-shadow: 0 30px 60px -32px color-mix(in oklab, hsl(var(--primary)) 32%, transparent);
   }
 
+  /* Ensure dialogs have pleasant side clearance on small screens */
+  .dialog-content-responsive {
+    max-width: min(100vw - 2rem, 40rem);
+    margin-left: max(1rem, env(safe-area-inset-left));
+    margin-right: max(1rem, env(safe-area-inset-right));
+  }
+
   .app-nav-link {
     color: hsl(var(--foreground) / 0.78);
     border-radius: 999px;
-    padding: 0.35rem 0.85rem;
-    font-size: 0.9375rem;
+    padding: 0.5rem 0.9rem;
+    font-size: 0.975rem;
     font-weight: 500;
     transition: color 160ms ease, background-color 160ms ease, box-shadow 220ms ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
   }
 
   .app-nav-link:is(:hover, :focus-visible) {
