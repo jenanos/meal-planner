@@ -117,8 +117,8 @@ export function MobileEditor({
                       key={recipe.id}
                       id={makeDragId({ source: mobileEditorView, index, recipeId: recipe.id })}
                     >
-                      {({ setNodeRef, listeners, attributes, style }) => (
-                        <div ref={setNodeRef} style={style} {...listeners} {...attributes}>
+                      {({ setNodeRef, listeners, attributes, style, isDragging }) => (
+                        <div ref={setNodeRef} style={style} data-dragging={isDragging ? "true" : "false"} {...listeners} {...attributes}>
                           <SuggestionCard
                             recipe={recipe}
                             source={mobileEditorView}

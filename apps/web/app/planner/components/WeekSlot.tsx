@@ -28,8 +28,8 @@ export function WeekSlot({ index, dayName, recipe }: WeekSlotProps) {
   return (
     <div ref={setNodeRef}>
       <DraggableRecipe id={makeDragId({ source: "week", index, recipeId: recipe.id })}>
-        {({ setNodeRef: setDragRef, listeners, attributes, style }) => (
-          <div ref={setDragRef} style={style} {...listeners} {...attributes}>
+        {({ setNodeRef: setDragRef, listeners, attributes, style, isDragging }) => (
+          <div ref={setDragRef} style={style} {...listeners} {...attributes} data-dragging={isDragging ? "true" : "false"}>
             <WeekCard index={index} dayName={dayName} recipe={recipe} isDraggingTarget={isOver} />
           </div>
         )}

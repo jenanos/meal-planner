@@ -1,15 +1,15 @@
-import { Prisma, prisma } from "@repo/database";
+import { prisma } from "@repo/database";
 import { router, publicProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { RecipeCreate, RecipeListQuery, RecipeUpdate } from "../schemas";
+import { RecipeCreate, RecipeListQuery, RecipeUpdate, Category } from "../schemas";
 
 function toDTO(r: any) {
   return {
     id: r.id,
     name: r.name,
     description: r.description ?? undefined,
-    category: r.category,
+  category: String(r.category) as Category,
     everydayScore: r.everydayScore,
     healthScore: r.healthScore,
     lastUsed: r.lastUsed ?? undefined,
@@ -28,7 +28,8 @@ function toDecimalInput(value: unknown) {
   if (value == null) return null;
   const raw = typeof value === "string" ? value.trim() : String(value);
   if (raw === "") return null;
-  return new Prisma.Decimal(raw);
+  // Prisma Decimal fields accept string/number; return string to avoid importing Prisma.Decimal type
+  return raw;
 }
 
 export const recipeRouter = router({

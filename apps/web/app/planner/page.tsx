@@ -23,7 +23,9 @@ import {
   closestCenter,
   rectIntersection,
   pointerWithin,
+  MeasuringStrategy,
 } from "@dnd-kit/core";
+import { restrictToWindowEdges } from "@dnd-kit/modifiers";
 import { createPortal } from "react-dom";
 
 import type { DragPayload, RecipeDTO, TimelineWeek, WeekPlanResult, WeekState } from "./types";
@@ -76,7 +78,8 @@ export default function PlannerPage() {
   // dnd-kit: sensors + active id
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } }),
+    // On touch, require a short press to start dragging to allow normal scroll first
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
     useSensor(KeyboardSensor)
   );
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -242,8 +245,6 @@ export default function PlannerPage() {
   const onDragStart = useCallback((event: any) => {
     setActiveId(String(event.active.id));
     setOverIndex(null);
-    // lås scroll for å unngå toolbar-hop på mobil
-    if (typeof document !== "undefined") document.body.classList.add("dragging");
   }, []);
 
   const onDragOver = useCallback((event: any) => {
@@ -259,14 +260,12 @@ export default function PlannerPage() {
   const onDragCancel = useCallback(() => {
     setActiveId(null);
     setOverIndex(null);
-    if (typeof document !== "undefined") document.body.classList.remove("dragging");
   }, []);
 
   const onDragEnd = useCallback(async (event: any) => {
     const { active, over } = event;
     setActiveId(null);
     setOverIndex(null);
-    if (typeof document !== "undefined") document.body.classList.remove("dragging");
     if (!over) return;
 
     const overId = String(over.id);
@@ -425,7 +424,7 @@ export default function PlannerPage() {
   useEffect(() => setMounted(true), []);
   const portalTarget = typeof document === "undefined" ? null : document.body;
 
-  const isTouch = useIsTouchDevice();
+  const _isTouch = useIsTouchDevice();
 
   // Prefer intersection when the pointer/overlay overlaps a day; otherwise fall back to closest center
   const collisionAlgo = useCallback((args: any) => {
@@ -439,7 +438,14 @@ export default function PlannerPage() {
     <DndContext
       sensors={sensors}
       collisionDetection={collisionAlgo}
-      autoScroll={!isTouch}
+      autoScroll={true}
+      modifiers={[restrictToWindowEdges]}
+      measuring={{
+        droppable: {
+          // Recompute droppable rectangles after scroll/transform to avoid stale positions
+          strategy: MeasuringStrategy.Always,
+        },
+      }}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDragCancel={onDragCancel}
@@ -529,11 +535,8 @@ export default function PlannerPage() {
       {mounted && portalTarget &&
         createPortal(
           <DragOverlay
-            dropAnimation={null}
-            style={{
-              pointerEvents: "none",
-              zIndex: 1000,
-            }}
+            dropAnimation={{ duration: 150, easing: "ease-out" }}
+            style={{ pointerEvents: "none", zIndex: 1100 }}
           >
             <DragOverlayCard
               payload={overlayPayload}

@@ -91,7 +91,7 @@ export function MagicCard({
             />
             <div className="absolute inset-px rounded-[inherit] bg-[hsl(var(--magic-card-bg,var(--card)))]" />
             <motion.div
-                className="pointer-events-none absolute inset-px rounded-[inherit] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+                className="pointer-events-none absolute inset-px rounded-[inherit] opacity-0 transition-opacity duration-300 group-hover:opacity-100 data-[dragging=true]:opacity-0"
                 style={{
                     background: useMotionTemplate`
             radial-gradient(${gradientSize}px circle at ${mouseX}px ${mouseY}px, ${gradientColor}, transparent 100%)

@@ -40,6 +40,7 @@ export function SuggestionSection({
                 <div
                   ref={setNodeRef}
                   style={{ ...style, cursor: isDragging ? "grabbing" : style.cursor }}
+                  data-dragging={isDragging ? "true" : "false"}
                   {...listeners}
                   {...attributes}
                 >

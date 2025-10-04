@@ -1,0 +1,713 @@
+import { prisma } from "@repo/database";
+import { router, publicProcedure } from "../trpc";
+import { PlannerConstraints, WeekPlanInput, ExtraItemSuggest, ExtraItemUpsert, ExtraShoppingToggle, ExtraShoppingRemove } from "../schemas";
+import { z } from "zod";
+const DAYS = [0, 1, 2, 3, 4, 5, 6];
+const CATEGORY_KEYS = ["FISK", "VEGETAR", "KYLLING", "STORFE", "ANNET"];
+const DAY_META = {
+    0: { label: "Mon" },
+    1: { label: "Tue" },
+    2: { label: "Wed" },
+    3: { label: "Thu" },
+    4: { label: "Fri" },
+    5: { label: "Sat" },
+    6: { label: "Sun" },
+};
+function getDayMeta(d) {
+    return DAY_META[d];
+}
+function toNumber(value) {
+    if (value == null)
+        return null;
+    const num = typeof value === "number" ? value : Number(value);
+    return Number.isFinite(num) ? num : null;
+}
+function toDTO(r) {
+    return {
+        id: r.id,
+        name: r.name,
+        category: normalizeDiet(String(r.category)),
+        everydayScore: r.everydayScore,
+        healthScore: r.healthScore,
+        lastUsed: r.lastUsed ?? null,
+        usageCount: r.usageCount,
+        ingredients: (r.ingredients ?? []).map((ri) => ({
+            ingredientId: ri.ingredientId,
+            name: ri.ingredient.name,
+            unit: ri.ingredient.unit ?? null,
+            quantity: toNumber(ri.quantity),
+            notes: ri.notes ?? null,
+        })),
+    };
+}
+function daysSince(d) {
+    if (!d)
+        return Infinity;
+    return Math.floor((Date.now() - d.getTime()) / 86_400_000);
+}
+const suggestionKindSchema = z.enum(["longGap", "frequent", "search"]);
+const suggestionInputSchema = z.object({
+    excludeIds: z.array(z.string().uuid()).default([]),
+    limit: z.number().int().min(1).max(20).default(6),
+    type: suggestionKindSchema.default("longGap"),
+    search: z.string().optional(),
+});
+const weekStartInputSchema = z.object({
+    weekStart: z.string().min(1),
+});
+const weekTimelineInputSchema = z.object({
+    around: z.string().optional(),
+});
+const shoppingListInputSchema = z.object({
+    weekStart: z.string().optional(),
+    includeNextWeek: z.boolean().optional(),
+});
+function buildSuggestions(pool, opts) {
+    const excl = new Set(opts.exclude);
+    let cand = pool.filter((r) => !excl.has(r.id));
+    if (opts.kind === "search" && opts.search) {
+        const q = opts.search.toLowerCase();
+        cand = cand.filter((r) => r.name.toLowerCase().includes(q));
+    }
+    else if (opts.kind === "longGap") {
+        cand = cand.slice().sort((a, b) => daysSince(b.lastUsed) - daysSince(a.lastUsed));
+    }
+    else if (opts.kind === "frequent") {
+        cand = cand.slice().sort((a, b) => b.usageCount - a.usageCount);
+    }
+    return cand.slice(0, opts.limit);
+}
+function buildSuggestionBuckets(pool, exclude) {
+    return {
+        longGap: buildSuggestions(pool, {
+            kind: "longGap",
+            limit: 7,
+            exclude,
+        }),
+        frequent: buildSuggestions(pool, {
+            kind: "frequent",
+            limit: 7,
+            exclude,
+        }),
+    };
+}
+function ensureDate(value) {
+    const base = typeof value === "string" ? new Date(value) : value ?? new Date();
+    if (Number.isNaN(base.getTime())) {
+        throw new Error("Invalid date");
+    }
+    return base;
+}
+function startOfWeek(dateInput) {
+    const date = ensureDate(dateInput);
+    const utc = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+    const day = utc.getUTCDay();
+    const diff = (day === 0 ? -6 : 1) - day;
+    utc.setUTCDate(utc.getUTCDate() + diff);
+    utc.setUTCHours(0, 0, 0, 0);
+    return utc;
+}
+function addDays(date, days) {
+    const next = new Date(date);
+    next.setUTCDate(next.getUTCDate() + days);
+    return next;
+}
+function addWeeks(date, weeks) {
+    return addDays(date, weeks * 7);
+}
+function countOccurrences(ids) {
+    const map = new Map();
+    ids.forEach((id) => {
+        map.set(id, (map.get(id) ?? 0) + 1);
+    });
+    return map;
+}
+const PAST_WEEKS_WINDOW = 4;
+const FUTURE_WEEKS_LIMIT = 4;
+function maxAllowedFutureWeek() {
+    return addWeeks(startOfWeek(), FUTURE_WEEKS_LIMIT);
+}
+function clampToFutureLimit(weekStart) {
+    const max = maxAllowedFutureWeek();
+    return weekStart.getTime() > max.getTime() ? max : weekStart;
+}
+function enforceFutureLimit(weekStart) {
+    const max = maxAllowedFutureWeek();
+    if (weekStart.getTime() > max.getTime()) {
+        throw new Error("Uken ligger lenger frem i tid enn tillatt planleggingshorisont");
+    }
+}
+async function ensureWeekIndex(client, weekStart) {
+    const index = await client.weekIndex.upsert({
+        where: { weekStart },
+        update: {},
+        create: { weekStart },
+    });
+    await client.weekPlan.updateMany({
+        where: { weekStart, weekIndexId: null },
+        data: { weekIndexId: index.id },
+    });
+    return index;
+}
+async function ensureWeekIndexWindow(baseWeek) {
+    const maxFuture = maxAllowedFutureWeek();
+    const seen = new Map();
+    const currentWeek = startOfWeek();
+    for (let offset = -PAST_WEEKS_WINDOW; offset <= FUTURE_WEEKS_LIMIT; offset += 1) {
+        const candidate = addWeeks(baseWeek, offset);
+        if (candidate.getTime() > maxFuture.getTime())
+            continue;
+        seen.set(candidate.getTime(), candidate);
+    }
+    seen.set(currentWeek.getTime(), currentWeek);
+    // for (const week of seen.values()) {
+    for (const week of Array.from(seen.values())) {
+        await ensureWeekIndex(prisma, week);
+    }
+}
+async function writeWeekPlan(weekStart, recipeIds) {
+    if (recipeIds.length !== 7) {
+        throw new Error("recipeIds must have length 7");
+    }
+    return prisma.$transaction(async (tx) => {
+        const now = new Date();
+        const index = await ensureWeekIndex(tx, weekStart);
+        const plan = await tx.weekPlan.upsert({
+            where: { weekStart },
+            update: { weekIndexId: index.id },
+            create: { weekStart, weekIndexId: index.id, createdAt: now },
+        });
+        const prevEntries = await tx.weekPlanEntry.findMany({
+            where: { weekPlanId: plan.id },
+        });
+        const prevCounts = countOccurrences(prevEntries.map((entry) => entry.recipeId));
+        for (let i = 0; i < recipeIds.length; i = (i + 1)) {
+            const recipeId = recipeIds[i];
+            const where = { weekPlanId_dayIndex: { weekPlanId: plan.id, dayIndex: i } };
+            if (recipeId) {
+                await tx.weekPlanEntry.upsert({
+                    where,
+                    update: { recipeId },
+                    create: { weekPlanId: plan.id, dayIndex: i, recipeId },
+                });
+            }
+            else {
+                await tx.weekPlanEntry.deleteMany({
+                    where: {
+                        weekPlanId: plan.id,
+                        dayIndex: i,
+                    },
+                });
+            }
+        }
+        const newCounts = countOccurrences(recipeIds.filter((id) => Boolean(id)));
+        for (const [recipeId, newCount] of Array.from(newCounts.entries())) {
+            const prevCount = prevCounts.get(recipeId) ?? 0;
+            const diff = newCount - prevCount;
+            if (diff > 0) {
+                await tx.recipe.update({
+                    where: { id: recipeId },
+                    data: {
+                        usageCount: { increment: diff },
+                        lastUsed: weekStart,
+                    },
+                });
+            }
+        }
+        const entries = await tx.weekPlanEntry.findMany({
+            where: { weekPlanId: plan.id },
+            include: {
+                recipe: {
+                    include: {
+                        ingredients: { include: { ingredient: true } },
+                    },
+                },
+            },
+            orderBy: { dayIndex: "asc" },
+        });
+        return { plan, entries };
+    });
+}
+function composeWeekResponse(args) {
+    const { weekStart, updatedAt, entries, suggestions } = args;
+    const entryMap = new Map();
+    entries.forEach((entry) => {
+        entryMap.set(entry.dayIndex, entry.recipe ? toDTO(entry.recipe) : null);
+    });
+    return {
+        weekStart: weekStart.toISOString(),
+        updatedAt: updatedAt ? updatedAt.toISOString() : null,
+        days: DAYS.map((dayIndex) => ({
+            dayIndex,
+            recipe: entryMap.get(dayIndex) ?? null,
+        })),
+        suggestions,
+    };
+}
+async function fetchAllRecipes() {
+    const all = await prisma.recipe.findMany({
+        include: { ingredients: { include: { ingredient: true } } },
+    });
+    return all.map(toDTO);
+}
+function scoreRecipe(r, dayIndex, cfg, usedIngredients, target) {
+    const meta = getDayMeta(dayIndex);
+    void meta;
+    let s = 0;
+    const isMonWed = dayIndex <= 2;
+    const isThuSat = dayIndex >= 3 && dayIndex <= 5;
+    if (isMonWed) {
+        s += (4 - Math.min(r.everydayScore, 4)) * 2;
+        s += r.healthScore >= 4 ? 2 : 0;
+    }
+    else if (isThuSat) {
+        s += r.everydayScore >= 4 ? 2 : 0;
+        s += r.healthScore >= 3 ? 1 : 0;
+    }
+    else {
+        s += 1;
+    }
+    const overlap = r.ingredients.reduce((acc, ingredient) => acc + (usedIngredients.has(ingredient.ingredientId) ? 1 : 0), 0);
+    s += overlap * 1.5;
+    const ds = daysSince(r.lastUsed);
+    if (ds >= cfg.preferRecentGapDays)
+        s += 2;
+    else if (ds < 7)
+        s -= 2;
+    if (target[r.category] <= 0 && r.category !== "ANNET")
+        s -= 5;
+    return s;
+}
+function resolveConstraints(input) {
+    return {
+        fish: input?.fish ?? 2,
+        vegetarian: input?.vegetarian ?? 3,
+        chicken: input?.chicken ?? 1,
+        beef: input?.beef ?? 1,
+        preferRecentGapDays: input?.preferRecentGapDays ?? 21,
+    };
+}
+function makeTargetMap(cfg) {
+    return {
+        FISK: cfg.fish,
+        VEGETAR: cfg.vegetarian,
+        KYLLING: cfg.chicken,
+        STORFE: cfg.beef,
+        ANNET: 0,
+    };
+}
+function pickWeekRecipes(pool, cfg) {
+    const usedIngredients = new Set();
+    const selected = [];
+    const selectedIds = new Set();
+    const target = makeTargetMap(cfg);
+    for (const dayIndex of DAYS) {
+        const available = pool.filter((recipe) => !selectedIds.has(recipe.id));
+        if (!available.length) {
+            throw new Error("No recipes available for planner selection");
+        }
+        const wantsCategory = (recipe) => target[recipe.category] > 0 || recipe.category === "ANNET";
+        const prioritized = available.filter(wantsCategory);
+        const candidates = (prioritized.length ? prioritized : available).map((recipe) => ({
+            recipe,
+            score: scoreRecipe(recipe, dayIndex, cfg, usedIngredients, target),
+        }));
+        const pick = candidates.sort((a, b) => b.score - a.score)[0]?.recipe;
+        if (!pick) {
+            throw new Error("Failed to select recipe for day");
+        }
+        selected.push(pick);
+        selectedIds.add(pick.id);
+        target[pick.category] = Math.max(0, target[pick.category] - 1);
+        pick.ingredients.forEach((ingredient) => usedIngredients.add(ingredient.ingredientId));
+    }
+    return selected;
+}
+function normalizeDiet(value) {
+    const upper = value.toUpperCase();
+    if (upper === "MEAT" || upper === "BEEF" || upper === "STORFE")
+        return "STORFE";
+    if (upper === "CHICKEN" || upper === "KYLLING")
+        return "KYLLING";
+    if (upper === "FISH" || upper === "FISK")
+        return "FISK";
+    if (upper === "VEG" || upper === "VEGETAR" || upper === "VEGETARIAN")
+        return "VEGETAR";
+    return "ANNET";
+}
+export function selectRecipes(recipes, targets) {
+    const pool = recipes.map((recipe) => {
+        const category = normalizeDiet(String(recipe.diet));
+        return {
+            id: recipe.id,
+            name: recipe.title ?? recipe.id,
+            category,
+            everydayScore: 3,
+            healthScore: 3,
+            lastUsed: null,
+            usageCount: 0,
+            ingredients: [],
+        };
+    });
+    const cfg = resolveConstraints({
+        fish: targets.FISH ?? targets.FISK ?? 0,
+        vegetarian: targets.VEG ?? targets.VEGETAR ?? 0,
+        chicken: targets.CHICKEN ?? targets.KYLLING ?? 0,
+        beef: targets.MEAT ?? targets.BEEF ?? targets.STORFE ?? 0,
+        preferRecentGapDays: 21,
+    });
+    const selected = pickWeekRecipes(pool, cfg);
+    const lookup = new Map(recipes.map((r) => [r.id, r]));
+    return selected.map((recipe) => {
+        const base = lookup.get(recipe.id);
+        return base ? { ...base } : { id: recipe.id, diet: recipe.category };
+    });
+}
+async function ensureWeekPlanResponse(weekStart) {
+    await ensureWeekIndex(prisma, weekStart);
+    const [planWithEntries, pool] = await Promise.all([
+        prisma.weekPlan.findUnique({
+            where: { weekStart },
+            include: {
+                entries: {
+                    include: {
+                        recipe: {
+                            include: {
+                                ingredients: { include: { ingredient: true } },
+                            },
+                        },
+                    },
+                    orderBy: { dayIndex: "asc" },
+                },
+            },
+        }),
+        fetchAllRecipes(),
+    ]);
+    const entries = planWithEntries?.entries ?? [];
+    const exclude = entries
+        .map((entry) => entry.recipe?.id)
+        .filter((id) => Boolean(id));
+    const suggestions = buildSuggestionBuckets(pool, exclude);
+    return composeWeekResponse({
+        weekStart,
+        updatedAt: planWithEntries?.updatedAt ?? null,
+        entries,
+        suggestions,
+    });
+}
+const GenerateWeekInput = z.object({
+    weekStart: z.string().optional(),
+    constraints: PlannerConstraints.optional(),
+});
+export const plannerRouter = router({
+    generateWeekPlan: publicProcedure
+        .input(GenerateWeekInput.optional())
+        .mutation(async ({ input }) => {
+        const weekStart = startOfWeek(input?.weekStart);
+        enforceFutureLimit(weekStart);
+        const cfg = resolveConstraints(input?.constraints);
+        const pool = await fetchAllRecipes();
+        const selected = pickWeekRecipes(pool, cfg);
+        const recipeIds = selected.map((recipe) => recipe.id);
+        const persisted = await writeWeekPlan(weekStart, recipeIds);
+        const suggestions = buildSuggestionBuckets(pool, recipeIds.filter((id) => Boolean(id)));
+        return composeWeekResponse({
+            weekStart,
+            updatedAt: persisted.plan.updatedAt,
+            entries: persisted.entries,
+            suggestions,
+        });
+    }),
+    getWeekPlan: publicProcedure
+        .input(weekStartInputSchema)
+        .query(async ({ input }) => {
+        const targetWeek = startOfWeek(input.weekStart);
+        const weekStart = clampToFutureLimit(targetWeek);
+        return ensureWeekPlanResponse(weekStart);
+    }),
+    weekTimeline: publicProcedure
+        .input(weekTimelineInputSchema.optional())
+        .query(async ({ input }) => {
+        let baseWeek = startOfWeek(input?.around);
+        const clamped = clampToFutureLimit(baseWeek);
+        if (clamped.getTime() !== baseWeek.getTime()) {
+            baseWeek = clamped;
+        }
+        await ensureWeekIndexWindow(baseWeek);
+        const windowStart = addWeeks(baseWeek, -PAST_WEEKS_WINDOW);
+        const futureEndCandidate = addWeeks(baseWeek, FUTURE_WEEKS_LIMIT);
+        const maxFuture = maxAllowedFutureWeek();
+        const windowEnd = futureEndCandidate.getTime() > maxFuture.getTime() ? maxFuture : futureEndCandidate;
+        const stored = await prisma.weekIndex.findMany({
+            where: {
+                weekStart: {
+                    gte: windowStart,
+                    lte: windowEnd,
+                },
+            },
+            orderBy: { weekStart: "asc" },
+            include: {
+                plan: {
+                    select: {
+                        updatedAt: true,
+                        _count: { select: { entries: true } },
+                    },
+                },
+            },
+        });
+        const weeks = stored.map((item) => ({
+            weekStart: item.weekStart.toISOString(),
+            weekEnd: addDays(item.weekStart, 6).toISOString(),
+            updatedAt: item.plan?.updatedAt ? item.plan.updatedAt.toISOString() : null,
+            hasEntries: Boolean(item.plan?._count.entries),
+        }));
+        return {
+            currentWeekStart: baseWeek.toISOString(),
+            weeks,
+        };
+    }),
+    suggestions: publicProcedure
+        .input(suggestionInputSchema.optional())
+        .query(async ({ input }) => {
+        const args = suggestionInputSchema.parse(input ?? {});
+        const pool = await fetchAllRecipes();
+        if (args.type === "search" && !(args.search ?? "").trim()) {
+            return [];
+        }
+        return buildSuggestions(pool, {
+            kind: args.type,
+            limit: args.limit,
+            exclude: args.excludeIds,
+            search: args.search,
+        });
+    }),
+    shoppingList: publicProcedure
+        .input(shoppingListInputSchema.optional())
+        .query(async ({ input }) => {
+        const args = shoppingListInputSchema.parse(input ?? {});
+        const targetWeek = startOfWeek(args.weekStart);
+        const weekStart = clampToFutureLimit(targetWeek);
+        const includeNextWeek = Boolean(args.includeNextWeek);
+        const weekStarts = [weekStart];
+        if (includeNextWeek) {
+            const nextWeek = addWeeks(weekStart, 1);
+            const maxFuture = maxAllowedFutureWeek();
+            if (nextWeek.getTime() <= maxFuture.getTime()) {
+                weekStarts.push(nextWeek);
+            }
+        }
+        for (const week of weekStarts) {
+            await ensureWeekIndex(prisma, week);
+        }
+        const plans = await prisma.weekPlan.findMany({
+            where: { weekStart: { in: weekStarts } },
+            include: {
+                entries: {
+                    include: {
+                        recipe: {
+                            include: {
+                                ingredients: { include: { ingredient: true } },
+                            },
+                        },
+                    },
+                    orderBy: { dayIndex: "asc" },
+                },
+            },
+        });
+        const planMap = new Map();
+        plans.forEach((plan) => {
+            planMap.set(plan.weekStart.getTime(), plan);
+        });
+        const statuses = await prisma.shoppingState.findMany({
+            where: {
+                weekStart: { in: weekStarts },
+            },
+        });
+        const statusMap = new Map();
+        statuses.forEach((status) => {
+            const key = `${status.weekStart.toISOString()}::${status.ingredientId}::${status.unit ?? ""}`;
+            statusMap.set(key, status.checked);
+        });
+        const map = new Map();
+        for (const week of weekStarts) {
+            const plan = planMap.get(week.getTime());
+            for (const entry of plan?.entries ?? []) {
+                if (!entry.recipe)
+                    continue;
+                const recipe = toDTO(entry.recipe);
+                for (const ingredient of recipe.ingredients) {
+                    const unit = ingredient.unit ?? null;
+                    const key = `${ingredient.ingredientId}::${unit ?? ""}`;
+                    if (!map.has(key)) {
+                        map.set(key, {
+                            ingredientId: ingredient.ingredientId,
+                            name: ingredient.name,
+                            unit,
+                            sumQuantity: 0,
+                            hasQuantities: false,
+                            hasMissingQuantities: false,
+                            details: [],
+                            weeks: new Set(),
+                        });
+                    }
+                    const acc = map.get(key);
+                    const quantity = ingredient.quantity;
+                    if (quantity != null) {
+                        acc.sumQuantity += quantity;
+                        acc.hasQuantities = true;
+                    }
+                    else {
+                        acc.hasMissingQuantities = true;
+                    }
+                    acc.details.push({
+                        recipeId: recipe.id,
+                        recipeName: recipe.name,
+                        quantity,
+                        unit,
+                        notes: ingredient.notes,
+                        weekStart: week.toISOString(),
+                    });
+                    acc.weeks.add(week.toISOString());
+                }
+            }
+        }
+        const items = Array.from(map.values())
+            .map((item) => ({
+            ingredientId: item.ingredientId,
+            name: item.name,
+            unit: item.unit,
+            totalQuantity: item.hasQuantities ? item.sumQuantity : null,
+            hasMissingQuantities: item.hasMissingQuantities,
+            details: item.details,
+            weekStarts: Array.from(item.weeks.values()),
+            checked: Array.from(item.weeks.values()).every((weekIso) => statusMap.get(`${weekIso}::${item.ingredientId}::${item.unit ?? ""}`)),
+        }))
+            .sort((a, b) => a.name.localeCompare(b.name, "nb", { sensitivity: "base" }));
+        // Include extra shopping items for these weeks
+        const extraItems = await prisma.extraShoppingItem.findMany({
+            where: { weekStart: { in: weekStarts } },
+            include: { catalogItem: true },
+            orderBy: { createdAt: "asc" },
+        });
+        const extras = extraItems.map((e) => ({
+            id: e.id,
+            name: e.catalogItem.name,
+            weekStart: e.weekStart.toISOString(),
+            checked: e.checked,
+        }));
+        return {
+            weekStart: weekStart.toISOString(),
+            includedWeekStarts: weekStarts.map((week) => week.toISOString()),
+            items,
+            extras,
+        };
+    }),
+    updateShoppingItem: publicProcedure
+        .input(z.object({
+        ingredientId: z.string().uuid(),
+        unit: z.string().nullable().optional(),
+        weeks: z.array(z.string()),
+        checked: z.boolean(),
+    }))
+        .mutation(async ({ input }) => {
+        const weekDates = input.weeks.map((week) => startOfWeek(week));
+        const unitKey = input.unit ?? ""; // alltid string
+        await prisma.$transaction(weekDates.map((week) => prisma.shoppingState.upsert({
+            where: {
+                weekStart_ingredientId_unit: {
+                    weekStart: week,
+                    ingredientId: input.ingredientId,
+                    unit: unitKey, // endret fra null|string
+                },
+            },
+            create: {
+                weekStart: week,
+                ingredientId: input.ingredientId,
+                unit: unitKey, // endret fra null|string
+                checked: input.checked,
+            },
+            update: {
+                checked: input.checked,
+            },
+        })));
+        return { ok: true };
+    }),
+    saveWeekPlan: publicProcedure
+        .input(WeekPlanInput)
+        .mutation(async ({ input }) => {
+        const { weekStart: weekStartString, recipeIdsByDay } = input;
+        if (recipeIdsByDay.length !== 7) {
+            throw new Error("recipeIdsByDay must have length 7");
+        }
+        const weekStart = startOfWeek(weekStartString);
+        enforceFutureLimit(weekStart);
+        const persisted = await writeWeekPlan(weekStart, recipeIdsByDay);
+        const pool = await fetchAllRecipes();
+        const suggestions = buildSuggestionBuckets(pool, recipeIdsByDay.filter((id) => Boolean(id)));
+        return composeWeekResponse({
+            weekStart,
+            updatedAt: persisted.plan.updatedAt,
+            entries: persisted.entries,
+            suggestions,
+        });
+    }),
+    // Suggest extra items by prefix
+    extraSuggest: publicProcedure
+        .input(ExtraItemSuggest.optional())
+        .query(async ({ input }) => {
+        const q = (input?.search ?? "").trim();
+        if (!q)
+            return [];
+        const all = await prisma.extraItemCatalog.findMany({
+            where: { name: { contains: q } },
+            orderBy: { name: "asc" },
+            take: 20,
+        });
+        return all.map((x) => ({ id: x.id, name: x.name }));
+    }),
+    // Add an extra item to the current week's list (upsert into catalog)
+    extraAdd: publicProcedure
+        .input(ExtraItemUpsert)
+        .mutation(async ({ input }) => {
+        const name = input.name.trim();
+        const catalog = await prisma.extraItemCatalog.upsert({
+            where: { name },
+            update: {},
+            create: { name },
+        });
+        return { id: catalog.id, name: catalog.name };
+    }),
+    // Toggle or set check on an extra item for a given week
+    extraToggle: publicProcedure
+        .input(ExtraShoppingToggle)
+        .mutation(async ({ input }) => {
+        const week = startOfWeek(input.weekStart);
+        enforceFutureLimit(week);
+        const catalog = await prisma.extraItemCatalog.upsert({
+            where: { name: input.name.trim() },
+            update: {},
+            create: { name: input.name.trim() },
+        });
+        const existing = await prisma.extraShoppingItem.findUnique({
+            where: { weekStart_catalogItemId: { weekStart: week, catalogItemId: catalog.id } },
+        });
+        const checked = input.checked ?? !existing?.checked;
+        const saved = await prisma.extraShoppingItem.upsert({
+            where: { weekStart_catalogItemId: { weekStart: week, catalogItemId: catalog.id } },
+            create: { weekStart: week, catalogItemId: catalog.id, checked },
+            update: { checked },
+        });
+        return { id: saved.id, checked: saved.checked };
+    }),
+    // Remove an extra item from a specific week (keeps catalog)
+    extraRemove: publicProcedure
+        .input(ExtraShoppingRemove)
+        .mutation(async ({ input }) => {
+        const week = startOfWeek(input.weekStart);
+        const catalog = await prisma.extraItemCatalog.findUnique({ where: { name: input.name.trim() } });
+        if (!catalog)
+            return { ok: true };
+        await prisma.extraShoppingItem.deleteMany({ where: { weekStart: week, catalogItemId: catalog.id } });
+        return { ok: true };
+    }),
+});
