@@ -20,5 +20,18 @@ await app.register(fastifyTRPCPlugin, {
 
 app.get("/health", async () => ({ ok: true }));
 
+// Readiness: ensure DB is migrated (check for WeekIndex table existence)
+app.get("/ready", async () => {
+  try {
+    const client = await import("@repo/database");
+    // Use a lightweight query that relies on schema existence
+    await client.prisma.weekIndex.findFirst({ select: { id: true }, take: 1 });
+    return { ready: true };
+  } catch (e) {
+    // Fastify will default to 200; force 503 for not ready
+    throw Object.assign(new Error("Not ready"), { statusCode: 503 });
+  }
+});
+
 const port = Number(process.env.PORT ?? 4000);
 await app.listen({ port, host: "0.0.0.0" });

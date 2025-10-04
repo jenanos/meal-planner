@@ -49,4 +49,7 @@ COPY apps/server/package.json ./apps/server/package.json
 
 EXPOSE 4000
 
-CMD ["node", "--import", "tsx", "apps/server/src/index.ts"]
+COPY apps/server/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

@@ -39,11 +39,17 @@ services:
       NODE_ENV: production
       PORT: 4000
       DATABASE_URL: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD env var is required}@postgres:5432/${POSTGRES_DB:-meal_planner}"
+      SEED_ON_START: ${SEED_ON_START:-false}
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - internal
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:4000/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   web:
     container_name: meals-frontend
@@ -64,7 +70,7 @@ services:
       API_URL: http://api:4000
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
     networks:
       - internal
       - cf_edge
