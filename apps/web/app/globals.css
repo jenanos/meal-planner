@@ -160,6 +160,18 @@
   body.dragging {
     overflow: hidden;
     touch-action: none;
+    /* Neutralize transforms and filters on ancestors that can cause coordinate offsets for dnd-kit overlays */
+    --tw-backdrop-blur: blur(0px) !important;
+    --tw-blur: blur(0px) !important;
+    filter: none !important;
+    background-attachment: scroll !important;
+  }
+
+  /* Turn off backdrop-filter effects while dragging to avoid overlay offset issues */
+  body.dragging .app-shell,
+  body.dragging .app-header {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
   }
   html, body {
     overscroll-behavior: none;
