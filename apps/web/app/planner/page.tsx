@@ -520,18 +520,22 @@ export default function PlannerPage() {
 
   // Prefer intersection when the pointer/overlay overlaps a day; otherwise fall back to closest center
   const collisionAlgo = useCallback((args: any) => {
+    // On touch devices, prefer pure pointerWithin for stability and predictability on small screens
+    if (_isTouch) {
+      return pointerWithin(args);
+    }
     const pointerHits = pointerWithin(args);
     if (pointerHits.length) return pointerHits;
     const intersections = rectIntersection(args);
     return intersections.length ? intersections : closestCenter(args);
-  }, []);
+  }, [_isTouch]);
 
   return (
     <DndContext
       sensors={sensors}
       collisionDetection={collisionAlgo}
-      autoScroll={true}
-      modifiers={_isTouch ? [restrictToWindowEdges, snapCenterToCursor] : [restrictToWindowEdges]}
+      autoScroll={_isTouch ? false : true}
+      modifiers={_isTouch ? [snapCenterToCursor] : [restrictToWindowEdges]}
       measuring={{
         droppable: {
           strategy: MeasuringStrategy.Always,
