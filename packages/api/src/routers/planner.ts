@@ -187,11 +187,8 @@ function countOccurrences(ids: string[]) {
 const PAST_WEEKS_WINDOW = 4;
 const FUTURE_WEEKS_LIMIT = 4;
 
-type TxClient = Parameters<typeof prisma.$transaction>[0] extends (
-  tx: infer T
-) => Promise<any>
-  ? T
-  : never;
+// Avoid leaking Prisma types into exported router types
+type TxClient = any;
 
 function maxAllowedFutureWeek() {
   return addWeeks(startOfWeek(), FUTURE_WEEKS_LIMIT);

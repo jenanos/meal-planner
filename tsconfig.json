@@ -7,10 +7,10 @@
     "moduleResolution": "Bundler",
     "baseUrl": ".",
     "paths": {
-      "@repo/api": ["packages/api/src/index.ts"],
-      "@repo/api/*": ["packages/api/src/*"],
-      "@repo/database": ["packages/database/src/index.ts"],
-      "@repo/database/*": ["packages/database/src/*"],
+      "@repo/api": ["packages/api"],
+      "@repo/api/*": ["packages/api/*"],
+      "@repo/database": ["packages/database"],
+      "@repo/database/*": ["packages/database/*"],
       "@repo/ui": ["packages/ui/src/index.ts"],
       "@repo/ui/*": ["packages/ui/src/*"]
     }

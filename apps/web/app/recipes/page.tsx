@@ -214,7 +214,7 @@ export default function RecipesPage() {
           <DialogTrigger asChild>
             <Button variant="outline" size="sm" className="min-w-[12rem]" onClick={(e) => { e.preventDefault(); openCreate(); }} type="button">Legg til oppskrift</Button>
           </DialogTrigger>
-          <DialogContent className="isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground ring-1 ring-border rounded-xl p-6 shadow-2xl sm:max-w-lg">
+          <DialogContent className="dialog-content-responsive isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground ring-1 ring-border rounded-xl p-6 shadow-2xl max-w-[min(100vw-2rem,40rem)] sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>{editId ? "Rediger oppskrift" : "Ny oppskrift"}</DialogTitle>
               <DialogDescription>

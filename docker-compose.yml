@@ -24,3 +24,7 @@ services:
       timeout: 5s
       retries: 5
     shm_size: 128mb
+
+  # Note: API and Web run locally via pnpm dev in this repo.
+  # If you want to run API in Docker for dev as well, create a separate compose.override.yml
+  # with an api service that uses the same entrypoint as prod and depends_on postgres:healthy.
