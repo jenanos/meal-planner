@@ -8,6 +8,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./seed-data": {
+      "types": "./dist/seed-data.d.ts",
+      "import": "./dist/seed-data.js"
     }
   },
   "scripts": {

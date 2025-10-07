@@ -61,6 +61,20 @@ pnpm --filter web dev
 # Åpne: http://localhost:3000
 ```
 
+### 💻 Kun frontend (mock-modus)
+
+Vil du kjøre eller deploye kun Next.js-appen uten API/DB? Slå på mock-modus. Da bruker webappen seed-data direkte i minnet og simulerer alle tRPC-kall.
+
+```bash
+# Lokal utvikling – ingen backend kreves
+pnpm --filter web dev:mock
+
+# Eller bruk valgfri Next-kommando med flagg
+NEXT_PUBLIC_MOCK_MODE=true pnpm --filter web build
+```
+
+På Vercel (eller annen hosting) kan du sette miljøvariabelen `NEXT_PUBLIC_MOCK_MODE=true`, så deployes appen med mock-data.
+
 ---
 
 ## 🔑 Viktige filer
