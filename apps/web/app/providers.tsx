@@ -4,6 +4,7 @@ import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink } from "@trpc/client";
 import { trpc } from "../lib/trpcClient";
+import { mockLink } from "../lib/mock/trpcLink";
 
 function getApiUrl() {
     if (typeof window !== "undefined") return process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
@@ -12,9 +13,14 @@ function getApiUrl() {
 
 export function Providers({ children }: { children: React.ReactNode }) {
     const [queryClient] = useState(() => new QueryClient());
+    const useMock =
+        (process.env.NEXT_PUBLIC_MOCK_MODE ?? process.env.MOCK_MODE ?? "")
+            .toString()
+            .toLowerCase() === "true" ||
+        (process.env.NEXT_PUBLIC_MOCK_MODE ?? process.env.MOCK_MODE ?? "") === "1";
     const [trpcClient] = useState(() =>
         trpc.createClient({
-            links: [httpBatchLink({ url: `${getApiUrl()}/trpc` })],
+            links: useMock ? [mockLink] : [httpBatchLink({ url: `${getApiUrl()}/trpc` })],
         })
     );
 
