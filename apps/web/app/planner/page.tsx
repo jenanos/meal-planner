@@ -2,7 +2,7 @@
 /* eslint-env browser */
 export const dynamic = "force-dynamic";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
 import { WeekSelector } from "./components/WeekSelector";
 import { WeekSlot } from "./components/WeekSlot";
@@ -15,21 +15,22 @@ import { startOfWeekISO, addWeeksISO, deriveWeekLabel } from "../../lib/week";
 import {
   DndContext,
   DragOverlay,
-  MouseSensor,
-  TouchSensor,
+  PointerSensor,
   KeyboardSensor,
   useSensor,
   useSensors,
   closestCenter,
-  rectIntersection,
   pointerWithin,
-  MeasuringStrategy,
+  type DragStartEvent,
+  type DragOverEvent,
+  type DragEndEvent,
+  type CollisionDetection,
 } from "@dnd-kit/core";
-import { restrictToWindowEdges, snapCenterToCursor } from "@dnd-kit/modifiers";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { createPortal } from "react-dom";
 
-import type { DragPayload, RecipeDTO, TimelineWeek, WeekPlanResult, WeekState } from "./types";
-import { lowerIdSet, makeEmptyWeek, parseDragId } from "./utils";
+import type { PlannerDragItem, RecipeDTO, TimelineWeek, WeekPlanResult, WeekState } from "./types";
+import { lowerIdSet, makeEmptyWeek } from "./utils";
 
 const DAY_NAMES = [
   "Mandag",
@@ -40,20 +41,6 @@ const DAY_NAMES = [
   "Lørdag",
   "Søndag",
 ] as const;
-
-// Scroll-based week selector: no fixed window sizes needed
-
-function useIsTouchDevice() {
-  const [isTouch, setIsTouch] = useState(false);
-  useEffect(() => {
-    setIsTouch(
-      typeof window !== "undefined" &&
-      // coarse pointer ~ touch
-      (window.matchMedia?.("(pointer: coarse)")?.matches || (typeof navigator !== "undefined" && navigator.maxTouchPoints > 0))
-    );
-  }, []);
-  return isTouch;
-}
 
 export default function PlannerPage() {
   const utils = trpc.useUtils();
@@ -77,26 +64,11 @@ export default function PlannerPage() {
 
   // dnd-kit: sensors + active id
   const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
-    // On touch, require a short press to start dragging to allow normal scroll first
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
-    useSensor(KeyboardSensor)
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [overIndex, setOverIndex] = useState<number | null>(null); // NY: hvilken dag vi er over
-  // Dev logging throttle
-  const lastLogRef = useRef<number>(0);
-  const logEveryMs = 150; // throttle logs
-  const scrollLockRef = useRef<{ y: number; styles: Partial<CSSStyleDeclaration> } | null>(null);
-
-  const devLog = useCallback((label: string, payload: any) => {
-    if (process.env.NODE_ENV !== "development") return;
-    const now = Date.now();
-    if (now - lastLogRef.current < logEveryMs) return;
-    lastLogRef.current = now;
-    // eslint-disable-next-line no-console
-    console.log(`[dnd-dev] ${label}`, payload);
-  }, []);
+  const [activeItem, setActiveItem] = useState<PlannerDragItem | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null);
 
   const weekPlanQuery = trpc.planner.getWeekPlan.useQuery(
     { weekStart: activeWeekStart },
@@ -255,165 +227,70 @@ export default function PlannerPage() {
   );
 
   // dnd-kit handlers
-  const onDragStart = useCallback((event: any) => {
-    setActiveId(String(event.active.id));
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    const item = event.active.data.current as PlannerDragItem | undefined;
+    setActiveItem(item ?? null);
     setOverIndex(null);
-    // Mark body as dragging to disable problematic CSS (filters/blur) that can offset overlays
-    if (typeof document !== "undefined") {
-      document.body.classList.add("dragging");
-      // Lock body scroll on mobile to stabilize VisualViewport/coordinates
-      if (typeof window !== "undefined") {
-        const y = window.scrollY || window.pageYOffset || 0;
-        const prev: Partial<CSSStyleDeclaration> = {
-          position: document.body.style.position,
-          top: document.body.style.top,
-          left: document.body.style.left,
-          right: document.body.style.right,
-          width: document.body.style.width,
-        };
-        scrollLockRef.current = { y, styles: prev };
-        document.body.style.position = "fixed";
-        document.body.style.top = `-${y}px`;
-        document.body.style.left = "0";
-        document.body.style.right = "0";
-        document.body.style.width = "100%";
-      }
-    }
-    try {
-      const vv = (typeof window !== "undefined" && (window as any).visualViewport) || null;
-      devLog("start", {
-        active: event.active,
-        scrollX: typeof window !== "undefined" ? window.scrollX : undefined,
-        scrollY: typeof window !== "undefined" ? window.scrollY : undefined,
-        vv: vv ? { pageTop: vv.pageTop, pageLeft: vv.pageLeft, offsetTop: vv.offsetTop, offsetLeft: vv.offsetLeft, scale: vv.scale, width: vv.width, height: vv.height } : null,
-      });
-    } catch {
-      /* ignore visual viewport errors */
-    }
   }, []);
 
-  const onDragOver = useCallback((event: any) => {
-    const overId: string | null = event.over ? String(event.over.id) : null;
-    if (overId && overId.startsWith("day-")) {
-      const idx = Number(overId.slice(4));
-      setOverIndex(Number.isFinite(idx) ? idx : null);
+  const handleDragOver = useCallback((event: DragOverEvent) => {
+    const overData = event.over?.data.current as { type?: string; index?: number } | undefined;
+    if (overData?.type === "week-slot" && typeof overData.index === "number") {
+      setOverIndex(overData.index);
     } else {
       setOverIndex(null);
     }
-    try {
-      devLog("over", {
-        over: event.over,
-        delta: event.delta,
-        collisions: event.collisions,
-      });
-    } catch {
-      /* ignore debug logging errors */
-    }
   }, []);
 
-  const onDragCancel = useCallback(() => {
-    setActiveId(null);
+  const handleDragCancel = useCallback(() => {
+    setActiveItem(null);
     setOverIndex(null);
-    if (typeof document !== "undefined") {
-      document.body.classList.remove("dragging");
-      // Restore scroll lock
-      const lock = scrollLockRef.current;
-      if (lock) {
-        const prev = lock.styles;
-        document.body.style.position = prev.position ?? "";
-        document.body.style.top = prev.top ?? "";
-        document.body.style.left = prev.left ?? "";
-        document.body.style.right = prev.right ?? "";
-        document.body.style.width = prev.width ?? "";
-        if (typeof window !== "undefined") {
-          window.scrollTo(0, lock.y);
-        }
-        scrollLockRef.current = null;
-      }
-    }
-    devLog("cancel", null);
   }, []);
 
-  const onDragEnd = useCallback(async (event: any) => {
-    const { active, over } = event;
-    setActiveId(null);
-    setOverIndex(null);
-    if (typeof document !== "undefined") {
-      document.body.classList.remove("dragging");
-      // Restore scroll lock
-      const lock = scrollLockRef.current;
-      if (lock) {
-        const prev = lock.styles;
-        document.body.style.position = prev.position ?? "";
-        document.body.style.top = prev.top ?? "";
-        document.body.style.left = prev.left ?? "";
-        document.body.style.right = prev.right ?? "";
-        document.body.style.width = prev.width ?? "";
-        if (typeof window !== "undefined") {
-          window.scrollTo(0, lock.y);
+  const handleDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      const { active, over } = event;
+      const activeData = active.data.current as PlannerDragItem | undefined;
+      const overData = over?.data.current as { type?: string; index?: number } | undefined;
+
+      setOverIndex(null);
+      setActiveItem(null);
+
+      if (!activeData || !overData || overData.type !== "week-slot" || typeof overData.index !== "number") {
+        return;
+      }
+
+      const targetIndex = overData.index;
+
+      if (activeData.source === "week") {
+        const originIndex = activeData.index;
+        if (originIndex === targetIndex) {
+          return;
         }
-        scrollLockRef.current = null;
+        const currentRecipe = week[originIndex];
+        if (!currentRecipe) {
+          return;
+        }
+        const next = [...week];
+        const [moved] = next.splice(originIndex, 1);
+        next.splice(targetIndex, 0, moved ?? null);
+        await commitWeekPlan(next);
+        return;
       }
-    }
-    try {
-      devLog("end", {
-        active,
-        over,
-        delta: event.delta,
-      });
-    } catch {
-      /* ignore debug logging errors */
-    }
-    if (!over) return;
 
-    const overId = String(over.id);
-    if (!overId.startsWith("day-")) return;
-
-    const targetIndex = Number(overId.slice(4));
-    if (!Number.isFinite(targetIndex)) return;
-
-    const payload = parseDragId(String(active.id));
-    if (!payload) return;
-
-    // Helper to resolve the dragged recipe
-    const getRecipe = (): RecipeDTO | null => {
-      if (payload.source === "week") {
-        return week[payload.index] ?? null;
-      }
-      const lists: Record<Exclude<DragPayload["source"], "week">, RecipeDTO[]> = {
-        longGap,
-        frequent,
-        search: searchResults,
-      };
-      const list = lists[payload.source as Exclude<DragPayload["source"], "week">];
-      return list[payload.index] ?? list.find((r) => r.id === payload.recipeId) ?? null;
-    };
-
-    const recipe = getRecipe();
-    if (!recipe) return;
-
-    if (payload.source === "week") {
-      if (payload.index === targetIndex) return;
-      const next = [...week];
-      const [moved] = next.splice(payload.index, 1);
-      next.splice(targetIndex, 0, moved);
-      await commitWeekPlan(next);
-      return;
-    }
-
-    // From suggestions -> into week
-    {
+      const recipe = activeData.recipe;
       const next = [...week];
       next[targetIndex] = recipe;
       await commitWeekPlan(next);
 
-      if (payload.source === "longGap") {
-        setLongGap((prev) => prev.filter((x) => x.id !== recipe.id));
-      } else if (payload.source === "frequent") {
-        setFrequent((prev) => prev.filter((x) => x.id !== recipe.id));
+      if (activeData.source === "longGap") {
+        setLongGap((prev) => prev.filter((item) => item.id !== recipe.id));
+      } else if (activeData.source === "frequent") {
+        setFrequent((prev) => prev.filter((item) => item.id !== recipe.id));
       }
-    }
-  }, [week, longGap, frequent, searchResults, commitWeekPlan]);
+    },
+    [week, commitWeekPlan, setLongGap, setFrequent]
+  );
 
   const timelineWeeks = useMemo<TimelineWeek[]>(() => {
     if (!timelineQuery.data) return [];
@@ -516,41 +393,26 @@ export default function PlannerPage() {
     return () => window.clearInterval(interval);
   }, [week, lastSavedIds, saveWeek, activeWeekStart, applyWeekData, timelineQuery]);
 
-  const overlayPayload = useMemo(() => (activeId ? parseDragId(activeId) : null), [activeId]);
-
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const portalTarget = typeof document === "undefined" ? null : document.body;
 
-  const _isTouch = useIsTouchDevice();
-
-  // Prefer intersection when the pointer/overlay overlaps a day; otherwise fall back to closest center
-  const collisionAlgo = useCallback((args: any) => {
-    // On touch devices, prefer pure pointerWithin for stability and predictability on small screens
-    if (_isTouch) {
-      return pointerWithin(args);
-    }
+  const collisionDetection = useCallback<CollisionDetection>((args) => {
     const pointerHits = pointerWithin(args);
-    if (pointerHits.length) return pointerHits;
-    const intersections = rectIntersection(args);
-    return intersections.length ? intersections : closestCenter(args);
-  }, [_isTouch]);
+    if (pointerHits.length) {
+      return pointerHits;
+    }
+    return closestCenter(args);
+  }, []);
 
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={collisionAlgo}
-      autoScroll={_isTouch ? false : true}
-      modifiers={_isTouch ? [snapCenterToCursor] : [restrictToWindowEdges]}
-      measuring={{
-        droppable: {
-          strategy: MeasuringStrategy.Always,
-        },
-      }}
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
-      onDragCancel={onDragCancel}
-      onDragEnd={onDragEnd}
+      collisionDetection={collisionDetection}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragCancel={handleDragCancel}
+      onDragEnd={handleDragEnd}
     >
       <div className="space-y-6">
         <h1 className="text-xl font-bold text-center">Ukesplan</h1>
@@ -640,15 +502,7 @@ export default function PlannerPage() {
             dropAnimation={{ duration: 150, easing: "ease-out" }}
             style={{ pointerEvents: "none", zIndex: 1100 }}
           >
-            <DragOverlayCard
-              payload={overlayPayload}
-              overIndex={overIndex}
-              dayNames={DAY_NAMES}
-              week={week}
-              longGap={longGap}
-              frequent={frequent}
-              searchResults={searchResults}
-            />
+            <DragOverlayCard item={activeItem} overIndex={overIndex} dayNames={DAY_NAMES} />
           </DragOverlay>,
           portalTarget
         )}

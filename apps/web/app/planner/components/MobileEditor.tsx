@@ -1,7 +1,6 @@
 "use client";
 
 import { Button, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@repo/ui";
-import { makeDragId } from "../utils";
 import type { RecipeDTO, WeekState, DayName } from "../types";
 import { WeekSlot } from "./WeekSlot";
 import { DraggableRecipe } from "./DraggableRecipe";
@@ -112,13 +111,21 @@ export function MobileEditor({
               {suggestions.length ? (
                 suggestions.map((recipe, index) => {
                   const isInWeek = selectedIdSet.has(recipe.id);
+                  const draggableId = `${mobileEditorView}-${recipe.id}-${index}`;
                   return (
                     <DraggableRecipe
-                      key={recipe.id}
-                      id={makeDragId({ source: mobileEditorView, index, recipeId: recipe.id })}
+                      key={draggableId}
+                      id={draggableId}
+                      data={{ source: mobileEditorView, index, recipe }}
                     >
                       {({ setNodeRef, listeners, attributes, style, isDragging }) => (
-                        <div ref={setNodeRef} style={style} data-dragging={isDragging ? "true" : "false"} {...listeners} {...attributes}>
+                        <div
+                          ref={setNodeRef}
+                          style={style}
+                          data-dragging={isDragging ? "true" : undefined}
+                          {...listeners}
+                          {...attributes}
+                        >
                           <SuggestionCard
                             recipe={recipe}
                             source={mobileEditorView}

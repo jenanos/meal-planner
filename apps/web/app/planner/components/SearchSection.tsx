@@ -2,7 +2,6 @@
 
 import { Input } from "@repo/ui";
 import type { RecipeDTO } from "../types";
-import { makeDragId } from "../utils";
 import { DraggableRecipe } from "./DraggableRecipe";
 import { SuggestionCard } from "./SuggestionCard";
 
@@ -68,23 +67,26 @@ export function SearchSection({
       {searchError ? <p className="text-sm text-red-500 text-center">{searchError}</p> : null}
 
       <div className={resultsContainerClass}>
-        {searchResults.length ? (
-          searchResults.map((recipe, index) => (
-            <DraggableRecipe key={recipe.id} id={makeDragId({ source: "search", index, recipeId: recipe.id })}>
-              {({ setNodeRef, listeners, attributes, style }) => (
-                <div ref={setNodeRef} style={style} {...listeners} {...attributes}>
-                  <SuggestionCard
-                    recipe={recipe}
-                    source="search"
-                    index={index}
-                    isInWeek={selectedIdSet.has(recipe.id)}
-                    onPick={() => onPick(recipe)}
-                  />
-                </div>
-              )}
-            </DraggableRecipe>
-          ))
-        ) : null}
+        {searchResults.length
+          ? searchResults.map((recipe, index) => {
+              const draggableId = `search-${recipe.id}-${index}`;
+              return (
+                <DraggableRecipe key={draggableId} id={draggableId} data={{ source: "search", index, recipe }}>
+                  {({ setNodeRef, listeners, attributes, style, isDragging }) => (
+                    <div ref={setNodeRef} style={style} data-dragging={isDragging ? "true" : undefined} {...listeners} {...attributes}>
+                      <SuggestionCard
+                        recipe={recipe}
+                        source="search"
+                        index={index}
+                        isInWeek={selectedIdSet.has(recipe.id)}
+                        onPick={() => onPick(recipe)}
+                      />
+                    </div>
+                  )}
+                </DraggableRecipe>
+              );
+            })
+          : null}
       </div>
     </section>
   );

@@ -2,29 +2,37 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import { useDraggable, type DraggableAttributes } from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
+import type { PlannerDragItem } from "../types";
 
 type SafeListeners = Record<string, any>;
 
-type DraggableRecipeProps = {
-  id: string;
+type DraggableRenderArgs = {
   // eslint-disable-next-line no-unused-vars
-  children: (args: {
-    // eslint-disable-next-line no-unused-vars
-    setNodeRef: (node: HTMLElement | null) => void;
-    listeners: SafeListeners;        // spread-safe
-    attributes: DraggableAttributes; // spread-safe
-    style: CSSProperties;
-    isDragging: boolean;
-  }) => ReactNode;
+  setNodeRef: (node: HTMLElement | null) => void;
+  listeners: SafeListeners;        // spread-safe
+  attributes: DraggableAttributes; // spread-safe
+  style: CSSProperties;
+  isDragging: boolean;
 };
 
-export function DraggableRecipe({ id, children }: DraggableRecipeProps) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id });
+type DraggableRecipeProps = {
+  id: string;
+  data: PlannerDragItem;
+  // eslint-disable-next-line no-unused-vars
+  children: (args: DraggableRenderArgs) => ReactNode;
+};
 
-  // Allow natural scrolling when NOT dragging (mobile), and disable only while dragging
-  const style: CSSProperties = isDragging
-    ? { opacity: 0, touchAction: "none", cursor: "grabbing" }
-    : { touchAction: "auto", cursor: "grab" };
+export function DraggableRecipe({ id, data, children }: DraggableRecipeProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useDraggable({ id, data });
+
+  const style: CSSProperties = {
+    transform: transform ? CSS.Translate.toString(transform) : undefined,
+    transition,
+    cursor: isDragging ? "grabbing" : "grab",
+    touchAction: isDragging ? "none" : undefined,
+    opacity: isDragging ? 0.3 : undefined,
+  };
 
   const safeListeners: SafeListeners = (listeners ?? {}) as SafeListeners;
   const safeAttributes: DraggableAttributes = (attributes ?? {}) as DraggableAttributes;
