@@ -287,7 +287,9 @@ export default function PlannerPage() {
         scrollY: typeof window !== "undefined" ? window.scrollY : undefined,
         vv: vv ? { pageTop: vv.pageTop, pageLeft: vv.pageLeft, offsetTop: vv.offsetTop, offsetLeft: vv.offsetLeft, scale: vv.scale, width: vv.width, height: vv.height } : null,
       });
-    } catch { }
+    } catch {
+      /* ignore visual viewport errors */
+    }
   }, []);
 
   const onDragOver = useCallback((event: any) => {
@@ -304,7 +306,9 @@ export default function PlannerPage() {
         delta: event.delta,
         collisions: event.collisions,
       });
-    } catch { }
+    } catch {
+      /* ignore debug logging errors */
+    }
   }, []);
 
   const onDragCancel = useCallback(() => {
@@ -357,7 +361,9 @@ export default function PlannerPage() {
         over,
         delta: event.delta,
       });
-    } catch { }
+    } catch {
+      /* ignore debug logging errors */
+    }
     if (!over) return;
 
     const overId = String(over.id);

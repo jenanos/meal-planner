@@ -1,6 +1,6 @@
 {
   "$schema": "https://turborepo.com/schema.json",
-  "globalEnv": ["API_URL", "NEXT_PUBLIC_API_URL", "CI"],
+  "globalEnv": ["API_URL", "NEXT_PUBLIC_API_URL", "NEXT_PUBLIC_MOCK_MODE", "MOCK_MODE", "NODE_ENV", "CI"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
