@@ -9,7 +9,12 @@ export type RecipeDTO = NonNullable<WeekRecipe>;
 export type WeekState = (RecipeDTO | null)[];
 
 export type DragSource = "week" | "longGap" | "frequent" | "search";
-export type DragPayload = { source: DragSource; index: number; recipeId: string };
+
+export type PlannerDragItem = {
+  source: DragSource;
+  index: number;
+  recipe: RecipeDTO;
+};
 
 export type TimelineWeek = { weekStart: string; hasEntries: boolean; label: string };
 export type TimelineWeekEntry = { week: TimelineWeek | null; index: number | null };

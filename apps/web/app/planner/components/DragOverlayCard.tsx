@@ -1,66 +1,48 @@
 "use client";
 
-import type { DragPayload, RecipeDTO, WeekState, DayName } from "../types";
+import type { CSSProperties } from "react";
+import type { PlannerDragItem, DayName } from "../types";
 import { MagicCard } from "@repo/ui";
 import { dayBaseHsl, dayHoverGradients, getDayByIndex } from "../palette";
 import { CategoryEmoji } from "../../components/CategoryEmoji";
 
 type Props = {
-  payload: DragPayload | null;
+  item: PlannerDragItem | null;
   overIndex: number | null;
   dayNames: readonly string[];
-  week: WeekState;
-  longGap: RecipeDTO[];
-  frequent: RecipeDTO[];
-  searchResults: RecipeDTO[];
 };
 
-export function DragOverlayCard({ payload, overIndex, dayNames, week, longGap, frequent, searchResults }: Props) {
-  if (!payload) return null;
+export function DragOverlayCard({ item, overIndex, dayNames }: Props) {
+  if (!item) return null;
 
-  const getRecipe = (): RecipeDTO | null => {
-    if (payload.source === "week") return week[payload.index] ?? null;
-    const lists: Record<Exclude<DragPayload["source"], "week">, RecipeDTO[]> = {
-      longGap,
-      frequent,
-      search: searchResults,
-    };
-    const list = lists[payload.source as Exclude<DragPayload["source"], "week">];
-    return list[payload.index] ?? list.find((item) => item.id === payload.recipeId) ?? null;
-  };
-
-  const recipe = getRecipe();
-  if (!recipe) return null;
-
-  const isAdd = payload.source !== "week";
+  const { recipe, source } = item;
+  const isAdd = source !== "week";
   const targetLabel = overIndex != null ? dayNames[overIndex] : "Slipp på en dag";
 
-  // Dynamiske farger: når vi har en overIndex, bruk ukedagens palett; ellers bruk kildebasert fallback
-  let styleVar: React.CSSProperties | undefined;
+  let styleVar: CSSProperties | undefined;
   let gradientFrom = "#EA580C";
   let gradientTo = "#16A34A";
   let gradientColor = "#B45309";
 
   if (overIndex != null && Number.isFinite(overIndex)) {
     const dayName = (dayNames[overIndex] as DayName) ?? getDayByIndex(overIndex);
-    styleVar = { ["--magic-card-bg" as any]: dayBaseHsl[dayName] } as React.CSSProperties;
-    const g = dayHoverGradients[dayName];
-    gradientFrom = g.from;
-    gradientTo = g.to;
-    gradientColor = g.color;
+    styleVar = { ["--magic-card-bg" as any]: dayBaseHsl[dayName] } as CSSProperties;
+    const gradient = dayHoverGradients[dayName];
+    gradientFrom = gradient.from;
+    gradientTo = gradient.to;
+    gradientColor = gradient.color;
   } else {
-    // Fallback etter kilde
-    if (payload.source === "frequent") {
-      gradientFrom = "#EA580C"; // orange
-      gradientTo = "#16A34A";   // green
+    if (source === "frequent") {
+      gradientFrom = "#EA580C";
+      gradientTo = "#16A34A";
       gradientColor = "#EA580C";
-    } else if (payload.source === "longGap") {
-      gradientFrom = "#92400E"; // brown
-      gradientTo = "#DC2626";   // red
+    } else if (source === "longGap") {
+      gradientFrom = "#92400E";
+      gradientTo = "#DC2626";
       gradientColor = "#B91C1C";
     } else {
-      gradientFrom = "#F59E0B"; // amber
-      gradientTo = "#84CC16";   // lime
+      gradientFrom = "#F59E0B";
+      gradientTo = "#84CC16";
       gradientColor = "#B45309";
     }
   }

@@ -1,7 +1,6 @@
 "use client";
 
 import type { RecipeDTO } from "../types";
-import { makeDragId } from "../utils";
 import { DraggableRecipe } from "./DraggableRecipe";
 import { SuggestionCard } from "./SuggestionCard";
 
@@ -34,30 +33,33 @@ export function SuggestionSection({
       <h2 className="font-semibold text-center">{title}</h2>
       <div className={containerClass}>
         {recipes.length ? (
-          recipes.map((recipe, index) => (
-            <DraggableRecipe key={recipe.id} id={makeDragId({ source, index, recipeId: recipe.id })}>
-              {({ setNodeRef, listeners, attributes, style, isDragging }) => (
-                <div
-                  ref={setNodeRef}
-                  style={{ ...style, cursor: isDragging ? "grabbing" : style.cursor }}
-                  data-dragging={isDragging ? "true" : "false"}
-                  {...listeners}
-                  {...attributes}
-                >
-                  <SuggestionCard
-                    recipe={recipe}
-                    source={source}
-                    index={index}
-                    isInWeek={selectedIdSet.has(recipe.id)}
-                    onPick={() => {
-                      if (isDragging) return; // don't trigger pick while dragging
-                      onPick(recipe);
-                    }}
-                  />
-                </div>
-              )}
-            </DraggableRecipe>
-          ))
+          recipes.map((recipe, index) => {
+            const draggableId = `${source}-${recipe.id}-${index}`;
+            return (
+              <DraggableRecipe key={draggableId} id={draggableId} data={{ source, index, recipe }}>
+                {({ setNodeRef, listeners, attributes, style, isDragging }) => (
+                  <div
+                    ref={setNodeRef}
+                    style={style}
+                    data-dragging={isDragging ? "true" : undefined}
+                    {...listeners}
+                    {...attributes}
+                  >
+                    <SuggestionCard
+                      recipe={recipe}
+                      source={source}
+                      index={index}
+                      isInWeek={selectedIdSet.has(recipe.id)}
+                      onPick={() => {
+                        if (isDragging) return; // don't trigger pick while dragging
+                        onPick(recipe);
+                      }}
+                    />
+                  </div>
+                )}
+              </DraggableRecipe>
+            );
+          })
         ) : (
           <p className="text-sm text-gray-500">{emptyText}</p>
         )}
