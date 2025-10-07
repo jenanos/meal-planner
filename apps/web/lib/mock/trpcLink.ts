@@ -1,5 +1,5 @@
-import { observable } from "@trpc/client/observable";
-import type { TRPCLink } from "@trpc/client";
+import { TRPCClientError, type TRPCLink } from "@trpc/client";
+import { observable } from "@trpc/server/observable";
 import type { AppRouter } from "@repo/api";
 import { handleMockMutation, handleMockQuery } from "./store";
 
@@ -7,14 +7,13 @@ export const mockLink: TRPCLink<AppRouter> = () => ({ op }) => {
   return observable((observer) => {
     const exec = op.type === "query" ? handleMockQuery : op.type === "mutation" ? handleMockMutation : null;
     if (!exec) {
-      observer.error(new Error(`Mock-link støtter ikke operasjonstype: ${op.type}`));
+      observer.error(TRPCClientError.from<AppRouter>(new Error(`Mock-link støtter ikke operasjonstype: ${op.type}`)));
       return () => undefined;
     }
 
     let cancelled = false;
 
-    Promise.resolve()
-      .then(() => exec(op.path, op.input))
+    Promise.resolve(exec(op.path, op.input))
       .then((data) => {
         if (cancelled) return;
         observer.next({ result: { type: "data", data } });
@@ -22,7 +21,7 @@ export const mockLink: TRPCLink<AppRouter> = () => ({ op }) => {
       })
       .catch((err) => {
         if (cancelled) return;
-        observer.error(err);
+        observer.error(TRPCClientError.from<AppRouter>(err instanceof Error ? err : new Error("Mock-link feilet")));
       });
 
     return () => {

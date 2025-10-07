@@ -2,7 +2,7 @@ export type SeedCategory = "FISK" | "VEGETAR" | "KYLLING" | "STORFE" | "ANNET";
 
 export type SeedIngredient = { name: string; unit?: string };
 
-export type SeedIngredientUsage = { name: string; quantity?: string | number; notes?: string };
+export type SeedIngredientUsage = { name: string; quantity?: string | number; unit?: string; notes?: string };
 
 export type SeedRecipe = {
   name: string;
