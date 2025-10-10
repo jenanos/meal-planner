@@ -15,20 +15,16 @@ import { startOfWeekISO, addWeeksISO, deriveWeekLabel } from "../../lib/week";
 import {
   DndContext,
   DragOverlay,
-  MouseSensor,
-  TouchSensor,
+  PointerSensor,
   KeyboardSensor,
   useSensor,
   useSensors,
   closestCenter,
   pointerWithin,
-  rectIntersection,
   type DragStartEvent,
   type DragOverEvent,
   type DragEndEvent,
   type CollisionDetection,
-  type Active,
-  type Over,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { createPortal } from "react-dom";
@@ -68,44 +64,11 @@ export default function PlannerPage() {
 
   // dnd-kit: sensors + active id
   const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 150, tolerance: 8 },
-    }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
   const [activeItem, setActiveItem] = useState<PlannerDragItem | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
-
-  const getWeekSlotIndex = useCallback((over: Over | null | undefined) => {
-    if (!over) return null;
-    const overData = over.data.current as { type?: string; index?: number } | undefined;
-    if (overData?.type === "week-slot" && typeof overData.index === "number") {
-      return overData.index;
-    }
-    if (typeof over?.id === "string") {
-      const match = /week-slot-(\d+)/.exec(over.id);
-      if (match) {
-        return Number(match[1]);
-      }
-    }
-    return null;
-  }, []);
-
-  const getActiveWeekIndex = useCallback((active: Active | null | undefined) => {
-    if (!active) return null;
-    const data = active.data.current as PlannerDragItem | undefined;
-    if (data?.source === "week" && typeof data.index === "number") {
-      return data.index;
-    }
-    if (typeof active.id === "string") {
-      const match = /week-card-(\d+)/.exec(active.id);
-      if (match) {
-        return Number(match[1]);
-      }
-    }
-    return null;
-  }, []);
 
   const weekPlanQuery = trpc.planner.getWeekPlan.useQuery(
     { weekStart: activeWeekStart },
@@ -270,13 +233,14 @@ export default function PlannerPage() {
     setOverIndex(null);
   }, []);
 
-  const handleDragOver = useCallback(
-    (event: DragOverEvent) => {
-      const index = getWeekSlotIndex(event.over);
-      setOverIndex(index);
-    },
-    [getWeekSlotIndex]
-  );
+  const handleDragOver = useCallback((event: DragOverEvent) => {
+    const overData = event.over?.data.current as { type?: string; index?: number } | undefined;
+    if (overData?.type === "week-slot" && typeof overData.index === "number") {
+      setOverIndex(overData.index);
+    } else {
+      setOverIndex(null);
+    }
+  }, []);
 
   const handleDragCancel = useCallback(() => {
     setActiveItem(null);
@@ -287,18 +251,20 @@ export default function PlannerPage() {
     async (event: DragEndEvent) => {
       const { active, over } = event;
       const activeData = active.data.current as PlannerDragItem | undefined;
-      const targetIndex = getWeekSlotIndex(over);
+      const overData = over?.data.current as { type?: string; index?: number } | undefined;
 
       setOverIndex(null);
       setActiveItem(null);
 
-      if (!activeData || targetIndex == null) {
+      if (!activeData || !overData || overData.type !== "week-slot" || typeof overData.index !== "number") {
         return;
       }
 
+      const targetIndex = overData.index;
+
       if (activeData.source === "week") {
-        const originIndex = getActiveWeekIndex(active);
-        if (originIndex == null || originIndex === targetIndex) {
+        const originIndex = activeData.index;
+        if (originIndex === targetIndex) {
           return;
         }
         const currentRecipe = week[originIndex];
@@ -306,9 +272,8 @@ export default function PlannerPage() {
           return;
         }
         const next = [...week];
-        const displaced = next[targetIndex] ?? null;
-        next[targetIndex] = currentRecipe;
-        next[originIndex] = displaced;
+        const [moved] = next.splice(originIndex, 1);
+        next.splice(targetIndex, 0, moved ?? null);
         await commitWeekPlan(next);
         return;
       }
@@ -324,7 +289,7 @@ export default function PlannerPage() {
         setFrequent((prev) => prev.filter((item) => item.id !== recipe.id));
       }
     },
-    [week, commitWeekPlan, setLongGap, setFrequent, getWeekSlotIndex, getActiveWeekIndex]
+    [week, commitWeekPlan, setLongGap, setFrequent]
   );
 
   const timelineWeeks = useMemo<TimelineWeek[]>(() => {
@@ -436,10 +401,6 @@ export default function PlannerPage() {
     const pointerHits = pointerWithin(args);
     if (pointerHits.length) {
       return pointerHits;
-    }
-    const rectHits = rectIntersection(args);
-    if (rectHits.length) {
-      return rectHits;
     }
     return closestCenter(args);
   }, []);

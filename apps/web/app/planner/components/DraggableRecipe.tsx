@@ -30,8 +30,8 @@ export function DraggableRecipe({ id, data, children }: DraggableRecipeProps) {
     transform: transform ? CSS.Translate.toString(transform) : undefined,
     transition,
     cursor: isDragging ? "grabbing" : "grab",
-    touchAction: "none",
     WebkitTapHighlightColor: "transparent",
+    touchAction: isDragging ? "none" : undefined,
     opacity: isDragging ? 0.3 : undefined,
   };
 
