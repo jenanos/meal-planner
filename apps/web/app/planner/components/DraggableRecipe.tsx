@@ -21,10 +21,13 @@ type DraggableRecipeProps = {
 export function DraggableRecipe({ id, children }: DraggableRecipeProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id });
 
-  // Allow natural scrolling when NOT dragging (mobile), and disable only while dragging
-  const style: CSSProperties = isDragging
-    ? { opacity: 0, touchAction: "none", cursor: "grabbing" }
-    : { touchAction: "auto", cursor: "grab" };
+  // Use touch-action: none to prevent scrolling during drag on mobile (dnd-kit best practice)
+  // Opacity 0 when dragging so only DragOverlay is visible
+  const style: CSSProperties = {
+    touchAction: "none",
+    cursor: isDragging ? "grabbing" : "grab",
+    opacity: isDragging ? 0 : 1,
+  };
 
   const safeListeners: SafeListeners = (listeners ?? {}) as SafeListeners;
   const safeAttributes: DraggableAttributes = (attributes ?? {}) as DraggableAttributes;

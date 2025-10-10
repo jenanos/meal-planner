@@ -8,41 +8,51 @@
 :root {
   --radius: 0.75rem;
 
-  --background: 35 70% 97%;       /* varm krem */
-  --foreground: 22 32% 20%;       /* dyp brun */
+  --background: 35 70% 97%;
+  /* varm krem */
+  --foreground: 22 32% 20%;
+  /* dyp brun */
 
-  --card: 30 45% 90%;             /* merkbart mørkere enn bakgrunn for kontrast */
+  --card: 30 45% 90%;
+  /* merkbart mørkere enn bakgrunn for kontrast */
   --card-foreground: 22 38% 22%;
 
   --popover: 30 55% 93%;
   --popover-foreground: 22 32% 20%;
 
-  --primary: 24 85% 52%;          /* oransje */
+  --primary: 24 85% 52%;
+  /* oransje */
   --primary-foreground: 33 100% 96%;
 
-  --secondary: 40 35% 80%;        /* varm sand */
+  --secondary: 40 35% 80%;
+  /* varm sand */
   --secondary-foreground: 22 32% 20%;
 
   --muted: 30 30% 88%;
   --muted-foreground: 24 23% 34%;
 
-  --accent: 18 55% 80%;           /* terracotta lys */
+  --accent: 18 55% 80%;
+  /* terracotta lys */
   --accent-foreground: 22 32% 20%;
 
   --destructive: 5 70% 50%;
   --destructive-foreground: 33 100% 96%;
 
-  --border: 28 30% 62%;           /* tydeligere ramme */
+  --border: 28 30% 62%;
+  /* tydeligere ramme */
   --input: 28 25% 72%;
   --ring: 24 85% 52%;
 
-  --fall-gradient: radial-gradient(
-    circle at 20% -10%,
-    hsl(36 92% 98%) 0%,   /* krem */
-    hsl(28 82% 90%) 35%,  /* lys oransje */
-    hsl(18 60% 82%) 65%,  /* terracotta */
-    hsl(40 50% 88%) 100%  /* dempet beige */
-  );
+  --fall-gradient: radial-gradient(circle at 20% -10%,
+      hsl(36 92% 98%) 0%,
+      /* krem */
+      hsl(28 82% 90%) 35%,
+      /* lys oransje */
+      hsl(18 60% 82%) 65%,
+      /* terracotta */
+      hsl(40 50% 88%) 100%
+      /* dempet beige */
+    );
 
   /* Rainbow button hues */
   --color-1: 0 100% 63%;
@@ -82,12 +92,10 @@
   --input: 24 22% 28%;
   --ring: 24 85% 58%;
 
-  --fall-gradient: radial-gradient(
-    circle at 10% -20%,
-    hsl(28 32% 22%) 0%,
-    hsl(24 28% 18%) 40%,
-    hsl(20 24% 14%) 100%
-  );
+  --fall-gradient: radial-gradient(circle at 10% -20%,
+      hsl(28 32% 22%) 0%,
+      hsl(24 28% 18%) 40%,
+      hsl(20 24% 14%) 100%);
 }
 
 /* Du har dette allerede – behold det etter token-definisjonene */
@@ -118,30 +126,44 @@
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
+
   --keyframes-accordion-down: {
     from {
       height: 0;
     }
+
     to {
       height: var(--radix-accordion-content-height);
     }
-  };
+  }
+
+  ;
+
   --keyframes-accordion-up: {
     from {
       height: var(--radix-accordion-content-height);
     }
+
     to {
       height: 0;
     }
-  };
+  }
+
+  ;
   --animate-accordion-down: accordion-down 0.2s ease-out;
   --animate-accordion-up: accordion-up 0.2s ease-out;
 
   /* Rainbow animation */
   --animate-rainbow: rainbow var(--speed, 2s) infinite linear;
+
   @keyframes rainbow {
-    0% { background-position: 0%; }
-    100% { background-position: 200%; }
+    0% {
+      background-position: 0%;
+    }
+
+    100% {
+      background-position: 200%;
+    }
   }
 }
 
@@ -157,28 +179,14 @@
   }
 
   /* global CSS */
-  body.dragging {
-    overflow: hidden;
-    touch-action: none;
-    /* Neutralize transforms and filters on ancestors that can cause coordinate offsets for dnd-kit overlays */
-    --tw-backdrop-blur: blur(0px) !important;
-    --tw-blur: blur(0px) !important;
-    filter: none !important;
-    background-attachment: scroll !important;
-  }
-
-  /* Turn off backdrop-filter effects while dragging to avoid overlay offset issues */
-  body.dragging .app-shell,
-  body.dragging .app-header {
-    -webkit-backdrop-filter: none !important;
-    backdrop-filter: none !important;
-  }
-  html, body {
+  html,
+  body {
     overscroll-behavior: none;
   }
 
   /* Make Twemoji icons small and aligned with text */
-  img.twemoji, .twemoji {
+  img.twemoji,
+  .twemoji {
     height: 2em;
     width: 2em;
     vertical-align: -0.12em;
