@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable no-undef */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
@@ -8,7 +9,7 @@ import { SuggestionSection } from "./components/SuggestionSection";
 import { SearchSection } from "./components/SearchSection";
 import { MobileEditor } from "./components/MobileEditor";
 import { CategoryEmoji } from "../components/CategoryEmoji";
-import { startOfWeekISO, addWeeksISO, deriveWeekLabel } from "../../lib/week";
+import { startOfWeekISO, deriveWeekLabel } from "../../lib/week";
 
 import {
   DndContext,
@@ -194,7 +195,7 @@ export default function PlannerPage() {
 
   // Search logic with debouncing
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (searchTimeoutRef.current) {
@@ -245,11 +246,6 @@ export default function PlannerPage() {
     if (activeDragPayload.source === "search") return searchResults[activeDragPayload.index];
     return null;
   }, [activeDragPayload, week, longGap, frequent, searchResults]);
-
-  const weekLabel = useMemo(
-    () => deriveWeekLabel(activeWeekStart, currentWeekStart),
-    [activeWeekStart, currentWeekStart]
-  );
 
   const timelineWeeks = useMemo(() => {
     const weeks = timelineQuery.data?.weeks ?? [];

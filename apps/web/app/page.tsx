@@ -1,1 +1,1 @@
-export { default, dynamic } from "./planner/page";
+export { default } from "./planner/page";
