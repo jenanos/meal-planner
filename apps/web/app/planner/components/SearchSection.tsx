@@ -31,7 +31,7 @@ export function SearchSection({
 }: SearchSectionProps) {
   const resultsContainerClass =
     layout === "grid"
-      ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-2 justify-items-center"
+      ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-2 auto-rows-fr"
       : "flex flex-col gap-2";
 
   return (

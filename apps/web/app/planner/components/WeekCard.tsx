@@ -41,7 +41,7 @@ export function WeekCard({
 
     return (
         <MagicCard
-            className={`rounded-lg flex h-full w-full max-w-sm xl:max-w-full items-center justify-center text-center`}
+            className={`rounded-lg flex h-full w-full items-center justify-center text-center`}
             style={{ ["--magic-card-bg" as any]: baseHsl }}
             gradientFrom={dayGrad.from}
             gradientTo={dayGrad.to}
@@ -54,11 +54,11 @@ export function WeekCard({
             onDragLeave={(e) => { onDragLeave?.(e); }}
             onDrop={(e) => { e.preventDefault(); onDrop?.(e); }}
         >
-            <div className="flex h-full min-h-[132px] flex-col items-center justify-center gap-2 p-4 text-center">
+            <div className="flex h-full min-h-[160px] flex-col items-center justify-center gap-2 p-4 text-center">
                 <div className="text-xs text-muted-foreground">{dayName}</div>
                 {recipe ? (
-                    <div className="space-y-1">
-                        <div className="font-medium line-clamp-2 break-words">{recipe.name}</div>
+                    <div className="space-y-1 flex flex-col items-center justify-center">
+                        <div className="font-medium break-words text-sm leading-tight">{recipe.name}</div>
                         {recipe.category ? <CategoryEmoji category={recipe.category as any} /> : null}
                     </div>
                 ) : (

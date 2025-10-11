@@ -15,7 +15,9 @@ type WeekSlotProps = {
 };
 
 export function WeekSlot({ index, dayName, recipe }: WeekSlotProps) {
-  const { isOver, setNodeRef } = useDroppable({ id: `day-${index}` });
+  // Use the same format as draggable IDs so parseDragId works
+  const dropId = makeDragId({ source: "week", index, recipeId: recipe?.id || "empty" });
+  const { isOver, setNodeRef } = useDroppable({ id: dropId });
 
   if (!recipe) {
     return (
