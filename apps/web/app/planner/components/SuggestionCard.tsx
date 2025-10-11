@@ -29,7 +29,7 @@ export function SuggestionCard({ recipe, source, index, isInWeek, onPick, onDrag
 
     return (
         <MagicCard
-            className={`${isInWeek ? "cursor-not-allowed opacity-90" : "cursor-grab"} relative rounded-lg flex h-full w-full max-w-sm xl:max-w-full items-center justify-center text-center`}
+            className={`${isInWeek ? "cursor-not-allowed opacity-90" : "cursor-grab"} relative rounded-lg flex h-full w-full items-center justify-center text-center`}
             style={baseHsl ? ({ ["--magic-card-bg" as any]: baseHsl } as React.CSSProperties) : undefined}
             gradientFrom={source === "frequent" ? "#EA580C" : source === "longGap" ? "#92400E" : "#F59E0B"}
             gradientTo={source === "frequent" ? "#16A34A" : source === "longGap" ? "#DC2626" : "#84CC16"}
@@ -44,8 +44,8 @@ export function SuggestionCard({ recipe, source, index, isInWeek, onPick, onDrag
                 onDragStart?.(e);
             }}
         >
-            <div className="flex h-full min-h-[132px] flex-col items-center justify-center gap-2 p-4 text-center">
-                <div className="font-medium line-clamp-2 break-words">{recipe.name}</div>
+            <div className="flex h-full min-h-[160px] flex-col items-center justify-center gap-2 p-4 text-center">
+                <div className="font-medium break-words text-sm leading-tight">{recipe.name}</div>
                 {recipe.category ? <CategoryEmoji category={recipe.category as any} /> : null}
             </div>
 

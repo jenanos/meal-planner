@@ -267,10 +267,7 @@ export default function PlannerPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Ukesplan</h1>
-        <div className="text-sm text-muted-foreground">{weekLabel}</div>
-      </div>
+      <h1 className="text-xl font-bold text-center">Ukesplan</h1>
 
       <WeekSelector
         weeks={timelineWeeks.map((w, i) => ({ week: w, index: i }))}
@@ -339,7 +336,7 @@ export default function PlannerPage() {
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
         >
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 auto-rows-fr">
             {week.map((recipe, index) => (
               <WeekSlot
                 key={index}
