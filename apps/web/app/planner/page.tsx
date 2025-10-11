@@ -15,11 +15,12 @@ import { startOfWeekISO, addWeeksISO, deriveWeekLabel } from "../../lib/week";
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   KeyboardSensor,
   useSensor,
   useSensors,
-  pointerWithin,
+  closestCenter,
 } from "@dnd-kit/core";
 import { createPortal } from "react-dom";
 
@@ -57,12 +58,19 @@ export default function PlannerPage() {
   // Removed window paging state; ScrollArea handles horizontal scrolling.
 
   // dnd-kit: sensors + active id
-  // Using PointerSensor for unified mouse/touch handling as per dnd-kit best practices
+  // Use separate MouseSensor and TouchSensor as per dnd-kit storybook examples
+  // This avoids coordinate offset issues that can occur with PointerSensor
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(MouseSensor, {
       activationConstraint: {
-        distance: 8, // Require 8px movement before drag starts
-      }
+        distance: 10,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 250,
+        tolerance: 5,
+      },
     }),
     useSensor(KeyboardSensor)
   );
@@ -229,6 +237,10 @@ export default function PlannerPage() {
   const onDragStart = useCallback((event: any) => {
     setActiveId(String(event.active.id));
     setOverIndex(null);
+    // Add class to body to disable backdrop-filters that cause coordinate offset
+    if (typeof document !== "undefined") {
+      document.body.classList.add("is-dragging");
+    }
   }, []);
 
   const onDragOver = useCallback((event: any) => {
@@ -244,16 +256,22 @@ export default function PlannerPage() {
   const onDragCancel = useCallback(() => {
     setActiveId(null);
     setOverIndex(null);
+    // Remove dragging class
+    if (typeof document !== "undefined") {
+      document.body.classList.remove("is-dragging");
+    }
   }, []);
 
   const onDragEnd = useCallback(async (event: any) => {
     const { active, over } = event;
     setActiveId(null);
     setOverIndex(null);
+    // Remove dragging class
+    if (typeof document !== "undefined") {
+      document.body.classList.remove("is-dragging");
+    }
 
-    if (!over) return;
-
-    const overId = String(over.id);
+    if (!over) return; const overId = String(over.id);
     if (!overId.startsWith("day-")) return;
 
     const targetIndex = Number(overId.slice(4));
@@ -412,7 +430,7 @@ export default function PlannerPage() {
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={pointerWithin}
+      collisionDetection={closestCenter}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDragCancel={onDragCancel}
@@ -498,12 +516,10 @@ export default function PlannerPage() {
         )}
       </div>
 
-      {/* DragOverlay i portal */}
+      {/* DragOverlay i portal - rendered directly to body to avoid CSS transform/filter issues */}
       {mounted && portalTarget &&
         createPortal(
-          <DragOverlay
-            dropAnimation={{ duration: 200, easing: "ease" }}
-          >
+          <DragOverlay>
             {activeId ? (
               <DragOverlayCard
                 payload={overlayPayload}

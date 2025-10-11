@@ -184,6 +184,22 @@
     overscroll-behavior: none;
   }
 
+  /* Critical: Disable backdrop-filter during drag to prevent coordinate offset issues
+     backdrop-filter creates a new containing block which breaks DragOverlay positioning */
+  body.is-dragging .app-shell,
+  body.is-dragging .app-header,
+  body.is-dragging [class*="backdrop-blur"] {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  /* On mobile, also disable background-attachment:fixed during drag as it can cause issues */
+  @media (pointer: coarse) {
+    body.is-dragging {
+      background-attachment: scroll !important;
+    }
+  }
+
   /* Make Twemoji icons small and aligned with text */
   img.twemoji,
   .twemoji {

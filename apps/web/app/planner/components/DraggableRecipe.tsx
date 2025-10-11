@@ -21,10 +21,10 @@ type DraggableRecipeProps = {
 export function DraggableRecipe({ id, children }: DraggableRecipeProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id });
 
-  // Use touch-action: none to prevent scrolling during drag on mobile (dnd-kit best practice)
-  // Opacity 0 when dragging so only DragOverlay is visible
+  // Use touch-action: manipulation to allow scrolling but prevent browser gestures
+  // This is the recommended approach when using TouchSensor with delay activation
   const style: CSSProperties = {
-    touchAction: "none",
+    touchAction: "manipulation",
     cursor: isDragging ? "grabbing" : "grab",
     opacity: isDragging ? 0 : 1,
   };
