@@ -1,5 +1,7 @@
 # 🍽️ Meal Planner Monorepo
 
+[![Build and Push Docker Images](https://github.com/jenanos/meal-planner/actions/workflows/build-and-push.yml/badge.svg)](https://github.com/jenanos/meal-planner/actions/workflows/build-and-push.yml)
+
 En moderne monorepo-app for å:
 
 - 📚 Administrere oppskrifter (med kategorier, ingredienser og poeng)
