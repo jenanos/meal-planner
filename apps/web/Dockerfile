@@ -28,17 +28,16 @@ COPY packages ./packages
 COPY apps ./apps
 COPY tsconfig.json ./tsconfig.json
 
-# Generate Prisma client
+# Generate Prisma client first
 RUN pnpm --filter @repo/database run generate
-
-# Build database package (TypeScript compilation)
-RUN pnpm --filter @repo/database run build
 
 ARG NEXT_PUBLIC_API_URL=http://localhost:4000
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN pnpm --filter web... build
+# Build all dependencies in order: database -> api -> ui, then web
+# Using turbo's dependency graph to build everything
+RUN pnpm --filter web...  run build
 RUN pnpm prune --prod
 
 FROM node:20-slim AS runner

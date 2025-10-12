@@ -1,7 +1,9 @@
 {
   "extends": "@repo/typescript-config/base.json",
   "references": [
-    { "path": "../database" }
+    {
+      "path": "../database"
+    }
   ],
   "compilerOptions": {
     "noImplicitAny": false,
@@ -11,15 +13,18 @@
     "rootDir": "src",
     "baseUrl": ".",
     "target": "ES2020",
-    "lib": ["ES2020"],
-    "moduleResolution": "Node",
-  // use defaults for declaration in composite project
-    "paths": {
-      "@repo/database": ["../database"],
-      "@repo/database/*": ["../database/*"]
-    }
+    "lib": [
+      "ES2020"
+    ],
+    "moduleResolution": "Node"
+    // use defaults for declaration in composite project
+    // paths removed - using package.json exports and project references instead
   },
-  "include": ["src"],
-  "exclude": ["test", "dist"]
+  "include": [
+    "src"
+  ],
+  "exclude": [
+    "test",
+    "dist"
+  ]
 }
-

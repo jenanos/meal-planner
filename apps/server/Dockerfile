@@ -29,9 +29,6 @@ COPY tsconfig.json ./tsconfig.json
 # Now that sources are present, generate Prisma client
 RUN pnpm --filter @repo/database run generate
 
-# Build database package (TypeScript compilation)
-RUN pnpm --filter @repo/database run build
-
 FROM node:20-slim AS runner
 ENV NODE_ENV=production
 ENV PNPM_HOME=/usr/local/share/pnpm
