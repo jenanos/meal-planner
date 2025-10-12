@@ -32,11 +32,9 @@ COPY tsconfig.json ./tsconfig.json
 RUN pnpm --filter @repo/database run generate
 
 # Build @repo/database to create TypeScript declarations
-RUN pnpm --filter @repo/database run build
-
-# Debug: Check what was created
-RUN ls -la packages/database/dist/ || echo "No dist folder"
-RUN ls -la node_modules/@repo/database/ || echo "No symlink"
+# Force rebuild by removing tsbuildinfo cache
+RUN rm -f packages/database/tsconfig.tsbuildinfo && \
+    pnpm --filter @repo/database run build
 
 # Build @repo/api (depends on @repo/database)
 RUN pnpm --filter @repo/api run build

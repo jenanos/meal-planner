@@ -30,7 +30,9 @@ COPY tsconfig.json ./tsconfig.json
 RUN pnpm --filter @repo/database run generate
 
 # Build @repo/database to create TypeScript declarations
-RUN pnpm --filter @repo/database run build
+# Force rebuild by removing tsbuildinfo cache
+RUN rm -f packages/database/tsconfig.tsbuildinfo && \
+    pnpm --filter @repo/database run build
 
 # Build @repo/api (depends on @repo/database)
 RUN pnpm --filter @repo/api run build
