@@ -27,7 +27,12 @@ WORKDIR /app
 COPY packages ./packages
 COPY apps ./apps
 COPY tsconfig.json ./tsconfig.json
+
+# Generate Prisma client
 RUN pnpm --filter @repo/database run generate
+
+# Build database package (TypeScript compilation)
+RUN pnpm --filter @repo/database run build
 
 ARG NEXT_PUBLIC_API_URL=http://localhost:4000
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
