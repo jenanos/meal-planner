@@ -15,6 +15,8 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
 COPY packages/api/package.json packages/api/package.json
 COPY packages/database/package.json packages/database/package.json
+COPY packages/config-eslint/package.json packages/config-eslint/package.json
+COPY packages/config-typescript/package.json packages/config-typescript/package.json
 COPY apps/server/package.json apps/server/package.json
 
 # Install deps without running scripts yet (Prisma postinstall needs schema files)
@@ -35,7 +37,7 @@ RUN rm -f packages/database/tsconfig.tsbuildinfo && \
     pnpm --filter @repo/database run build
 
 # Build @repo/api (depends on @repo/database)
-RUN pnpm --filter @repo/api run build
+RUN rm -f packages/api/tsconfig.tsbuildinfo && pnpm --filter @repo/api run build
 
 FROM node:20-slim AS runner
 ENV NODE_ENV=production
