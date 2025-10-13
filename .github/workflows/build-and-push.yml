@@ -105,6 +105,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            NEXT_PUBLIC_API_URL=${{ vars.MEALS_API_PUBLIC_URL || '/api' }}
+            # Use a constant; the app defaults to '/api' for client-side calls, avoiding undefined context warnings
+            NEXT_PUBLIC_API_URL=/api
           cache-from: type=gha
           cache-to: type=gha,mode=max
