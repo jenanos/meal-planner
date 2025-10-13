@@ -43,6 +43,8 @@ RUN rm -f packages/api/tsconfig.tsbuildinfo && pnpm --filter @repo/api run build
 
 ARG NEXT_PUBLIC_API_URL=http://localhost:4000
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ARG MEALS_API_INTERNAL_ORIGIN=http://meals-api:4000
+ENV MEALS_API_INTERNAL_ORIGIN=${MEALS_API_INTERNAL_ORIGIN}
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Now build the web app (it will build @repo/ui as well)
