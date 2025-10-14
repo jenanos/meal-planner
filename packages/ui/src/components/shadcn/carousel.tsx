@@ -158,16 +158,14 @@ const Carousel = React.forwardRef<
 });
 Carousel.displayName = "Carousel";
 
+type CarouselSlideProps = React.ComponentPropsWithoutRef<"div"> & {
+    "data-state"?: "active" | "inactive";
+};
+
 const CarouselContent = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
     ({ className, children, ...props }, ref) => {
         const { selectedIndex, setItemCount } = useCarousel();
-        const childArray = React.useMemo(
-            () =>
-                React.Children.toArray(children) as React.ReactElement<{
-                    className?: string;
-                }>[],
-            [children]
-        );
+        const childArray = React.useMemo(() => React.Children.toArray(children), [children]);
 
         React.useEffect(() => {
             setItemCount(childArray.length);
@@ -176,9 +174,9 @@ const CarouselContent = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HT
         return (
             <div ref={ref} className={cn("relative w-full", className)} {...props}>
                 {childArray.map((child, index) => {
-                    if (!React.isValidElement(child)) return child;
+                    if (!React.isValidElement<CarouselSlideProps>(child)) return child;
                     const isActive = index === selectedIndex;
-                    return React.cloneElement(child, {
+                    return React.cloneElement<CarouselSlideProps>(child, {
                         key: child.key ?? index,
                         className: cn(child.props.className, isActive ? "block" : "hidden"),
                         "aria-hidden": isActive ? undefined : true,
