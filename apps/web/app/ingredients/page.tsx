@@ -97,7 +97,7 @@ export default function IngredientsPage() {
             </div>
 
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground ring-1 ring-border rounded-xl p-6 shadow-2xl sm:max-w-md">
+                <DialogContent className="dialog-content-responsive isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground ring-1 ring-border rounded-xl p-6 shadow-2xl left-1/2 top-[12vh] w-full -translate-x-1/2 translate-y-0 overflow-y-auto sm:top-1/2 sm:-translate-y-1/2 sm:max-w-md">
                     <DialogHeader>
                         <DialogTitle>Ny ingrediens</DialogTitle>
                         <DialogDescription>Legg til en ny ingrediens i databasen.</DialogDescription>
