@@ -12,6 +12,8 @@ export { Separator } from "./components/shadcn/separator"
 export { Textarea } from "./components/shadcn/textarea"
 export { ScrollArea } from "./components/shadcn/scroll-area"
 export { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription, DialogClose } from "./components/shadcn/dialog"
+export { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious, useCarousel } from "./components/shadcn/carousel"
+export type { CarouselApi, CarouselEvent, CarouselOptions, CarouselPlugin } from "./components/shadcn/carousel"
 
 // magicui
 export { GridBeams } from "./components/magicui/grid-beams"
