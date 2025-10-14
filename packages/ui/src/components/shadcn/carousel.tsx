@@ -161,7 +161,13 @@ Carousel.displayName = "Carousel";
 const CarouselContent = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
     ({ className, children, ...props }, ref) => {
         const { selectedIndex, setItemCount } = useCarousel();
-        const childArray = React.useMemo(() => React.Children.toArray(children) as React.ReactElement[], [children]);
+        const childArray = React.useMemo(
+            () =>
+                React.Children.toArray(children) as React.ReactElement<{
+                    className?: string;
+                }>[],
+            [children]
+        );
 
         React.useEffect(() => {
             setItemCount(childArray.length);
