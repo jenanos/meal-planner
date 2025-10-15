@@ -74,7 +74,9 @@ export default function RecipesPage() {
   const [ingSearch, setIngSearch] = useState("");
   const [debouncedIngSearch, setDebouncedIngSearch] = useState("");
   const [ingList, setIngList] = useState<Array<FormIngredient>>([]);
-  const [ingredientSuggestions, setIngredientSuggestions] = useState<IngredientSuggestion[]>([]);
+  const [ingredientSuggestionCache, setIngredientSuggestionCache] = useState<
+    Record<string, IngredientSuggestion[]>
+  >({});
 
   // Ingredient autosuggest (live as you type)
   useEffect(() => {
@@ -101,18 +103,37 @@ export default function RecipesPage() {
 
   const ingredientQuery = trpc.ingredient.list.useQuery(
     { search: debouncedIngSearch.trim() || undefined },
-    { enabled: ingSearch.trim().length > 0, staleTime: 5_000, keepPreviousData: true }
+    { enabled: ingSearch.trim().length > 0, staleTime: 5_000 }
   );
 
+  const trimmedIngSearch = ingSearch.trim();
+  const normalizedIngKey = trimmedIngSearch.toLowerCase();
+
   useEffect(() => {
-    if (!ingSearch.trim()) {
-      setIngredientSuggestions([]);
-      return;
-    }
-    if (ingredientQuery.data) {
-      setIngredientSuggestions(ingredientQuery.data);
-    }
-  }, [ingSearch, ingredientQuery.data]);
+    if (!ingredientQuery.data) return;
+    const key = debouncedIngSearch.trim().toLowerCase();
+    if (!key) return;
+    setIngredientSuggestionCache((prev) => {
+      if (prev[key] === ingredientQuery.data) {
+        return prev;
+      }
+      return { ...prev, [key]: ingredientQuery.data };
+    });
+  }, [debouncedIngSearch, ingredientQuery.data]);
+
+  const ingredientSuggestions = useMemo(() => {
+    if (!trimmedIngSearch) return [];
+    return ingredientQuery.data ?? ingredientSuggestionCache[normalizedIngKey] ?? [];
+  }, [ingredientQuery.data, ingredientSuggestionCache, normalizedIngKey, trimmedIngSearch]);
+
+  const knownIngredientNames = useMemo(() => {
+    const set = new Set<string>();
+    Object.values(ingredientSuggestionCache).forEach((list) => {
+      list.forEach((ing) => set.add(ing.name.toLowerCase()));
+    });
+    ingredientQuery.data?.forEach((ing) => set.add(ing.name.toLowerCase()));
+    return set;
+  }, [ingredientSuggestionCache, ingredientQuery.data]);
 
   const create = trpc.recipe.create.useMutation({
     onSuccess: () => {
@@ -196,7 +217,6 @@ export default function RecipesPage() {
     return parts.join(" ");
   };
 
-  const trimmedIngSearch = ingSearch.trim();
   const dialogContentClassName = cn(
     "dialog-content-responsive isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground sm:max-h-[min(100vh-4rem,38rem)] sm:p-6 sm:shadow-2xl sm:ring-1 sm:ring-border sm:rounded-xl",
     "max-sm:bg-background max-sm:!left-0 max-sm:!top-0 max-sm:!h-[100dvh] max-sm:!max-h-none max-sm:!w-full max-sm:!max-w-none max-sm:!translate-x-0 max-sm:!translate-y-0 max-sm:!rounded-none max-sm:!border-0 max-sm:!p-0 max-sm:!shadow-none max-sm:overflow-hidden"
@@ -231,7 +251,6 @@ export default function RecipesPage() {
 
     setIngSearch("");
     setDebouncedIngSearch("");
-    setIngredientSuggestions([]);
     setCurrentStep(0);
     setTimeout(() => carouselApi?.scrollTo(0), 0);
     setIsEditDialogOpen(true);
@@ -271,7 +290,7 @@ export default function RecipesPage() {
     if (!n) return;
     if (!ingList.some((i) => i.name.toLowerCase() === n.toLowerCase())) {
       // If this name exists in current suggestions, just add locally.
-      const existsInDb = ingredientSuggestions.some((i) => i.name.toLowerCase() === n.toLowerCase());
+      const existsInDb = knownIngredientNames.has(n.toLowerCase());
       if (existsInDb) {
         setIngList((prev) => [...prev, { name: n, unit }]);
         setIngSearch("");
@@ -365,7 +384,6 @@ export default function RecipesPage() {
               setCurrentStep(0);
               setIngSearch("");
               setDebouncedIngSearch("");
-              setIngredientSuggestions([]);
             }
           }}
         >
