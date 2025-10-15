@@ -1,54 +1,16 @@
 "use client";
 export const dynamic = "force-dynamic";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { trpc } from "../../lib/trpcClient";
-import {
-  Badge,
-  Button,
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-  cn,
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  Input,
-  ScrollArea,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  Textarea,
-} from "@repo/ui";
+import { cn, Input } from "@repo/ui";
 import type { CarouselApi } from "@repo/ui";
-import { X } from "lucide-react";
-import { EVERYDAY_LABELS, HEALTH_LABELS } from "../../lib/scoreLabels";
-import type { inferRouterOutputs } from "@trpc/server";
-import type { AppRouter } from "@repo/api";
+
+import { RecipeFormDialog } from "./components/RecipeFormDialog";
+import { RecipeViewDialog } from "./components/RecipeViewDialog";
 import { RecipeCard } from "./components/RecipeCard";
-
-const CATEGORIES = ["FISK", "VEGETAR", "KYLLING", "STORFE", "ANNET"] as const;
-const STEP_TITLES = ["Navn", "Detaljer", "Ingredienser", "Beskrivelse"] as const;
-const STEP_DESCRIPTIONS = [
-  "Gi oppskriften et navn eller velg en eksisterende.",
-  "Velg kategori og scorer.",
-  "Finn og legg til ingredienser.",
-  "Fortell kort om oppskriften.",
-] as const;
-const VIEW_STEPS = [
-  { id: "view-recipe-section-ingredients", label: "Ingredienser" },
-  { id: "view-recipe-section-description", label: "Beskrivelse" },
-] as const;
-
-type RecipeListItem = inferRouterOutputs<AppRouter>["recipe"]["list"]["items"][number];
-type IngredientSuggestion = inferRouterOutputs<AppRouter>["ingredient"]["list"][number];
+import { CATEGORIES, STEP_DESCRIPTIONS, STEP_TITLES } from "./constants";
+import type { FormIngredient, IngredientSuggestion, RecipeListItem } from "./types";
 
 export default function RecipesPage() {
   const utils = trpc.useUtils();
@@ -76,10 +38,9 @@ export default function RecipesPage() {
   const [cat, setCat] = useState<(typeof CATEGORIES)[number]>("VEGETAR");
   const [everyday, setEveryday] = useState(3);
   const [health, setHealth] = useState(4);
-  type FormIngredient = { name: string; unit?: string; quantity?: string | number; notes?: string };
   const [ingSearch, setIngSearch] = useState("");
   const [debouncedIngSearch, setDebouncedIngSearch] = useState("");
-  const [ingList, setIngList] = useState<Array<FormIngredient>>([]);
+  const [ingList, setIngList] = useState<FormIngredient[]>([]);
   const [ingredientSuggestionCache, setIngredientSuggestionCache] = useState<
     Record<string, IngredientSuggestion[]>
   >({});
@@ -336,7 +297,7 @@ export default function RecipesPage() {
     setIngList((prev) => prev.map((i) => (i.name === name ? { ...i, quantity: qty } : i)));
   };
 
-  const submitRecipe = (e: React.FormEvent) => {
+  const submitRecipe = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!name) return;
     const ingredientsPayload = ingList.map((i) => ({
@@ -398,7 +359,7 @@ export default function RecipesPage() {
           ) : null}
         </div>
 
-        <Dialog
+        <RecipeFormDialog
           open={isEditDialogOpen}
           onOpenChange={(open) => {
             setIsEditDialogOpen(open);
@@ -409,297 +370,44 @@ export default function RecipesPage() {
               setDebouncedIngSearch("");
             }
           }}
-        >
-          <DialogTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className="min-w-[12rem]"
-              onClick={(e) => {
-                e.preventDefault();
-                openCreate();
-              }}
-              type="button"
-            >
-              Legg til oppskrift
-            </Button>
-          </DialogTrigger>
-          <DialogContent className={dialogContentClassName}>
-            <div className="flex h-full flex-col max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-[env(safe-area-inset-bottom)]">
-              <DialogHeader className="text-center sm:text-left max-sm:px-6 max-sm:pt-6 sm:px-0 sm:pt-0">
-                <DialogTitle>{editId ? "Rediger oppskrift" : "Ny oppskrift"}</DialogTitle>
-                <DialogDescription className="max-sm:hidden">
-                  {editId
-                    ? "Gjør endringer og lagre for å oppdatere oppskriften."
-                    : "Fyll ut feltene under og lagre for å legge til oppskriften."}
-                </DialogDescription>
-              </DialogHeader>
+          onCreateClick={openCreate}
+          dialogContentClassName={dialogContentClassName}
+          editId={editId}
+          currentStep={currentStep}
+          stepTitles={STEP_TITLES}
+          stepDescriptions={STEP_DESCRIPTIONS}
+          carouselApi={carouselApi}
+          setCarouselApi={setCarouselApi}
+          isLastStep={isLastStep}
+          nextDisabled={nextDisabled}
+          nextLabel={nextLabel}
+          name={name}
+          onNameChange={setName}
+          matchingRecipes={matchingRecipes}
+          onSelectExistingRecipe={handleSelectExistingRecipe}
+          cat={cat}
+          onCategoryChange={(value) => setCat(value)}
+          everyday={everyday}
+          onEverydayChange={setEveryday}
+          health={health}
+          onHealthChange={setHealth}
+          desc={desc}
+          onDescChange={setDesc}
+          ingSearch={ingSearch}
+          onIngSearchChange={setIngSearch}
+          trimmedIngSearch={trimmedIngSearch}
+          ingredientSuggestions={ingredientSuggestions}
+          isIngredientQueryFetching={ingredientQuery.isFetching}
+          ingList={ingList}
+          addIngredientByName={addIngredientByName}
+          removeIngredient={removeIngredient}
+          upsertQuantity={upsertQuantity}
+          onSubmit={submitRecipe}
+          createIsPending={create.isPending}
+          updateIsPending={update.isPending}
+        />
 
-              <form className="flex flex-1 flex-col gap-5 max-sm:overflow-hidden" onSubmit={submitRecipe}>
-                <div className="space-y-5 max-sm:flex-1 max-sm:overflow-y-auto max-sm:px-6 sm:space-y-5">
-                  <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">
-                          Steg {currentStep + 1} av {STEP_TITLES.length}
-                        </p>
-                        <p className="text-xs text-muted-foreground max-sm:hidden">{STEP_DESCRIPTIONS[currentStep]}</p>
-                      </div>
-                      <div className="flex items-center gap-1.5" aria-hidden="true">
-                        {STEP_TITLES.map((_, idx) => (
-                          <span
-                            key={idx}
-                            className={cn(
-                              "h-1.5 w-6 rounded-full transition-colors",
-                              idx <= currentStep ? "bg-primary" : "bg-muted-foreground/30"
-                            )}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <Carousel className="w-full" setApi={setCarouselApi} opts={{ loop: false }}>
-                    <CarouselContent>
-                      <CarouselItem className="space-y-4">
-                        <div className="flex flex-col gap-1.5">
-                          <label className="text-sm font-medium">Navn</label>
-                          <Input
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            required
-                            autoFocus={!editId}
-                          />
-                          {!editId ? (
-                            <p className="text-xs text-muted-foreground max-sm:hidden">
-                              Søk etter eksisterende oppskrifter mens du skriver.
-                            </p>
-                          ) : null}
-                        </div>
-                        {!editId && matchingRecipes.length > 0 ? (
-                          <div className="space-y-2">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                              Finnes fra før
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                              {matchingRecipes.map((recipe) => (
-                                <Badge
-                                  key={recipe.id}
-                                  className="cursor-pointer"
-                                  onClick={() => handleSelectExistingRecipe(recipe.id)}
-                                >
-                                  {recipe.name}
-                                </Badge>
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
-                      </CarouselItem>
-
-                      <CarouselItem className="space-y-4">
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                          <div className="flex flex-col gap-1.5 sm:col-span-2">
-                            <label className="text-sm font-medium">Kategori</label>
-                            <Select value={cat} onValueChange={(v) => setCat(v as any)}>
-                              <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Velg kategori" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {CATEGORIES.map((c) => (
-                                  <SelectItem key={c} value={c}>
-                                    {c}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="flex flex-col gap-1.5">
-                            <label className="text-sm font-medium">Helgescore</label>
-                            <Select value={String(everyday)} onValueChange={(v) => setEveryday(parseInt(v, 10))}>
-                              <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Velg nivå" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {Object.entries(EVERYDAY_LABELS).map(([score, label]) => (
-                                  <SelectItem key={score} value={score}>
-                                    {label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="flex flex-col gap-1.5">
-                            <label className="text-sm font-medium">Helsescore</label>
-                            <Select value={String(health)} onValueChange={(v) => setHealth(parseInt(v, 10))}>
-                              <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Velg nivå" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {Object.entries(HEALTH_LABELS).map(([score, label]) => (
-                                  <SelectItem key={score} value={score}>
-                                    {label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                      </CarouselItem>
-
-                      <CarouselItem className="space-y-4">
-                        <div className="space-y-3">
-                          <label className="text-sm font-medium">Ingredienser</label>
-                          <Input
-                            value={ingSearch}
-                            onChange={(e) => setIngSearch(e.target.value)}
-                            placeholder="Søk etter ingrediens"
-                          />
-                          {trimmedIngSearch.length > 0 ? (
-                            <div className="space-y-2">
-                              {ingredientQuery.isFetching ? (
-                                <p className="text-xs text-muted-foreground">Søker…</p>
-                              ) : null}
-                              {(() => {
-                                const normalized = trimmedIngSearch.toLowerCase();
-                                const available = ingredientSuggestions.filter(
-                                  (ing) =>
-                                    !ingList.some((i) => i.name.toLowerCase() === ing.name.toLowerCase())
-                                );
-
-                                if (available.length > 0) {
-                                  return (
-                                    <ScrollArea className="max-h-40 pr-2">
-                                      <div className="flex flex-wrap gap-2 pb-2">
-                                        {available.map((ing) => (
-                                          <Badge
-                                            key={ing.id}
-                                            className="cursor-pointer"
-                                            onClick={() => addIngredientByName(ing.name, ing.unit)}
-                                          >
-                                            {ing.name}
-                                            {ing.unit ? <span className="opacity-60">&nbsp;({ing.unit})</span> : null}
-                                          </Badge>
-                                        ))}
-                                      </div>
-                                    </ScrollArea>
-                                  );
-                                }
-
-                                if (
-                                  !ingredientQuery.isFetching &&
-                                  trimmedIngSearch.length > 0 &&
-                                  !ingredientSuggestions.some((i) => i.name.toLowerCase() === normalized) &&
-                                  !ingList.some((i) => i.name.toLowerCase() === normalized)
-                                ) {
-                                  return (
-                                    <Badge className="cursor-pointer" onClick={() => addIngredientByName(trimmedIngSearch)}>
-                                      Legg til "{trimmedIngSearch}"
-                                    </Badge>
-                                  );
-                                }
-
-                                return null;
-                              })()}
-                            </div>
-                          ) : null}
-                          {ingList.length > 0 ? (
-                            <div className="flex flex-wrap gap-2">
-                              {ingList.map((i) => (
-                                <span
-                                  key={i.name}
-                                  className="inline-flex items-center gap-2 rounded-sm border bg-background px-2 py-1 text-sm"
-                                >
-                                  <span>{i.name}</span>
-                                  <Input
-                                    className="h-7 w-20"
-                                    placeholder={i.unit ?? "mengde"}
-                                    value={typeof i.quantity === "number" ? String(i.quantity) : i.quantity ?? ""}
-                                    onChange={(e) => upsertQuantity(i.name, e.target.value)}
-                                  />
-                                  {i.unit &&
-                                  ((typeof i.quantity === "number" && !Number.isNaN(i.quantity)) ||
-                                    (typeof i.quantity === "string" && i.quantity.trim() !== "")) ? (
-                                    <span className="text-xs text-muted-foreground">{i.unit}</span>
-                                  ) : null}
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 w-7 p-0 text-red-600"
-                                    onClick={() => removeIngredient(i.name)}
-                                    aria-label={`Fjern ${i.name}`}
-                                    title={`Fjern ${i.name}`}
-                                  >
-                                    <X className="size-4" />
-                                  </Button>
-                                </span>
-                              ))}
-                            </div>
-                          ) : trimmedIngSearch.length === 0 ? (
-                            <p className="text-xs text-muted-foreground max-sm:hidden">
-                              Søk etter ingredienser for å legge dem til i oppskriften.
-                            </p>
-                          ) : null}
-                        </div>
-                      </CarouselItem>
-
-                      <CarouselItem className="space-y-4">
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Beskrivelse</label>
-                          <Textarea
-                            value={desc}
-                            onChange={(e) => setDesc(e.target.value)}
-                            placeholder="Beskriv oppskriften kort eller legg inn notater."
-                            rows={5}
-                          />
-                        </div>
-                      </CarouselItem>
-                    </CarouselContent>
-                  </Carousel>
-                </div>
-
-                <DialogFooter className="!flex-col gap-2 sm:!flex-row sm:items-center sm:justify-between sm:space-x-0 max-sm:px-6 max-sm:pb-6 max-sm:pt-4 max-sm:gap-3 max-sm:border-t max-sm:border-border/60 max-sm:bg-background/95 max-sm:backdrop-blur">
-                  <div className="flex w-full gap-2 sm:w-auto">
-                    {currentStep > 0 ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="flex-1 sm:flex-none"
-                        onClick={() => carouselApi?.scrollTo(currentStep - 1)}
-                      >
-                        Forrige
-                      </Button>
-                    ) : null}
-                  </div>
-                  <div className="flex w-full justify-end gap-2 sm:w-auto">
-                    {isLastStep ? (
-                      <Button type="submit" className="flex-1 sm:flex-none" disabled={create.isPending || update.isPending}>
-                        {editId
-                          ? update.isPending
-                            ? "Oppdaterer…"
-                            : "Oppdater"
-                          : create.isPending
-                            ? "Oppretter…"
-                            : "Opprett"}
-                      </Button>
-                    ) : (
-                      <Button
-                        type="button"
-                        className="flex-1 sm:flex-none"
-                        onClick={() => carouselApi?.scrollTo(currentStep + 1)}
-                        disabled={nextDisabled}
-                      >
-                        {nextLabel}
-                      </Button>
-                    )}
-                  </div>
-                </DialogFooter>
-              </form>
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog
+        <RecipeViewDialog
           open={isViewDialogOpen}
           onOpenChange={(open) => {
             setIsViewDialogOpen(open);
@@ -708,109 +416,14 @@ export default function RecipesPage() {
               setViewCurrentStep(0);
             }
           }}
-        >
-          <DialogContent className={dialogContentClassName}>
-            <div className="flex h-full flex-col max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-[env(safe-area-inset-bottom)]">
-              <DialogHeader className="max-sm:px-6 max-sm:pt-6 sm:px-0 sm:pt-0">
-                <DialogTitle>{viewRecipe?.name ?? "Oppskrift"}</DialogTitle>
-                <DialogDescription>
-                  {viewRecipe
-                    ? "Bla for å se ingredienser og beskrivelse."
-                    : "Oppskriften finnes ikke lenger."}
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="flex flex-1 flex-col gap-5 max-sm:overflow-hidden">
-                <div className="max-sm:flex-1 max-sm:overflow-y-auto max-sm:px-6 sm:px-0">
-                  {viewRecipe ? (
-                    <Carousel className="w-full" opts={{ loop: false }} setApi={setViewCarouselApi}>
-                      <CarouselContent>
-                        <CarouselItem className="space-y-4" id={VIEW_STEPS[0].id}>
-                          <div className="space-y-4">
-                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-                              {viewRecipe.category ? (
-                                <span className="font-semibold uppercase tracking-wide text-foreground">
-                                  {viewRecipe.category}
-                                </span>
-                              ) : null}
-                              <span>Helgescore: {viewRecipe.everydayScore ?? "–"}</span>
-                              <span>Helsescore: {viewRecipe.healthScore ?? "–"}</span>
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-                                Ingredienser
-                              </p>
-                              {viewRecipe.ingredients && viewRecipe.ingredients.length > 0 ? (
-                                <ul className="mt-2 space-y-1 text-sm text-foreground">
-                                  {viewRecipe.ingredients.map((ri: any, idx: number) => (
-                                    <li
-                                      key={ri.ingredientId ?? `${ri.name}-${idx}`}
-                                      className="leading-snug"
-                                    >
-                                      {formatIngredientLine(ri)}
-                                    </li>
-                                  ))}
-                                </ul>
-                              ) : (
-                                <p className="mt-2 text-sm text-muted-foreground">Ingen ingredienser registrert.</p>
-                              )}
-                            </div>
-                          </div>
-                        </CarouselItem>
-                        <CarouselItem className="space-y-4" id={VIEW_STEPS[1].id}>
-                          <div>
-                            <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-                              Beskrivelse
-                            </p>
-                            <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-foreground">
-                              {viewRecipe.description ?? "Ingen beskrivelse lagt inn."}
-                            </p>
-                          </div>
-                        </CarouselItem>
-                      </CarouselContent>
-                    </Carousel>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">Kunne ikke finne oppskriften.</p>
-                  )}
-                  {viewRecipe ? (
-                    <div className="mt-4 flex justify-center gap-2" role="tablist" aria-label="Vis oppskrift">
-                      {VIEW_STEPS.map((step, idx) => (
-                        <button
-                          key={step.id}
-                          type="button"
-                          role="tab"
-                          aria-selected={viewCurrentStep === idx}
-                          className={cn(
-                            "h-2 w-8 rounded-full transition-colors",
-                            viewCurrentStep === idx ? "bg-primary" : "bg-muted-foreground/30"
-                          )}
-                          onClick={() => viewCarouselApi?.scrollTo(idx)}
-                          aria-label={step.label}
-                          aria-controls={step.id}
-                        />
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-
-                <DialogFooter className="!flex-col gap-2 sm:!flex-row sm:items-center sm:justify-end sm:space-x-2 max-sm:px-6 max-sm:pb-6 max-sm:pt-4 max-sm:gap-3 max-sm:border-t max-sm:border-border/60 max-sm:bg-background/95 max-sm:backdrop-blur">
-                  <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:gap-2">
-                    <DialogClose asChild>
-                      <Button type="button" variant="outline" className="flex-1 sm:flex-none">
-                        Lukk
-                      </Button>
-                    </DialogClose>
-                    {viewRecipe ? (
-                      <Button type="button" className="flex-1 sm:flex-none" onClick={() => startEditFromView(viewRecipe.id)}>
-                        Rediger
-                      </Button>
-                    ) : null}
-                  </div>
-                </DialogFooter>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+          dialogContentClassName={dialogContentClassName}
+          viewRecipe={viewRecipe}
+          viewCurrentStep={viewCurrentStep}
+          viewCarouselApi={viewCarouselApi}
+          setViewCarouselApi={setViewCarouselApi}
+          formatIngredientLine={formatIngredientLine}
+          onEdit={startEditFromView}
+        />
       </div>
 
       {/* 7-wide responsive grid like planner */}
