@@ -5,7 +5,7 @@ import { TRPCError } from "@trpc/server";
 export const ingredientRouter = router({
     list: publicProcedure.input(IngredientListQuery.optional()).query(async ({ input }) => {
         const where = input?.search
-            ? { name: { contains: input.search.trim() } }
+            ? { name: { contains: input.search.trim(), mode: "insensitive" } }
             : {};
         const items = await prisma.ingredient.findMany({
             where,
