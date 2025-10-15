@@ -98,14 +98,14 @@ export default function IngredientsPage() {
             </div>
 
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="dialog-content-responsive isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground sm:max-h-[min(100vh-4rem,32rem)] sm:p-6 sm:shadow-2xl sm:ring-1 sm:ring-border sm:rounded-xl max-sm:bg-background max-sm:!left-1/2 max-sm:!top-[calc(env(safe-area-inset-top)+1rem)] max-sm:!h-[50dvh] max-sm:!max-h-[50dvh] max-sm:!w-[calc(100vw-2rem)] max-sm:!max-w-[calc(100vw-2rem)] max-sm:!-translate-x-1/2 max-sm:!translate-y-0 max-sm:!rounded-2xl max-sm:!border-0 max-sm:!p-0 max-sm:!shadow-none max-sm:overflow-hidden">
+                <DialogContent className="isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground max-sm:w-[calc(100vw-2rem)] max-sm:mx-auto sm:max-w-md sm:max-h-[min(100vh-4rem,32rem)] sm:shadow-2xl sm:ring-1 sm:ring-border sm:rounded-xl max-sm:bg-background max-sm:!left-1/2 max-sm:!top-[calc(env(safe-area-inset-top)+1rem)] max-sm:!h-[50dvh] max-sm:!max-h-[50dvh] max-sm:!-translate-x-1/2 max-sm:!translate-y-0 max-sm:!rounded-2xl max-sm:!border-0 max-sm:!shadow-none max-sm:overflow-hidden max-sm:p-6">
                     <div className="flex h-full flex-col max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-[env(safe-area-inset-bottom)]">
-                        <DialogHeader className="max-sm:px-6 max-sm:pt-6 sm:px-0 sm:pt-0">
+                        <DialogHeader className="sm:px-0 sm:pt-0">
                             <DialogTitle>Ny ingrediens</DialogTitle>
                             <DialogDescription className="max-sm:hidden">Legg til en ny ingrediens i databasen.</DialogDescription>
                         </DialogHeader>
                         <form
-                            className="space-y-3 max-sm:flex-1 max-sm:overflow-y-auto max-sm:px-6 max-sm:pb-6 max-sm:pt-4"
+                            className="space-y-3 max-sm:flex-1 max-sm:overflow-y-auto"
                             onSubmit={(e) => {
                                 e.preventDefault();
                                 if (!name.trim()) return;
