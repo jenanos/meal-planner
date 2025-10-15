@@ -42,6 +42,10 @@ const STEP_DESCRIPTIONS = [
   "Finn og legg til ingredienser.",
   "Fortell kort om oppskriften.",
 ] as const;
+const VIEW_STEPS = [
+  { id: "view-recipe-section-ingredients", label: "Ingredienser" },
+  { id: "view-recipe-section-description", label: "Beskrivelse" },
+] as const;
 
 type RecipeListItem = inferRouterOutputs<AppRouter>["recipe"]["list"]["items"][number];
 type IngredientSuggestion = inferRouterOutputs<AppRouter>["ingredient"]["list"][number];
@@ -55,7 +59,9 @@ export default function RecipesPage() {
   const [viewRecipeId, setViewRecipeId] = useState<string | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [carouselApi, setCarouselApi] = useState<CarouselApi | null>(null);
+  const [viewCarouselApi, setViewCarouselApi] = useState<CarouselApi | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
+  const [viewCurrentStep, setViewCurrentStep] = useState(0);
 
   // Fetch a larger page to approximate "all" for client-side filtering.
   const { data, isLoading, error } = trpc.recipe.list.useQuery({
@@ -100,6 +106,23 @@ export default function RecipesPage() {
       carouselApi.scrollTo(0);
     }
   }, [isEditDialogOpen, carouselApi]);
+
+  useEffect(() => {
+    if (!viewCarouselApi) return;
+    const handleSelect = () => setViewCurrentStep(viewCarouselApi.selectedScrollSnap());
+    handleSelect();
+    const unsubscribe = viewCarouselApi.on("select", handleSelect);
+    return () => {
+      unsubscribe();
+    };
+  }, [viewCarouselApi]);
+
+  useEffect(() => {
+    if (isViewDialogOpen && viewCarouselApi) {
+      setViewCurrentStep(0);
+      viewCarouselApi.scrollTo(0);
+    }
+  }, [isViewDialogOpen, viewCarouselApi]);
 
   const ingredientQuery = trpc.ingredient.list.useQuery(
     { search: debouncedIngSearch.trim() || undefined },
@@ -219,7 +242,7 @@ export default function RecipesPage() {
 
   const dialogContentClassName = cn(
     "dialog-content-responsive isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground sm:max-h-[min(100vh-4rem,38rem)] sm:p-6 sm:shadow-2xl sm:ring-1 sm:ring-border sm:rounded-xl",
-    "max-sm:bg-background max-sm:!left-0 max-sm:!top-0 max-sm:!h-[100dvh] max-sm:!max-h-none max-sm:!w-full max-sm:!max-w-none max-sm:!translate-x-0 max-sm:!translate-y-0 max-sm:!rounded-none max-sm:!border-0 max-sm:!p-0 max-sm:!shadow-none max-sm:overflow-hidden"
+    "max-sm:bg-background max-sm:!left-1/2 max-sm:!top-[calc(env(safe-area-inset-top)+1rem)] max-sm:!h-[50dvh] max-sm:!max-h-[50dvh] max-sm:!w-[calc(100vw-2rem)] max-sm:!max-w-[calc(100vw-2rem)] max-sm:!-translate-x-1/2 max-sm:!translate-y-0 max-sm:!rounded-2xl max-sm:!border-0 max-sm:!p-0 max-sm:!shadow-none max-sm:overflow-hidden"
   );
 
   // Helpers
@@ -405,7 +428,7 @@ export default function RecipesPage() {
             <div className="flex h-full flex-col max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-[env(safe-area-inset-bottom)]">
               <DialogHeader className="text-center sm:text-left max-sm:px-6 max-sm:pt-6 sm:px-0 sm:pt-0">
                 <DialogTitle>{editId ? "Rediger oppskrift" : "Ny oppskrift"}</DialogTitle>
-                <DialogDescription>
+                <DialogDescription className="max-sm:hidden">
                   {editId
                     ? "Gjør endringer og lagre for å oppdatere oppskriften."
                     : "Fyll ut feltene under og lagre for å legge til oppskriften."}
@@ -420,7 +443,7 @@ export default function RecipesPage() {
                         <p className="text-sm font-semibold text-foreground">
                           Steg {currentStep + 1} av {STEP_TITLES.length}
                         </p>
-                        <p className="text-xs text-muted-foreground">{STEP_DESCRIPTIONS[currentStep]}</p>
+                        <p className="text-xs text-muted-foreground max-sm:hidden">{STEP_DESCRIPTIONS[currentStep]}</p>
                       </div>
                       <div className="flex items-center gap-1.5" aria-hidden="true">
                         {STEP_TITLES.map((_, idx) => (
@@ -448,7 +471,7 @@ export default function RecipesPage() {
                             autoFocus={!editId}
                           />
                           {!editId ? (
-                            <p className="text-xs text-muted-foreground">
+                            <p className="text-xs text-muted-foreground max-sm:hidden">
                               Søk etter eksisterende oppskrifter mens du skriver.
                             </p>
                           ) : null}
@@ -613,7 +636,7 @@ export default function RecipesPage() {
                               ))}
                             </div>
                           ) : trimmedIngSearch.length === 0 ? (
-                            <p className="text-xs text-muted-foreground">
+                            <p className="text-xs text-muted-foreground max-sm:hidden">
                               Søk etter ingredienser for å legge dem til i oppskriften.
                             </p>
                           ) : null}
@@ -682,6 +705,7 @@ export default function RecipesPage() {
             setIsViewDialogOpen(open);
             if (!open) {
               setViewRecipeId(null);
+              setViewCurrentStep(0);
             }
           }}
         >
@@ -691,7 +715,7 @@ export default function RecipesPage() {
                 <DialogTitle>{viewRecipe?.name ?? "Oppskrift"}</DialogTitle>
                 <DialogDescription>
                   {viewRecipe
-                    ? "Sveip for å se ingredienser og beskrivelse."
+                    ? "Bla for å se ingredienser og beskrivelse."
                     : "Oppskriften finnes ikke lenger."}
                 </DialogDescription>
               </DialogHeader>
@@ -699,9 +723,9 @@ export default function RecipesPage() {
               <div className="flex flex-1 flex-col gap-5 max-sm:overflow-hidden">
                 <div className="max-sm:flex-1 max-sm:overflow-y-auto max-sm:px-6 sm:px-0">
                   {viewRecipe ? (
-                    <Carousel className="w-full" opts={{ loop: false }}>
+                    <Carousel className="w-full" opts={{ loop: false }} setApi={setViewCarouselApi}>
                       <CarouselContent>
-                        <CarouselItem className="space-y-4">
+                        <CarouselItem className="space-y-4" id={VIEW_STEPS[0].id}>
                           <div className="space-y-4">
                             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
                               {viewRecipe.category ? (
@@ -733,7 +757,7 @@ export default function RecipesPage() {
                             </div>
                           </div>
                         </CarouselItem>
-                        <CarouselItem className="space-y-4">
+                        <CarouselItem className="space-y-4" id={VIEW_STEPS[1].id}>
                           <div>
                             <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
                               Beskrivelse
@@ -748,6 +772,25 @@ export default function RecipesPage() {
                   ) : (
                     <p className="text-sm text-muted-foreground">Kunne ikke finne oppskriften.</p>
                   )}
+                  {viewRecipe ? (
+                    <div className="mt-4 flex justify-center gap-2" role="tablist" aria-label="Vis oppskrift">
+                      {VIEW_STEPS.map((step, idx) => (
+                        <button
+                          key={step.id}
+                          type="button"
+                          role="tab"
+                          aria-selected={viewCurrentStep === idx}
+                          className={cn(
+                            "h-2 w-8 rounded-full transition-colors",
+                            viewCurrentStep === idx ? "bg-primary" : "bg-muted-foreground/30"
+                          )}
+                          onClick={() => viewCarouselApi?.scrollTo(idx)}
+                          aria-label={step.label}
+                          aria-controls={step.id}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
 
                 <DialogFooter className="!flex-col gap-2 sm:!flex-row sm:items-center sm:justify-end sm:space-x-2 max-sm:px-6 max-sm:pb-6 max-sm:pt-4 max-sm:gap-3 max-sm:border-t max-sm:border-border/60 max-sm:bg-background/95 max-sm:backdrop-blur">

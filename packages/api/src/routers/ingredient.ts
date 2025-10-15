@@ -32,7 +32,7 @@ export const ingredientRouter = router({
             .output(z.array(IngredientListItem))
             .query(async ({ input }) => {
         const where = input?.search
-            ? { name: { contains: input.search.trim() } }
+            ? { name: { contains: input.search.trim(), mode: "insensitive" as const } }
             : {};
         const items = await prisma.ingredient.findMany({
             where,

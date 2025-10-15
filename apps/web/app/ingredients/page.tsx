@@ -1,19 +1,20 @@
 "use client";
 export const dynamic = "force-dynamic";
 
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, ScrollArea } from "@repo/ui";
 import { IngredientCard } from "./components/IngredientCard";
 
 export default function IngredientsPage() {
     const [search, setSearch] = useState("");
+    const deferredSearch = useDeferredValue(search);
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [name, setName] = useState("");
     const [unit, setUnit] = useState("");
 
-    const list = trpc.ingredient.list.useQuery({ search: undefined });
+    const list = trpc.ingredient.list.useQuery({ search: deferredSearch.trim() || undefined });
     const create = trpc.ingredient.create.useMutation({
         onSuccess: () => {
             setName("");
@@ -97,33 +98,37 @@ export default function IngredientsPage() {
             </div>
 
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="dialog-content-responsive isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground ring-1 ring-border rounded-xl p-6 shadow-2xl left-1/2 top-[12vh] w-full -translate-x-1/2 translate-y-0 overflow-y-auto sm:top-1/2 sm:-translate-y-1/2 sm:max-w-md">
-                    <DialogHeader>
-                        <DialogTitle>Ny ingrediens</DialogTitle>
-                        <DialogDescription>Legg til en ny ingrediens i databasen.</DialogDescription>
-                    </DialogHeader>
-                    <form
-                        className="space-y-3"
-                        onSubmit={(e) => {
-                            e.preventDefault();
-                            if (!name.trim()) return;
-                            create.mutate({ name: name.trim(), unit: unit.trim() || undefined });
-                        }}
-                    >
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            <div className="sm:col-span-2">
-                                <label className="text-sm">Navn</label>
-                                <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+                <DialogContent className="dialog-content-responsive isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground sm:max-h-[min(100vh-4rem,32rem)] sm:p-6 sm:shadow-2xl sm:ring-1 sm:ring-border sm:rounded-xl max-sm:bg-background max-sm:!left-1/2 max-sm:!top-[calc(env(safe-area-inset-top)+1rem)] max-sm:!h-[50dvh] max-sm:!max-h-[50dvh] max-sm:!w-[calc(100vw-2rem)] max-sm:!max-w-[calc(100vw-2rem)] max-sm:!-translate-x-1/2 max-sm:!translate-y-0 max-sm:!rounded-2xl max-sm:!border-0 max-sm:!p-0 max-sm:!shadow-none max-sm:overflow-hidden">
+                    <div className="flex h-full flex-col max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-[env(safe-area-inset-bottom)]">
+                        <DialogHeader className="max-sm:px-6 max-sm:pt-6 sm:px-0 sm:pt-0">
+                            <DialogTitle>Ny ingrediens</DialogTitle>
+                            <DialogDescription className="max-sm:hidden">Legg til en ny ingrediens i databasen.</DialogDescription>
+                        </DialogHeader>
+                        <form
+                            className="space-y-3 max-sm:flex-1 max-sm:overflow-y-auto max-sm:px-6 max-sm:pb-6 max-sm:pt-4"
+                            onSubmit={(e) => {
+                                e.preventDefault();
+                                if (!name.trim()) return;
+                                create.mutate({ name: name.trim(), unit: unit.trim() || undefined });
+                            }}
+                        >
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                <div className="sm:col-span-2">
+                                    <label className="text-sm">Navn</label>
+                                    <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+                                </div>
+                                <div>
+                                    <label className="text-sm">Enhet</label>
+                                    <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="f.eks. g, ml, stk" />
+                                </div>
                             </div>
-                            <div>
-                                <label className="text-sm">Enhet</label>
-                                <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="f.eks. g, ml, stk" />
-                            </div>
-                        </div>
-                        <DialogFooter>
-                            <Button type="submit" disabled={create.isPending}>{create.isPending ? "Legger til…" : "Legg til"}</Button>
-                        </DialogFooter>
-                    </form>
+                            <DialogFooter className="!flex-row !justify-end gap-2 sm:px-0 sm:pb-0 sm:pt-0 max-sm:px-0 max-sm:pb-0 max-sm:pt-4 max-sm:border-t max-sm:border-border/60 max-sm:bg-background/95 max-sm:backdrop-blur">
+                                <Button type="submit" disabled={create.isPending} className="sm:min-w-[8rem]">
+                                    {create.isPending ? "Legger til…" : "Legg til"}
+                                </Button>
+                            </DialogFooter>
+                        </form>
+                    </div>
                 </DialogContent>
             </Dialog>
         </div>
