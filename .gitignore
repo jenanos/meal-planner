@@ -41,3 +41,6 @@ yarn-error.log*
 packages/database/prisma/dev.db
 packages/database/prisma/dev.db-journal
 packages/database/prisma/migrations/20250909075958_init/migration.sql
+
+# typescript build info
+*.tsbuildinfo
