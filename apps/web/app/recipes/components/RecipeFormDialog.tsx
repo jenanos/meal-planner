@@ -1,3 +1,5 @@
+"use client";
+
 import type React from "react";
 
 import { X } from "lucide-react";
@@ -27,7 +29,7 @@ import {
 } from "@repo/ui";
 import type { CarouselApi } from "@repo/ui";
 
-import { EVERYDAY_LABELS, HEALTH_LABELS } from "../../lib/scoreLabels";
+import { EVERYDAY_LABELS, HEALTH_LABELS } from "../../../lib/scoreLabels";
 import { CATEGORIES } from "../constants";
 import type { FormIngredient, IngredientSuggestion, RecipeListItem } from "../types";
 
