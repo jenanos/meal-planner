@@ -14,7 +14,6 @@ import {
   DialogClose,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -31,6 +30,7 @@ import {
 import type { CarouselApi } from "@repo/ui";
 
 import { EVERYDAY_LABELS, HEALTH_LABELS } from "../../../lib/scoreLabels";
+import { CategoryEmoji } from "../../components/CategoryEmoji";
 import { CATEGORIES } from "../constants";
 import type { FormIngredient, IngredientSuggestion, RecipeListItem } from "../types";
 import { StepNav } from "./StepNav";
@@ -87,7 +87,7 @@ export function RecipeFormDialog({
   carouselApi,
   setCarouselApi,
   isLastStep: _isLastStep,
-  nextDisabled,
+  nextDisabled: _nextDisabled,
   nextLabel: _nextLabel,
   name,
   onNameChange,
@@ -183,7 +183,6 @@ export function RecipeFormDialog({
                 onPrev={() => carouselApi?.scrollTo(currentStep - 1)}
                 onNext={() => carouselApi?.scrollTo(currentStep + 1)}
                 onSelect={(idx) => carouselApi?.scrollTo(idx)}
-                nextDisabled={nextDisabled}
                 description={stepDescriptions[currentStep]}
                 stepLabels={stepLabels}
               />
@@ -230,21 +229,28 @@ export function RecipeFormDialog({
                   </CarouselItem>
 
                   <CarouselItem className="space-y-4">
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <div className="flex flex-col gap-1.5 sm:col-span-2">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex flex-col gap-2 col-span-2">
                         <label className="text-sm font-medium">Kategori</label>
-                        <Select value={cat} onValueChange={(value) => onCategoryChange(value as (typeof CATEGORIES)[number])}>
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Velg kategori" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {CATEGORIES.map((category) => (
-                              <SelectItem key={category} value={category}>
-                                {category}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <div className="flex items-center gap-2">
+                          {(["FISK", "KYLLING", "VEGETAR", "ANNET"] as const).map((categoryKey) => {
+                            const selected = cat === categoryKey;
+                            return (
+                              <Button
+                                key={categoryKey}
+                                type="button"
+                                variant={selected ? "default" : "outline"}
+                                size="sm"
+                                className={cn("h-9 w-9 p-0", selected && "bg-primary/90 text-primary-foreground")}
+                                onClick={() => onCategoryChange(categoryKey)}
+                                aria-pressed={selected}
+                                title={categoryKey}
+                              >
+                                <CategoryEmoji category={categoryKey as any} size={16} showSrLabel={false} />
+                              </Button>
+                            );
+                          })}
+                        </div>
                       </div>
                       <div className="flex flex-col gap-1.5">
                         <label className="text-sm font-medium">Helgescore</label>
@@ -395,8 +401,7 @@ export function RecipeFormDialog({
               </Carousel>
             </div>
 
-            {/* Footer now only provides safe-area padding on mobile */}
-            <DialogFooter className="max-sm:px-6 max-sm:pb-6 max-sm:pt-4 max-sm:border-t max-sm:border-border/60 max-sm:bg-background/95 max-sm:backdrop-blur" />
+            {/* Footer removed */}
           </form>
         </div>
       </DialogContent>

@@ -8,8 +8,6 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@repo/ui";
@@ -19,6 +17,8 @@ import type { CarouselApi } from "@repo/ui";
 import { VIEW_STEPS } from "../constants";
 import type { RecipeListItem } from "../types";
 import { StepNav } from "./StepNav";
+import { CategoryEmoji } from "../../components/CategoryEmoji";
+import { describeEveryday, describeHealth } from "../../../lib/scoreLabels";
 
 interface RecipeViewDialogProps {
   open: boolean;
@@ -69,11 +69,6 @@ export function RecipeViewDialog({
               </DialogClose>
             </div>
             <DialogTitle>{viewRecipe?.name ?? "Oppskrift"}</DialogTitle>
-            <DialogDescription>
-              {viewRecipe
-                ? "Bla for å se ingredienser og beskrivelse."
-                : "Oppskriften finnes ikke lenger."}
-            </DialogDescription>
           </DialogHeader>
 
           <div className="flex flex-1 flex-col gap-5 max-sm:overflow-hidden">
@@ -95,12 +90,12 @@ export function RecipeViewDialog({
                       <div className="space-y-4">
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
                           {viewRecipe.category ? (
-                            <span className="font-semibold uppercase tracking-wide text-foreground">
-                              {viewRecipe.category}
+                            <span className="inline-flex items-center gap-1 text-foreground">
+                              <CategoryEmoji category={viewRecipe.category as any} size={14} showSrLabel={false} />
                             </span>
                           ) : null}
-                          <span>Helgescore: {viewRecipe.everydayScore ?? "–"}</span>
-                          <span>Helsescore: {viewRecipe.healthScore ?? "–"}</span>
+                          <span>{describeEveryday(viewRecipe.everydayScore)}</span>
+                          <span>{describeHealth(viewRecipe.healthScore)}</span>
                         </div>
                         <div>
                           <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
@@ -140,8 +135,7 @@ export function RecipeViewDialog({
               )}
               {/* dots moved into StepNav */}
             </div>
-            {/* Footer now only provides safe-area padding on mobile */}
-            <DialogFooter className="max-sm:px-6 max-sm:pb-6 max-sm:pt-4 max-sm:border-t max-sm:border-border/60 max-sm:bg-background/95 max-sm:backdrop-blur" />
+            {/* Footer removed */}
           </div>
         </div>
       </DialogContent>
