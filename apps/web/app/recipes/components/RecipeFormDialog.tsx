@@ -2,7 +2,7 @@
 
 import type React from "react";
 
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { X } from "lucide-react";
 
 import {
   Badge,
@@ -11,6 +11,7 @@ import {
   CarouselContent,
   CarouselItem,
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -32,6 +33,7 @@ import type { CarouselApi } from "@repo/ui";
 import { EVERYDAY_LABELS, HEALTH_LABELS } from "../../../lib/scoreLabels";
 import { CATEGORIES } from "../constants";
 import type { FormIngredient, IngredientSuggestion, RecipeListItem } from "../types";
+import { StepNav } from "./StepNav";
 
 interface RecipeFormDialogProps {
   open: boolean;
@@ -84,9 +86,9 @@ export function RecipeFormDialog({
   stepDescriptions,
   carouselApi,
   setCarouselApi,
-  isLastStep,
+  isLastStep: _isLastStep,
   nextDisabled,
-  nextLabel,
+  nextLabel: _nextLabel,
   name,
   onNameChange,
   matchingRecipes,
@@ -112,6 +114,13 @@ export function RecipeFormDialog({
   createIsPending,
   updateIsPending,
 }: RecipeFormDialogProps) {
+  const stepLabels = stepTitles.map((t) => t);
+  const hasName = name.trim().length > 0;
+  const hasDetails = Boolean(cat) && !Number.isNaN(everyday) && !Number.isNaN(health);
+  const hasIngredients = ingList.length > 0;
+  const canSubmitNow = hasName && hasDetails && hasIngredients;
+  const submitDisabled = !canSubmitNow || createIsPending || updateIsPending;
+  const formId = "recipe-form";
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
@@ -131,6 +140,29 @@ export function RecipeFormDialog({
       <DialogContent className={dialogContentClassName}>
         <div className="flex h-full flex-col max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-[env(safe-area-inset-bottom)]">
           <DialogHeader className="text-center sm:text-left max-sm:px-6 max-sm:pt-6 sm:px-0 sm:pt-0">
+            <div className="mb-3 flex items-center justify-between">
+              <Button
+                type="submit"
+                form={formId}
+                size="sm"
+                variant={submitDisabled ? "secondary" : "default"}
+                className={cn(!submitDisabled && "bg-green-600 hover:bg-green-600/90")}
+                disabled={submitDisabled}
+              >
+                {editId
+                  ? updateIsPending
+                    ? "Oppdaterer…"
+                    : "Oppdater"
+                  : createIsPending
+                    ? "Oppretter…"
+                    : "Opprett"}
+              </Button>
+              <DialogClose asChild>
+                <Button type="button" variant="ghost" size="icon" aria-label="Lukk">
+                  <X className="size-4" />
+                </Button>
+              </DialogClose>
+            </div>
             <DialogTitle>{editId ? "Rediger oppskrift" : "Ny oppskrift"}</DialogTitle>
             <DialogDescription className="max-sm:hidden">
               {editId
@@ -142,52 +174,21 @@ export function RecipeFormDialog({
           <form
             className="flex flex-1 flex-col gap-5 max-sm:min-h-0 max-sm:overflow-hidden"
             onSubmit={onSubmit}
+            id={formId}
           >
             <div className="space-y-5 max-sm:flex-1 max-sm:min-h-0 max-sm:overflow-y-auto max-sm:px-6 sm:space-y-5">
-              <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3">
-                <div className="flex items-center justify-center gap-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => carouselApi?.scrollTo(currentStep - 1)}
-                    disabled={currentStep === 0}
-                    aria-label="Forrige steg"
-                  >
-                    <ChevronLeft className="size-4" />
-                  </Button>
-                  <div className="flex items-center justify-center gap-1.5" aria-hidden="true">
-                    {stepTitles.map((_, idx) => (
-                      <span
-                        key={idx}
-                        className={cn(
-                          "h-1.5 w-6 rounded-full transition-colors",
-                          idx === currentStep
-                            ? "bg-primary"
-                            : idx < currentStep
-                              ? "bg-primary/40"
-                              : "bg-muted-foreground/30"
-                        )}
-                      />
-                    ))}
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => carouselApi?.scrollTo(currentStep + 1)}
-                    disabled={currentStep === stepTitles.length - 1 || nextDisabled}
-                    aria-label="Neste steg"
-                  >
-                    <ChevronRight className="size-4" />
-                  </Button>
-                </div>
-                <p className="text-center text-xs text-muted-foreground max-sm:hidden">
-                  {stepDescriptions[currentStep]}
-                </p>
-              </div>
+              <StepNav
+                current={currentStep}
+                total={stepTitles.length}
+                onPrev={() => carouselApi?.scrollTo(currentStep - 1)}
+                onNext={() => carouselApi?.scrollTo(currentStep + 1)}
+                onSelect={(idx) => carouselApi?.scrollTo(idx)}
+                nextDisabled={nextDisabled}
+                description={stepDescriptions[currentStep]}
+                stepLabels={stepLabels}
+              />
+
+              {/* Primary action moved to header (top-left) */}
 
               <Carousel className="w-full" setApi={setCarouselApi} opts={{ loop: false }}>
                 <CarouselContent>
@@ -353,8 +354,8 @@ export function RecipeFormDialog({
                                 onChange={(event) => upsertQuantity(ingredient.name, event.target.value)}
                               />
                               {ingredient.unit &&
-                              ((typeof ingredient.quantity === "number" && !Number.isNaN(ingredient.quantity)) ||
-                                (typeof ingredient.quantity === "string" && ingredient.quantity.trim() !== "")) ? (
+                                ((typeof ingredient.quantity === "number" && !Number.isNaN(ingredient.quantity)) ||
+                                  (typeof ingredient.quantity === "string" && ingredient.quantity.trim() !== "")) ? (
                                 <span className="text-xs text-muted-foreground">{ingredient.unit}</span>
                               ) : null}
                               <Button
@@ -394,42 +395,8 @@ export function RecipeFormDialog({
               </Carousel>
             </div>
 
-            <DialogFooter className="!flex-col gap-2 sm:!flex-row sm:items-center sm:justify-between sm:space-x-0 max-sm:px-6 max-sm:pb-6 max-sm:pt-4 max-sm:gap-3 max-sm:border-t max-sm:border-border/60 max-sm:bg-background/95 max-sm:backdrop-blur">
-              <div className="flex w-full gap-2 sm:w-auto">
-                {currentStep > 0 ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="flex-1 sm:flex-none"
-                    onClick={() => carouselApi?.scrollTo(currentStep - 1)}
-                  >
-                    Forrige
-                  </Button>
-                ) : null}
-              </div>
-              <div className="flex w-full justify-end gap-2 sm:w-auto">
-                {isLastStep ? (
-                  <Button type="submit" className="flex-1 sm:flex-none" disabled={createIsPending || updateIsPending}>
-                    {editId
-                      ? updateIsPending
-                        ? "Oppdaterer…"
-                        : "Oppdater"
-                      : createIsPending
-                        ? "Oppretter…"
-                        : "Opprett"}
-                  </Button>
-                ) : (
-                  <Button
-                    type="button"
-                    className="flex-1 sm:flex-none"
-                    onClick={() => carouselApi?.scrollTo(currentStep + 1)}
-                    disabled={nextDisabled}
-                  >
-                    {nextLabel}
-                  </Button>
-                )}
-              </div>
-            </DialogFooter>
+            {/* Footer now only provides safe-area padding on mobile */}
+            <DialogFooter className="max-sm:px-6 max-sm:pb-6 max-sm:pt-4 max-sm:border-t max-sm:border-border/60 max-sm:bg-background/95 max-sm:backdrop-blur" />
           </form>
         </div>
       </DialogContent>
