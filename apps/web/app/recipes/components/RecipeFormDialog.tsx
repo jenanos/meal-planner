@@ -139,7 +139,7 @@ export function RecipeFormDialog({
       </DialogTrigger>
       <DialogContent className={dialogContentClassName}>
         <div className="flex h-full flex-col max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-[env(safe-area-inset-bottom)]">
-          <DialogHeader className="text-center sm:text-left max-sm:px-6 max-sm:pt-6 sm:px-0 sm:pt-0">
+          <DialogHeader className="text-center sm:text-left sm:px-0 sm:pt-0">
             <div className="mb-3 flex items-center justify-between">
               <Button
                 type="submit"
@@ -172,11 +172,11 @@ export function RecipeFormDialog({
           </DialogHeader>
 
           <form
-            className="flex flex-1 flex-col gap-5 max-sm:min-h-0 max-sm:overflow-hidden"
+            className="flex flex-1 flex-col gap-5 max-sm:min-h-0"
             onSubmit={onSubmit}
             id={formId}
           >
-            <div className="space-y-5 max-sm:flex-1 max-sm:min-h-0 max-sm:overflow-y-auto max-sm:px-6 sm:space-y-5">
+            <div className="space-y-5 max-sm:flex-1 max-sm:min-h-0 max-sm:overflow-y-auto max-sm:overflow-x-visible sm:space-y-5">
               <StepNav
                 current={currentStep}
                 total={stepTitles.length}
@@ -195,6 +195,7 @@ export function RecipeFormDialog({
                     <div className="flex flex-col gap-1.5">
                       <label className="text-sm font-medium">Navn</label>
                       <Input
+                        className="focus-visible:ring-inset"
                         value={name}
                         onChange={(event) => onNameChange(event.target.value)}
                         required
@@ -292,6 +293,7 @@ export function RecipeFormDialog({
                     <div className="space-y-3">
                       <label className="text-sm font-medium">Ingredienser</label>
                       <Input
+                        className="focus-visible:ring-inset"
                         value={ingSearch}
                         onChange={(event) => onIngSearchChange(event.target.value)}
                         placeholder="Søk etter ingrediens"
@@ -353,7 +355,7 @@ export function RecipeFormDialog({
                             >
                               <span>{ingredient.name}</span>
                               <Input
-                                className="h-7 w-20"
+                                className="h-7 w-20 focus-visible:ring-inset"
                                 placeholder={ingredient.unit ?? "mengde"}
                                 value={
                                   typeof ingredient.quantity === "number"
@@ -393,6 +395,7 @@ export function RecipeFormDialog({
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Beskrivelse</label>
                       <Textarea
+                        className="focus-visible:ring-inset"
                         value={desc}
                         onChange={(event) => onDescChange(event.target.value)}
                         placeholder="Beskriv oppskriften kort eller legg inn notater."

@@ -53,7 +53,7 @@ export function RecipeViewDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={dialogContentClassName}>
         <div className="flex h-full flex-col max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-[env(safe-area-inset-bottom)]">
-          <DialogHeader className="max-sm:px-6 max-sm:pt-6 sm:px-0 sm:pt-0">
+          <DialogHeader className="sm:px-0 sm:pt-0">
             <div className="mb-3 flex items-center justify-between">
               <div>
                 {viewRecipe ? (
@@ -71,7 +71,7 @@ export function RecipeViewDialog({
             <DialogTitle>{viewRecipe?.name ?? "Oppskrift"}</DialogTitle>
           </DialogHeader>
 
-          <div className="flex flex-1 flex-col gap-5 max-sm:overflow-hidden">
+          <div className="flex flex-1 flex-col gap-5">
             <StepNav
               current={viewCurrentStep}
               total={VIEW_STEPS.length}
@@ -82,7 +82,7 @@ export function RecipeViewDialog({
               stepLabels={stepLabels}
             />
 
-            <div className="max-sm:flex-1 max-sm:overflow-y-auto max-sm:px-6 sm:px-0">
+            <div className="max-sm:flex-1 max-sm:overflow-y-auto sm:px-0">
               {viewRecipe ? (
                 <Carousel className="w-full" opts={{ loop: false }} setApi={setViewCarouselApi}>
                   <CarouselContent>
