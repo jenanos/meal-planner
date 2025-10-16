@@ -178,7 +178,7 @@ export function RecipeFormDialog({
                     size="icon"
                     className="h-8 w-8"
                     onClick={() => carouselApi?.scrollTo(currentStep + 1)}
-                    disabled={currentStep === stepTitles.length - 1}
+                    disabled={currentStep === stepTitles.length - 1 || nextDisabled}
                     aria-label="Neste steg"
                   >
                     <ChevronRight className="size-4" />
