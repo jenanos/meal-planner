@@ -230,18 +230,21 @@ export function RecipeFormDialog({
 
                   <CarouselItem className="space-y-4">
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="flex flex-col gap-2 col-span-2">
-                        <label className="text-sm font-medium">Kategori</label>
-                        <div className="flex items-center gap-2">
+                      <div className="flex flex-col gap-2 col-span-2 items-center">
+                        <label className="text-sm font-medium text-center">Kategori</label>
+                        <div className="flex w-full items-center justify-evenly">
                           {(["FISK", "KYLLING", "VEGETAR", "ANNET"] as const).map((categoryKey) => {
                             const selected = cat === categoryKey;
                             return (
                               <Button
                                 key={categoryKey}
                                 type="button"
-                                variant={selected ? "default" : "outline"}
+                                variant="ghost"
                                 size="sm"
-                                className={cn("h-9 w-9 p-0", selected && "bg-primary/90 text-primary-foreground")}
+                                className={cn(
+                                  "h-10 w-10 p-0 rounded-full",
+                                  selected && "bg-primary/90 text-primary-foreground"
+                                )}
                                 onClick={() => onCategoryChange(categoryKey)}
                                 aria-pressed={selected}
                                 title={categoryKey}

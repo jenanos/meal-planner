@@ -88,13 +88,13 @@ export function RecipeViewDialog({
                   <CarouselContent>
                     <CarouselItem className="space-y-4" id={VIEW_STEPS[0].id}>
                       <div className="space-y-4">
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+                        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+                          <span>{describeEveryday(viewRecipe.everydayScore)}</span>
                           {viewRecipe.category ? (
                             <span className="inline-flex items-center gap-1 text-foreground">
                               <CategoryEmoji category={viewRecipe.category as any} size={14} showSrLabel={false} />
                             </span>
                           ) : null}
-                          <span>{describeEveryday(viewRecipe.everydayScore)}</span>
                           <span>{describeHealth(viewRecipe.healthScore)}</span>
                         </div>
                         <div>
