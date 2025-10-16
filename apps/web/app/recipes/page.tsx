@@ -202,8 +202,10 @@ export default function RecipesPage() {
   };
 
   const dialogContentClassName = cn(
-    "dialog-content-responsive isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground sm:max-h-[min(100vh-4rem,38rem)] sm:p-6 sm:shadow-2xl sm:ring-1 sm:ring-border sm:rounded-xl",
-    "max-sm:bg-background max-sm:!left-1/2 max-sm:!top-[calc(env(safe-area-inset-top)+1rem)] max-sm:!h-[50dvh] max-sm:!max-h-[50dvh] max-sm:!w-[calc(100vw-2rem)] max-sm:!max-w-[calc(100vw-2rem)] max-sm:!-translate-x-1/2 max-sm:!translate-y-0 max-sm:!rounded-2xl max-sm:!border-0 max-sm:!p-0 max-sm:!shadow-none max-sm:overflow-hidden"
+    // Core look
+    "isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground sm:max-h-[min(100vh-4rem,38rem)] sm:max-w-md sm:p-6 sm:shadow-2xl sm:ring-1 sm:ring-border sm:rounded-xl",
+    // Mobile: symmetric margins and consolidated padding
+    "max-sm:w-[calc(100vw-2rem)] max-sm:mx-auto max-sm:h-[50dvh] max-sm:max-h-[50dvh] max-sm:p-6 max-sm:bg-background max-sm:rounded-2xl max-sm:border-0 max-sm:shadow-none max-sm:!top-[calc(env(safe-area-inset-top)+1rem)] max-sm:!translate-y-0"
   );
 
   // Helpers
