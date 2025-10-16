@@ -2,7 +2,7 @@
 
 import type React from "react";
 
-import { X } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 
 import {
   Badge,
@@ -139,28 +139,54 @@ export function RecipeFormDialog({
             </DialogDescription>
           </DialogHeader>
 
-          <form className="flex flex-1 flex-col gap-5 max-sm:overflow-hidden" onSubmit={onSubmit}>
-            <div className="space-y-5 max-sm:flex-1 max-sm:overflow-y-auto max-sm:px-6 sm:space-y-5">
+          <form
+            className="flex flex-1 flex-col gap-5 max-sm:min-h-0 max-sm:overflow-hidden"
+            onSubmit={onSubmit}
+          >
+            <div className="space-y-5 max-sm:flex-1 max-sm:min-h-0 max-sm:overflow-y-auto max-sm:px-6 sm:space-y-5">
               <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">
-                      Steg {currentStep + 1} av {stepTitles.length}
-                    </p>
-                    <p className="text-xs text-muted-foreground max-sm:hidden">{stepDescriptions[currentStep]}</p>
-                  </div>
-                  <div className="flex items-center gap-1.5" aria-hidden="true">
+                <div className="flex items-center justify-center gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => carouselApi?.scrollTo(currentStep - 1)}
+                    disabled={currentStep === 0}
+                    aria-label="Forrige steg"
+                  >
+                    <ChevronLeft className="size-4" />
+                  </Button>
+                  <div className="flex items-center justify-center gap-1.5" aria-hidden="true">
                     {stepTitles.map((_, idx) => (
                       <span
                         key={idx}
                         className={cn(
                           "h-1.5 w-6 rounded-full transition-colors",
-                          idx <= currentStep ? "bg-primary" : "bg-muted-foreground/30"
+                          idx === currentStep
+                            ? "bg-primary"
+                            : idx < currentStep
+                              ? "bg-primary/40"
+                              : "bg-muted-foreground/30"
                         )}
                       />
                     ))}
                   </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => carouselApi?.scrollTo(currentStep + 1)}
+                    disabled={currentStep === stepTitles.length - 1 || nextDisabled}
+                    aria-label="Neste steg"
+                  >
+                    <ChevronRight className="size-4" />
+                  </Button>
                 </div>
+                <p className="text-center text-xs text-muted-foreground max-sm:hidden">
+                  {stepDescriptions[currentStep]}
+                </p>
               </div>
 
               <Carousel className="w-full" setApi={setCarouselApi} opts={{ loop: false }}>
@@ -185,17 +211,19 @@ export function RecipeFormDialog({
                         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                           Finnes fra før
                         </p>
-                        <div className="flex flex-wrap gap-2">
-                          {matchingRecipes.map((recipe) => (
-                            <Badge
-                              key={recipe.id}
-                              className="cursor-pointer"
-                              onClick={() => onSelectExistingRecipe(recipe.id)}
-                            >
-                              {recipe.name}
-                            </Badge>
-                          ))}
-                        </div>
+                        <ScrollArea className="max-h-32 pr-2">
+                          <div className="flex flex-wrap gap-2 pb-2">
+                            {matchingRecipes.map((recipe) => (
+                              <Badge
+                                key={recipe.id}
+                                className="cursor-pointer"
+                                onClick={() => onSelectExistingRecipe(recipe.id)}
+                              >
+                                {recipe.name}
+                              </Badge>
+                            ))}
+                          </div>
+                        </ScrollArea>
                       </div>
                     ) : null}
                   </CarouselItem>
