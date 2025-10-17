@@ -1,9 +1,9 @@
 "use client";
 export const dynamic = "force-dynamic";
 
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
-import { Button, Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, ScrollArea } from "@repo/ui";
+import { Badge, Button, Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, ScrollArea } from "@repo/ui";
 import { IngredientCard } from "./components/IngredientCard";
 import { X } from "lucide-react";
 
@@ -14,8 +14,19 @@ export default function IngredientsPage() {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [name, setName] = useState("");
     const [unit, setUnit] = useState("");
+    const [debouncedName, setDebouncedName] = useState("");
 
     const list = trpc.ingredient.list.useQuery({ search: deferredSearch.trim() || undefined });
+    // Debounce dialog "name" for suggestions
+    useEffect(() => {
+        const t = setTimeout(() => setDebouncedName(name), 250);
+        return () => clearTimeout(t);
+    }, [name]);
+    // Suggestions for the dialog input
+    const dialogSuggest = trpc.ingredient.list.useQuery(
+        { search: debouncedName.trim() || undefined },
+        { enabled: name.trim().length > 0, staleTime: 5_000 }
+    );
     const create = trpc.ingredient.create.useMutation({
         onSuccess: () => {
             setName("");
@@ -133,6 +144,36 @@ export default function IngredientsPage() {
                                 <div className="sm:col-span-2">
                                     <label className="text-sm">Navn</label>
                                     <Input className="focus-visible:ring-inset" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+                                    {name.trim().length > 0 ? (
+                                        <div className="mt-2 space-y-2">
+                                            {dialogSuggest.isLoading ? (
+                                                <p className="text-xs text-muted-foreground">Søker…</p>
+                                            ) : null}
+                                            {(() => {
+                                                const suggestions = dialogSuggest.data ?? [];
+                                                if (suggestions.length === 0) return null;
+                                                return (
+                                                    <ScrollArea className="max-h-32 pr-2">
+                                                        <div className="flex flex-wrap gap-2 pb-2">
+                                                            {suggestions.map((s: any) => (
+                                                                <Badge
+                                                                    key={s.id}
+                                                                    className="cursor-pointer"
+                                                                    onClick={() => {
+                                                                        setName(s.name);
+                                                                        if (s.unit) setUnit(s.unit);
+                                                                    }}
+                                                                >
+                                                                    {s.name}
+                                                                    {s.unit ? <span className="opacity-60">&nbsp;({s.unit})</span> : null}
+                                                                </Badge>
+                                                            ))}
+                                                        </div>
+                                                    </ScrollArea>
+                                                );
+                                            })()}
+                                        </div>
+                                    ) : null}
                                 </div>
                                 <div>
                                     <label className="text-sm">Enhet</label>
