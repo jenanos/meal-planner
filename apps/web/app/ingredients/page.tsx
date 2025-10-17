@@ -3,8 +3,9 @@ export const dynamic = "force-dynamic";
 
 import { useDeferredValue, useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
-import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, ScrollArea } from "@repo/ui";
+import { Button, Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, ScrollArea } from "@repo/ui";
 import { IngredientCard } from "./components/IngredientCard";
+import { X } from "lucide-react";
 
 export default function IngredientsPage() {
     const [search, setSearch] = useState("");
@@ -99,12 +100,28 @@ export default function IngredientsPage() {
 
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogContent className="isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground max-sm:w-[calc(100vw-2rem)] max-sm:mx-auto sm:max-w-md sm:max-h-[min(100vh-4rem,32rem)] sm:shadow-2xl sm:ring-1 sm:ring-border sm:rounded-xl max-sm:bg-background max-sm:!left-1/2 max-sm:!top-[calc(env(safe-area-inset-top)+1rem)] max-sm:!h-[50dvh] max-sm:!max-h-[50dvh] max-sm:!-translate-x-1/2 max-sm:!translate-y-0 max-sm:!rounded-2xl max-sm:!border-0 max-sm:!shadow-none max-sm:p-6">
-                    <div className="flex h-full flex-col max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-[env(safe-area-inset-bottom)]">
+                    <div className="flex h-full min-h-0 flex-col max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-[env(safe-area-inset-bottom)]">
                         <DialogHeader className="sm:px-0 sm:pt-0">
+                            <div className="mb-3 flex items-center justify-between">
+                                <Button
+                                    type="submit"
+                                    form="ingredient-form"
+                                    size="sm"
+                                    disabled={create.isPending || !name.trim()}
+                                >
+                                    {create.isPending ? "Legger til…" : "Legg til"}
+                                </Button>
+                                <DialogClose asChild>
+                                    <Button type="button" variant="ghost" size="icon" aria-label="Lukk">
+                                        <X className="size-4" />
+                                    </Button>
+                                </DialogClose>
+                            </div>
                             <DialogTitle>Ny ingrediens</DialogTitle>
                             <DialogDescription className="max-sm:hidden">Legg til en ny ingrediens i databasen.</DialogDescription>
                         </DialogHeader>
                         <form
+                            id="ingredient-form"
                             className="space-y-3 max-sm:flex-1 max-sm:overflow-y-auto max-sm:overflow-x-visible"
                             onSubmit={(e) => {
                                 e.preventDefault();
@@ -122,11 +139,7 @@ export default function IngredientsPage() {
                                     <Input className="focus-visible:ring-inset" value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="f.eks. g, ml, stk" />
                                 </div>
                             </div>
-                            <DialogFooter className="!flex-row !justify-end gap-2 sm:px-0 sm:pb-0 sm:pt-0 max-sm:px-0 max-sm:pb-0 max-sm:pt-4 max-sm:border-t max-sm:border-border/60 max-sm:bg-background/95 max-sm:backdrop-blur">
-                                <Button type="submit" disabled={create.isPending} className="sm:min-w-[8rem]">
-                                    {create.isPending ? "Legger til…" : "Legg til"}
-                                </Button>
-                            </DialogFooter>
+                            {/* Footer removed: primary action sits in header */}
                         </form>
                     </div>
                 </DialogContent>
