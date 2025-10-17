@@ -52,7 +52,7 @@ export function RecipeViewDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={dialogContentClassName}>
-        <div className="flex h-full flex-col max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-[env(safe-area-inset-bottom)]">
+        <div className="flex h-full min-h-0 flex-col max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-[env(safe-area-inset-bottom)]">
           <DialogHeader className="sm:px-0 sm:pt-0">
             <div className="mb-3 flex items-center justify-between">
               <div>
@@ -71,18 +71,19 @@ export function RecipeViewDialog({
             <DialogTitle>{viewRecipe?.name ?? "Oppskrift"}</DialogTitle>
           </DialogHeader>
 
-          <div className="flex flex-1 flex-col gap-5">
+          <div className="flex flex-1 min-h-0 flex-col gap-5">
             <StepNav
               current={viewCurrentStep}
               total={VIEW_STEPS.length}
               onPrev={() => viewCarouselApi?.scrollTo(viewCurrentStep - 1)}
               onNext={() => viewCarouselApi?.scrollTo(viewCurrentStep + 1)}
               onSelect={(idx) => viewCarouselApi?.scrollTo(idx)}
-              className="max-sm:px-6 sm:px-0"
+              className="sm:px-0"
               stepLabels={stepLabels}
             />
 
-            <div className="max-sm:flex-1 max-sm:overflow-y-auto sm:px-0">
+            {/* Scroll the content region below StepNav */}
+            <div className="flex-1 min-h-0 overflow-y-auto sm:px-0 touch-pan-y [-webkit-overflow-scrolling:touch]">
               {viewRecipe ? (
                 <Carousel className="w-full" opts={{ loop: false }} setApi={setViewCarouselApi}>
                   <CarouselContent>

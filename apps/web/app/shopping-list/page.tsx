@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
-import { Button, Badge, Input, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter, Separator } from "@repo/ui";
+import { Button, Badge, Input, Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, Separator } from "@repo/ui";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@repo/api";
 import { X } from "lucide-react";
@@ -209,48 +209,64 @@ export default function ShoppingListPage() {
             <DialogTrigger asChild>
               <Button type="button" variant="outline" size="sm">Legg til element</Button>
             </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Legg til i handlelisten</DialogTitle>
-                <DialogDescription>Skriv inn et element. Tidligere elementer dukker opp som forslag.</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-3">
-                <Input
-                  autoFocus
-                  placeholder="F.eks. vaskemiddel"
-                  value={extraInput}
-                  onChange={(e) => setExtraInput(e.target.value)}
-                />
-                {extraInput.trim().length > 0 && (
-                  <div className="min-h-6">
-                    {extraSuggest.isLoading ? (
-                      <p className="text-xs text-muted-foreground">Søker…</p>
-                    ) : (
-                      (() => {
-                        const suggestions = (extraSuggest.data ?? []) as Array<{ id: string; name: string }>;
-                        const exists = suggestions.some((s) => s.name.toLowerCase() === extraInput.trim().toLowerCase());
-                        return (
-                          <div className="flex flex-wrap gap-2">
-                            {suggestions.map((s) => (
-                              <Badge key={s.id} className="cursor-pointer" onClick={() => addOrToggleExtra(s.name)}>
-                                {s.name}
-                              </Badge>
-                            ))}
-                            {!exists && (
-                              <Badge className="cursor-pointer" onClick={() => addOrToggleExtra(extraInput.trim())}>
-                                Legg til "{extraInput.trim()}"
-                              </Badge>
-                            )}
-                          </div>
-                        );
-                      })()
-                    )}
+            <DialogContent className="isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground max-sm:w-[calc(100vw-2rem)] max-sm:mx-auto sm:max-w-md sm:max-h-[min(100vh-4rem,32rem)] sm:shadow-2xl sm:ring-1 sm:ring-border sm:rounded-xl max-sm:bg-background max-sm:!left-1/2 max-sm:!top-[calc(env(safe-area-inset-top)+1rem)] max-sm:!h-[50dvh] max-sm:!max-h-[50dvh] max-sm:!-translate-x-1/2 max-sm:!translate-y-0 max-sm:!rounded-2xl max-sm:!border-0 max-sm:!shadow-none max-sm:p-6">
+              <div className="flex h-full min-h-0 flex-col">
+                <DialogHeader className="sm:px-0 sm:pt-0">
+                  <div className="mb-3 flex items-center justify-between">
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={!extraInput.trim()}
+                      onClick={() => addOrToggleExtra(extraInput.trim())}
+                    >
+                      Legg til
+                    </Button>
+                    <DialogClose asChild>
+                      <Button type="button" variant="ghost" size="icon" aria-label="Lukk">
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </DialogClose>
                   </div>
-                )}
+                  <DialogTitle>Legg til i handlelisten</DialogTitle>
+                  <DialogDescription className="max-sm:hidden">Skriv inn et element. Tidligere elementer dukker opp som forslag.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3 max-sm:flex-1 max-sm:min-h-0 max-sm:overflow-y-auto">
+                  <Input
+                    className="focus-visible:ring-inset"
+                    autoFocus
+                    placeholder="F.eks. vaskemiddel"
+                    value={extraInput}
+                    onChange={(e) => setExtraInput(e.target.value)}
+                  />
+                  {extraInput.trim().length > 0 && (
+                    <div className="min-h-6">
+                      {extraSuggest.isLoading ? (
+                        <p className="text-xs text-muted-foreground">Søker…</p>
+                      ) : (
+                        (() => {
+                          const suggestions = (extraSuggest.data ?? []) as Array<{ id: string; name: string }>;
+                          const exists = suggestions.some((s) => s.name.toLowerCase() === extraInput.trim().toLowerCase());
+                          return (
+                            <div className="flex flex-wrap gap-2">
+                              {suggestions.map((s) => (
+                                <Badge key={s.id} className="cursor-pointer" onClick={() => addOrToggleExtra(s.name)}>
+                                  {s.name}
+                                </Badge>
+                              ))}
+                              {!exists && (
+                                <Badge className="cursor-pointer" onClick={() => addOrToggleExtra(extraInput.trim())}>
+                                  Legg til "{extraInput.trim()}"
+                                </Badge>
+                              )}
+                            </div>
+                          );
+                        })()
+                      )}
+                    </div>
+                  )}
+                </div>
+                {/* Footer removed - primary action is in header */}
               </div>
-              <DialogFooter>
-                <Button type="button" onClick={() => addOrToggleExtra(extraInput.trim())} disabled={!extraInput.trim()}>Legg til</Button>
-              </DialogFooter>
             </DialogContent>
           </Dialog>
         </div>
