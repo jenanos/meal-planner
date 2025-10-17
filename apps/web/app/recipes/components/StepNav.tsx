@@ -38,9 +38,10 @@ export function StepNav({
 
     return (
         <div className={cn("space-y-2", className)}>
-            <div className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
-                <div className="flex items-center gap-2">{left}</div>
-                <div className="flex items-center justify-center gap-2 min-w-[260px]">
+            {/* Grid keeps center controls centered and stable regardless of width changes */}
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 w-full">
+                <div className="flex items-center gap-2 justify-self-start min-w-0">{left}</div>
+                <div className="flex items-center justify-center gap-2 min-w-[220px] max-w-full justify-self-center">
                     <Button
                         type="button"
                         variant="ghost"
@@ -52,7 +53,7 @@ export function StepNav({
                     >
                         <ChevronLeft className="size-4" />
                     </Button>
-                    <div className="flex items-center justify-center gap-2" role="tablist" aria-label="Steg">
+                    <div className="flex items-center justify-center gap-2 min-w-0" role="tablist" aria-label="Steg">
                         {Array.from({ length: total }).map((_, idx) => {
                             const active = idx === current;
                             const label = stepLabels?.[idx];
@@ -65,7 +66,7 @@ export function StepNav({
                                     className={cn(
                                         "rounded-full transition-colors",
                                         active
-                                            ? "h-7 px-3 bg-primary/90 text-primary-foreground text-[11px] font-medium"
+                                            ? "h-7 px-3 bg-primary/90 text-primary-foreground text-[11px] font-medium whitespace-nowrap"
                                             : "h-1.5 w-7 bg-muted-foreground/30",
                                     )}
                                     onClick={() => onSelect?.(idx)}
@@ -88,7 +89,7 @@ export function StepNav({
                         <ChevronRight className="size-4" />
                     </Button>
                 </div>
-                <div className="flex items-center gap-2">{right}</div>
+                <div className="flex items-center gap-2 justify-self-end min-w-0">{right}</div>
             </div>
             {description ? (
                 <p className="text-center text-xs text-muted-foreground max-sm:hidden">{description}</p>
