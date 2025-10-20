@@ -25,7 +25,7 @@ export default function IngredientsPage() {
     // Suggestions for the dialog input
     const dialogSuggest = trpc.ingredient.list.useQuery(
         { search: debouncedName.trim() || undefined },
-        { enabled: name.trim().length > 0, staleTime: 5_000 }
+        { enabled: debouncedName.trim().length > 0, staleTime: 5_000 }
     );
     const create = trpc.ingredient.create.useMutation({
         onSuccess: () => {
@@ -146,12 +146,20 @@ export default function IngredientsPage() {
                                     <Input className="focus-visible:ring-inset" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
                                     {name.trim().length > 0 ? (
                                         <div className="mt-2 space-y-2">
-                                            {dialogSuggest.isLoading ? (
+                                            {dialogSuggest.isFetching ? (
                                                 <p className="text-xs text-muted-foreground">Søker…</p>
                                             ) : null}
                                             {(() => {
                                                 const suggestions = dialogSuggest.data ?? [];
-                                                if (suggestions.length === 0) return null;
+                                                const lowered = name.trim().toLowerCase();
+                                                const hasExact = suggestions.some((s: any) => s.name.toLowerCase() === lowered);
+                                                if (suggestions.length === 0 && !hasExact) {
+                                                    return (
+                                                        <Badge className="cursor-pointer" onClick={() => setName(name.trim())}>
+                                                            Legg til "{name.trim()}"
+                                                        </Badge>
+                                                    );
+                                                }
                                                 return (
                                                     <ScrollArea className="max-h-32 pr-2">
                                                         <div className="flex flex-wrap gap-2 pb-2">
@@ -168,6 +176,11 @@ export default function IngredientsPage() {
                                                                     {s.unit ? <span className="opacity-60">&nbsp;({s.unit})</span> : null}
                                                                 </Badge>
                                                             ))}
+                                                            {!hasExact && (
+                                                                <Badge className="cursor-pointer" onClick={() => setName(name.trim())}>
+                                                                    Legg til "{name.trim()}"
+                                                                </Badge>
+                                                            )}
                                                         </div>
                                                     </ScrollArea>
                                                 );
