@@ -1,8 +1,14 @@
-# 🍽️ Meal Planner Monorepo
+# 🍽️ Meal Planner Turborepo
 
 [![Build and Push Docker Images](https://github.com/jenanos/meal-planner/actions/workflows/build-and-push.yml/badge.svg)](https://github.com/jenanos/meal-planner/actions/workflows/build-and-push.yml)
 
-Meal Planner is a pnpm-powered monorepo for planning dinners, managing recipes and ingredients, and preparing weekly shopping lists. It contains a Fastify+tRPC API, a Prisma/PostgreSQL data layer, and a modern Next.js frontend that can run with real data or a mocked backend for lightweight demos.
+Meal Planner is a pnpm-powered Turborepo monorepo for planning dinners, managing recipes and ingredients, and preparing weekly shopping lists. It contains a Fastify+tRPC API, a Prisma/PostgreSQL data layer, and a modern Next.js frontend that can run with real data or a mocked backend for lightweight demos.
+
+---
+
+## 🏎️ Turborepo at a glance
+
+This workspace is orchestrated by [Turborepo](https://turbo.build/repo), a high-performance build system for JavaScript/TypeScript codebases. Turborepo parallelises your tasks, shares build artifacts through caching, and lets every package keep using familiar `package.json` scripts. You can adopt it incrementally—`turbo.json` declares how commands relate (`dev`, `build`, `lint`, database utilities, etc.), while `pnpm` continues to manage dependencies. Run any workspace task through Turbo with `pnpm <script>` (for example `pnpm dev` or `pnpm lint`) and it automatically schedules the necessary subtasks.
 
 ---
 
@@ -47,13 +53,12 @@ Copy the provided examples and adjust values for your setup:
 cp .env.example .env
 cp apps/server/.env.example apps/server/.env
 cp apps/web/.env.local.example apps/web/.env.local
-cp packages/database/prisma/.env.example packages/database/prisma/.env
 ```
 
 Key settings:
 
-- `POSTGRES_*` variables configure the database container (see `docker-compose.yml`).
-- `DATABASE_URL` in `apps/server/.env` points the API to Postgres.
+- Root `.env` provides `POSTGRES_*` defaults that both Docker and Prisma use.
+- `apps/server/.env` supplies `DATABASE_URL` so the API can reach Postgres.
 - `MEALS_API_INTERNAL_ORIGIN` and `NEXT_PUBLIC_API_URL` control how the web app reaches the API (internal vs. browser).
 - `NEXT_PUBLIC_MOCK_MODE` (in `apps/web/.env.local`) toggles the mock backend for the frontend.
 
@@ -77,17 +82,17 @@ Key settings:
    ```bash
    pnpm --filter @repo/database db:seed
    ```
-5. **Start the API server** – runs Fastify on port `4000` by default and wires up the tRPC router.
+5. **Start the API server** – runs Fastify on port `4000` by default and wires up the tRPC router. The `predev` hook automatically applies the latest Prisma migrations.
    ```bash
    pnpm --filter server dev
    ```
-6. **Start the Next.js app** in another terminal.
+6. **Start the Next.js app** in another terminal (the `predev` hook builds shared packages first).
    ```bash
    pnpm --filter web dev
    ```
 7. Visit [http://localhost:3000](http://localhost:3000) for the UI and [http://localhost:4000/ready](http://localhost:4000/ready) to verify API readiness.
 
-> 💡 Use `pnpm dev` at the workspace root to launch both `server` and `web` via Turborepo if you prefer a single command.
+> 💡 Prefer a single command? Run `pnpm dev` at the workspace root to launch both `server` and `web` via Turborepo task orchestration.
 
 ---
 
@@ -140,7 +145,7 @@ Deployments can set `NEXT_PUBLIC_MOCK_MODE=true` to ship the static frontend bac
 ## 🧹 Quality checks
 
 ```bash
-pnpm lint                    # ESLint across packages
+pnpm lint                    # ESLint across packages (turbo run lint)
 pnpm --filter web lint       # Frontend lint only
 pnpm --filter web test:e2e   # Playwright end-to-end tests (headless)
 ```
