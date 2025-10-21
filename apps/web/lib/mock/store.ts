@@ -564,7 +564,8 @@ async function handleRecipeUpdate(input: any) {
   return serializeRecipe(record);
 }
 
-async function handleIngredientList() {
+async function handleIngredientList(input?: any) {
+  const term = typeof input?.search === "string" ? input.search.trim().toLowerCase() : "";
   const list = Array.from(state.ingredientsById.values())
     .map((ing) => ({
       id: ing.id,
@@ -572,6 +573,7 @@ async function handleIngredientList() {
       unit: ing.unit ?? undefined,
       usageCount: ing.recipeIds.size,
     }))
+    .filter((item) => (term ? item.name.toLowerCase().includes(term) : true))
     .sort((a, b) => a.name.localeCompare(b.name, "nb", { sensitivity: "base" }));
   return list;
 }
@@ -770,7 +772,7 @@ export async function handleMockQuery(path: string, input: unknown) {
     case "recipe.list":
       return handleRecipeList(input);
     case "ingredient.list":
-      return handleIngredientList();
+      return handleIngredientList(input);
     case "ingredient.getWithRecipes":
       return handleIngredientDetail(input);
     case "planner.getWeekPlan":
