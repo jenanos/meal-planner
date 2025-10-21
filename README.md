@@ -70,7 +70,7 @@ Key settings:
    ```
 3. **Apply migrations & generate the Prisma client**
    ```bash
-   pnpm --filter @repo/database db:migrate:dev
+   pnpm --filter @repo/database prisma migrate dev
    pnpm --filter @repo/database generate
    ```
 4. **Seed demo data (optional but recommended)**
