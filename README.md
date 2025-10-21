@@ -2,262 +2,171 @@
 
 [![Build and Push Docker Images](https://github.com/jenanos/meal-planner/actions/workflows/build-and-push.yml/badge.svg)](https://github.com/jenanos/meal-planner/actions/workflows/build-and-push.yml)
 
-En moderne monorepo-app for å:
-
-- 📚 Administrere oppskrifter (med kategorier, ingredienser og poeng)
-- 🧾 Se og administrere ingredienser med referanser til oppskrifter
-- 🗓️ Generere og lagre ukentlig middagsplan (auto-forslag m/ regler)
-- 🔁 Spore bruk (usageCount + lastUsed) for bedre forslag
+Meal Planner is a pnpm-powered monorepo for planning dinners, managing recipes and ingredients, and preparing weekly shopping lists. It contains a Fastify+tRPC API, a Prisma/PostgreSQL data layer, and a modern Next.js frontend that can run with real data or a mocked backend for lightweight demos.
 
 ---
 
-## 🗂️ Teknologistack
+## ✨ Core capabilities
 
-| Område     | Valg                            |
-| ---------- | ------------------------------- |
-| Monorepo   | pnpm workspaces                 |
-| Database   | PostgreSQL (Docker + Prisma)    |
-| API        | tRPC + Fastify                  |
-| Frontend   | Next.js (App Router)            |
-| UI         | Tailwind + interne komponenter  |
-| Validering | Zod                             |
-| Datafetch  | @tanstack/react-query via tRPC  |
-| Testing    | (plass til Vitest / Playwright) |
+- 🗓️ **Weekly planner** – generate or curate a dinner plan for any week, with usage tracking so older dishes are suggested first.
+- 📖 **Recipe catalog** – add recipes with meal categories, health/everyday scores, and structured ingredient lists.
+- 🧂 **Ingredient manager** – maintain an ingredient inventory and see which recipes depend on each item.
+- 🛒 **Shopping list** – build a checklist directly from the planned week, including custom extras that persist week-to-week.
+- 🔁 **Usage insights** – automatic `lastUsed` and `usageCount` updates keep planning suggestions fresh.
 
 ---
 
-## 🚀 Kom i gang (første gang på ny maskin)
+## 🗂️ Monorepo structure
+
+| Package | Path | Purpose |
+| ------- | ---- | ------- |
+| **Frontend** | `apps/web` | Next.js App Router UI with Tailwind, tRPC React Query hooks, and mock mode for standalone deploys. |
+| **API server** | `apps/server` | Fastify host that mounts the tRPC router from `@repo/api` and exposes health/readiness endpoints. |
+| **tRPC router** | `packages/api` | Shared types, routers (`planner`, `recipe`, `ingredient`), and Zod schemas used by both server and frontend. |
+| **Database** | `packages/database` | Prisma schema, generated client, build artifacts, and seeding utilities. |
+| **UI kit** | `packages/ui` | Reusable, Tailwind-based components consumed by the web app. |
+| **Config** | `packages/config-*` | Centralized TypeScript and ESLint configuration for the workspace. |
+
+Additional pages live under `apps/web/app`: planner (`/planner`), shopping list (`/shopping-list`), recipes (`/recipes`), ingredients (`/ingredients`), and a dashboard landing page (`/`).
+
+---
+
+## ✅ Prerequisites
+
+- Node.js **20** or newer (see the root `package.json` engines field).
+- pnpm **10+** (`npm install -g pnpm`).
+- Docker (for Postgres in local development or containerized deploys).
+
+---
+
+## ⚙️ Environment variables
+
+Copy the provided examples and adjust values for your setup:
 
 ```bash
-# 1. Klon repo
-git clone <repo-url> meal-planner
-cd meal-planner
-
-# 2. Installer pnpm hvis du ikke har
-npm i -g pnpm
-
-# 3. Installer avhengigheter
-pnpm install
-
-# 4. Sett opp miljøvariabler
-#   cp .env.example .env
-#   cp packages/database/prisma/.env.example packages/database/prisma/.env
-#   cp apps/server/.env.example apps/server/.env
-#   cp apps/web/.env.local.example apps/web/.env.local
-#   # Fyll inn egne verdier (bruk <db-host>, <db-port>, <db-name>, <your-password> som hint)
-
-# 5. Start Postgres (Docker Desktop må kjøre)
-POSTGRES_PASSWORD=<ditt-passord> docker compose up -d postgres
-# eller kopier `.env.example` til `.env` i rotkatalogen og fyll inn Postgres-verdiene først
-
-# 6. Start API-server (kjører migrasjoner automatisk i dev)
-#    predev-scriptet i apps/server kjører `prisma migrate dev` mot lokal DB
-pnpm --filter server dev
-
-# 7. (Valgfritt) Seed eksempeldata første gang
-pnpm --filter @repo/database db:seed
-
-# 8. Start web (ny terminal)
-pnpm --filter web dev
-
-# Åpne: http://localhost:3000
+cp .env.example .env
+cp apps/server/.env.example apps/server/.env
+cp apps/web/.env.local.example apps/web/.env.local
+cp packages/database/prisma/.env.example packages/database/prisma/.env
 ```
 
-### 💻 Kun frontend (mock-modus)
+Key settings:
 
-Vil du kjøre eller deploye kun Next.js-appen uten API/DB? Slå på mock-modus. Da bruker webappen seed-data direkte i minnet og simulerer alle tRPC-kall.
+- `POSTGRES_*` variables configure the database container (see `docker-compose.yml`).
+- `DATABASE_URL` in `apps/server/.env` points the API to Postgres.
+- `MEALS_API_INTERNAL_ORIGIN` and `NEXT_PUBLIC_API_URL` control how the web app reaches the API (internal vs. browser).
+- `NEXT_PUBLIC_MOCK_MODE` (in `apps/web/.env.local`) toggles the mock backend for the frontend.
+
+---
+
+## 🚀 Local development workflow
+
+1. **Install dependencies**
+   ```bash
+   pnpm install
+   ```
+2. **Start Postgres** (runs on the port from `.env`)
+   ```bash
+   POSTGRES_PASSWORD=<your-password> docker compose up -d postgres
+   ```
+3. **Apply migrations** (Prisma also regenerates the client automatically)
+   ```bash
+   pnpm --filter @repo/database prisma migrate dev
+   ```
+4. **Seed demo data (optional but recommended)**
+   ```bash
+   pnpm --filter @repo/database db:seed
+   ```
+5. **Start the API server** – runs Fastify on port `4000` by default and wires up the tRPC router.
+   ```bash
+   pnpm --filter server dev
+   ```
+6. **Start the Next.js app** in another terminal.
+   ```bash
+   pnpm --filter web dev
+   ```
+7. Visit [http://localhost:3000](http://localhost:3000) for the UI and [http://localhost:4000/ready](http://localhost:4000/ready) to verify API readiness.
+
+> 💡 Use `pnpm dev` at the workspace root to launch both `server` and `web` via Turborepo if you prefer a single command.
+
+---
+
+## 🧪 Mock-only frontend mode
+
+Run the UI without any backend or database – useful for quick demos or Vercel-style deployments:
 
 ```bash
-# Lokal utvikling – ingen backend kreves
+# Development
 pnpm --filter web dev:mock
 
-# Eller bruk valgfri Next-kommando med flagg
+# Build with mock data
 NEXT_PUBLIC_MOCK_MODE=true pnpm --filter web build
 ```
 
-På Vercel (eller annen hosting) kan du sette miljøvariabelen `NEXT_PUBLIC_MOCK_MODE=true`, så deployes appen med mock-data.
+Deployments can set `NEXT_PUBLIC_MOCK_MODE=true` to ship the static frontend backed by in-memory seed data.
 
 ---
 
-## 🔑 Viktige filer
+## 🗃️ Database management
 
-| Domene            | Fil                                                                                |
-| ----------------- | ---------------------------------------------------------------------------------- |
-| Database schema   | [`packages/database/prisma/schema.prisma`](packages/database/prisma/schema.prisma) |
-| Seed-data         | [`packages/database/src/seed.ts`](packages/database/src/seed.ts)                   |
-| Server bootstrap  | [`apps/server/src/index.ts`](apps/server/src/index.ts)                             |
-| Planner (forside) | [`apps/web/app/page.tsx`](apps/web/app/page.tsx)                                   |
-| Oppskrifter       | [`apps/web/app/recipes/page.tsx`](apps/web/app/recipes/page.tsx)                   |
-| Ingredienser      | [`apps/web/app/ingredients/page.tsx`](apps/web/app/ingredients/page.tsx)           |
-| Planner API       | [`packages/api/src/routers/planner.ts`](packages/api/src/routers/planner.ts)       |
-| Recipe API        | [`packages/api/src/routers/recipe.ts`](packages/api/src/routers/recipe.ts)         |
-| Ingredient API    | [`packages/api/src/routers/ingredient.ts`](packages/api/src/routers/ingredient.ts) |
+- **View data**: `pnpm --filter @repo/database studio` opens Prisma Studio.
+- **Reset dev database**:
+  ```bash
+  pnpm --filter @repo/database prisma migrate reset -f
+  pnpm --filter @repo/database db:seed
+  ```
+- **Force push schema (no migrations)**:
+  ```bash
+  pnpm --filter @repo/database prisma db push --force-reset
+  pnpm --filter @repo/database db:seed
+  ```
 
 ---
 
-## 🧪 Kjøre tester (placeholder)
+## 🧭 Domain highlights
+
+- **Planner logic** (`packages/api/src/routers/planner.ts`)
+  - Distributes weekly category targets (fish, vegetarian, chicken, beef, other).
+  - Prioritizes recipes not used recently and balances everyday vs. weekend scores.
+  - Tracks history across weeks and supports extra shopping items with persistence.
+- **Recipes & ingredients** (`packages/api/src/routers/recipe.ts`, `.../ingredient.ts`)
+  - Recipe CRUD with structured ingredient quantities and units.
+  - Ingredient lookups reveal dependent recipes for easier pantry management.
+- **Shopping list** (`apps/web/app/shopping-list/page.tsx`)
+  - Aggregates recipe ingredients per week, deduplicates entries, and lets users tick off or add extras.
+
+---
+
+## 🧹 Quality checks
 
 ```bash
-# (legg til når testene er implementert)
-pnpm --filter @repo/api test
-pnpm --filter web test:e2e
+pnpm lint                    # ESLint across packages
+pnpm --filter web lint       # Frontend lint only
+pnpm --filter web test:e2e   # Playwright end-to-end tests (headless)
 ```
 
----
-
-## 🗓️ Planner-logikk (kort)
-
-Planner fordeler mål-kvoter per uke (default):
-
-- FISK: 2 • VEGETAR: 3 • KYLLING: 1 • STORFE: 1  
-  Regler:
-- Man–ons: prefererer lav everydayScore og høy healthScore
-- Tor–lør: tillater høy everydayScore (helgekos)
-- Søndag: balanse
-- Bonus ved lang tid siden lastUsed (default gap ≥21 dager)
-- Ingrediens-overlapp prioriteres (for enklere handel)
-
-Genereres via [`plannerRouter.generateWeekPlan`](packages/api/src/routers/planner.ts).
+(Additional unit tests can live under each package; run them via `pnpm --filter <package> test` when available.)
 
 ---
 
-## ➕ Legge til oppskrift
+## 📦 Production & Docker
 
-1. Gå til `/recipes`
-2. Fyll navn, kategori, scores og ingredienser
-3. Oppskriften dukker direkte i lista (tRPC + react-query refresh)
+- `docker-compose.prod.yml` orchestrates Postgres, the API, and the web app with health checks and internal networking.
+- Build arguments ensure the frontend uses the internal proxy (`/api`) while server-side rendering calls the API service directly.
+- Provide a `.env.production` file with Postgres credentials and optional `SEED_ON_START` for the API container.
 
----
-
-## 🧂 Ingredienser
-
-Siden `/ingredients` lar deg:
-
-- Søke og legge til ingredienser (upsert per navn)
-- Se hvilke oppskrifter som bruker en valgt ingrediens
-
-Data hentes via [`ingredientRouter`](packages/api/src/routers/ingredient.ts).
+For a simpler setup, you can also run `docker compose up --build` with custom override files to mimic production locally.
 
 ---
 
-## 🔄 Resette databasen (dev)
+## 🆘 Troubleshooting tips
 
-Bruk hvis schema endres kraftig eller du vil starte utviklingsdatabasen på nytt.
-
-```bash
-pnpm --filter @repo/database prisma migrate reset -f
-pnpm --filter @repo/database db:seed
-```
-
-Alternativ uten migrasjoner (force push):
-
-```bash
-pnpm --filter @repo/database prisma db push --force-reset
-pnpm --filter @repo/database db:seed
-```
+- **API not ready**: check `apps/server` logs; ensure migrations ran and Postgres is reachable.
+- **Frontend requests failing**: verify `NEXT_PUBLIC_API_URL` (browser) and `MEALS_API_INTERNAL_ORIGIN` (server-side) point to the API.
+- **Mock mode confusion**: remember to set `NEXT_PUBLIC_MOCK_MODE=false` when switching back to the real backend.
 
 ---
 
-## 🧵 Miljøvariabler
+## 📄 License
 
-| Miljø | Fil (ikke sjekk inn)                       | Beskrivelse                                                                           |
-| ----- | ------------------------------------------ | ------------------------------------------------------------------------------------- |
-| Dev   | `.env`                                     | Delte variabler for Docker Compose (`POSTGRES_*`).                                    |
-| Dev   | `packages/database/prisma/.env`            | `DATABASE_URL` for lokal Postgres (bruk samme verdier som i `.env`).                  |
-| Dev   | `apps/server/.env`                         | Serverens `DATABASE_URL` (bruk samme verdier som over).                               |
-| Dev   | `apps/web/.env.local`                      | Frontend-URLer (f.eks. `NEXT_PUBLIC_API_URL`).                                        |
-| Prod  | `.env.production`                          | Compose-variabler for prod-stack. Kjør `docker compose --env-file .env.production …`. |
-| Prod  | `packages/database/prisma/.env.production` | Brukes av Prisma CLI mot prod (`--env-file prisma/.env.production`).                  |
-| Prod  | `apps/server/.env.production`              | Prod-runtime for server (settes gjerne som secrets).                                  |
-| Prod  | `apps/web/.env.production`                 | Next.js build/runtime-variabler for prod (f.eks. ekstern API-URL).                    |
-
-Malfilene `*.env.example` viser hvilke variabler som trengs. Kopiér til ønsket fil og fyll inn hemmelige verdier. For å bytte mellom dev/prod ved bruk av Prisma CLI kan du f.eks. kjøre:
-
-```bash
-pnpm --filter @repo/database prisma migrate deploy --env-file prisma/.env.production
-```
-
-I prod anbefales det å bruke container-/plattform-secrets i stedet for `.env`-filer.
-
----
-
-## 🐋 Production med Docker Compose
-
-Stacken består av Postgres, API og Web. API-containeren kjører migrasjoner automatisk før oppstart, og eksponerer `/ready` som readiness-probe.
-
-Første gang:
-
-```bash
-# 1) Lag .env.production med Postgres-credentials (se docker-compose.prod.yml for keys)
-# 2) Bygg og start stacken (Cloudflare tunnel/nettverk som før om du bruker det)
-docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
-
-# Valgfritt: seed første gang – sett SEED_ON_START=true i .env.production og restart API,
-# eller kjør manuelt fra repo-root (krever riktig DATABASE_URL i env):
-#   pnpm --filter @repo/database db:seed
-
-# Verifiser readiness
-docker logs meals-api -n 200
-curl -sf http://localhost:4000/ready || echo "Not ready yet"
-```
-
-Detaljer:
-
-- API kjører et entrypoint-script som gjør:
-  - prod: `prisma migrate deploy`
-  - dev (hvis brukt i container): `prisma migrate dev`
-  - starter Fastify først når DB er klar
-- `docker-compose.prod.yml` har healthcheck på `/ready` og `web` venter på `api: service_healthy` før oppstart
-- Seeding er ikke automatisk i prod. Aktiver via `SEED_ON_START=true` eller kjør skriptet manuelt første gang
-
----
-
-## 🏗️ Struktur (kort)
-
-```
-apps/
-  server/        # Fastify + tRPC-adapter
-  web/           # Next.js (App Router)
-packages/
-  api/           # tRPC routere + Zod-skjema
-  database/      # Prisma schema + seed + client
-  ui/            # Delte UI-komponenter
-```
-
----
-
-## 🧠 Ytelsesnotat
-
-Datasettet er lite → frontend kan hente “alt” (pageSize=1000) og filtrere lokalt for å redusere API-kall (se oppskriftssiden). For større datamengder: gjeninnfør server-side filtrering via query-parametre.
-
----
-
-## 🛣️ Videre forbedringer (idéer)
-
-- ✅ Drag & drop i planner (egen komponent)
-- 📊 Historikkside: kategori- og ingrediensfordeling
-- 👥 Multi-husholdning / preferanser
-- ☁️ Prod-compose med Postgres + backup-rutiner
-- 🔒 Auth + roller
-- 📱 PWA / offline caching
-
----
-
-## ⚙️ Feilsøking
-
-| Problem           | Løsning                                        |
-| ----------------- | ---------------------------------------------- |
-| tRPC context-feil | Sjekk at `<Providers>` wrapper layout          |
-| Manglende kolonne | Kjør migrate reset / db push                   |
-| Ingen data        | Kjør seed-script                               |
-| 500 på planner    | Sjekk at seed gir nok oppskrifter per kategori |
-
----
-
-## 🔐 Lisens
-
-(Angi lisens om ønskelig – MIT, Apache 2.0, etc.)
-
----
-
-God hacking! 🧪 Si fra hvis du ønsker automatiserte tester, Postgres-oppsett eller dnd-forbedringer.
+The project inherits the license defined in the repository. Review `LICENSE` (if present) before distribution.
