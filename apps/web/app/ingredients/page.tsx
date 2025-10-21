@@ -44,7 +44,7 @@ export default function IngredientsPage() {
     const filtered = useMemo(() => {
         const term = search.trim().toLowerCase();
         if (!term) return items;
-        return items.filter((i) => `${i.name} ${i.unit ?? ""}`.toLowerCase().includes(term));
+        return items.filter((i) => i.name.toLowerCase().includes(term));
     }, [items, search]);
 
     return (
