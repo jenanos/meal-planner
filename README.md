@@ -47,6 +47,7 @@ Copy the provided examples and adjust values for your setup:
 cp .env.example .env
 cp apps/server/.env.example apps/server/.env
 cp apps/web/.env.local.example apps/web/.env.local
+cp packages/database/prisma/.env.example packages/database/prisma/.env
 ```
 
 Key settings:
@@ -68,7 +69,7 @@ Key settings:
    ```bash
    POSTGRES_PASSWORD=<your-password> docker compose up -d postgres
    ```
-3. **Apply migrations & generate the Prisma client**
+3. **Apply migrations** (Prisma also regenerates the client automatically)
    ```bash
    pnpm --filter @repo/database prisma migrate dev
    ```
