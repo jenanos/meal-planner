@@ -1,6 +1,6 @@
 /* global globalThis */
-import { EXTRA_CATALOG, INGREDIENTS as SEED_INGREDIENTS, RECIPES as SEED_RECIPES } from "@repo/database/seed-data";
-import type { SeedIngredientUsage, SeedRecipe } from "@repo/database/seed-data";
+import { EXTRA_CATALOG, INGREDIENTS as SEED_INGREDIENTS, RECIPES as SEED_RECIPES } from "./seed-data";
+import type { SeedIngredientUsage, SeedRecipe } from "./seed-data";
 
 const MS_PER_DAY = 86_400_000;
 
