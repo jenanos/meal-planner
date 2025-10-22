@@ -1,0 +1,42 @@
+# Development files
+.env.local
+.env*.local
+*.log
+.turbo
+.pnpm-store
+
+# Test files
+**/__tests__
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+**/tests
+
+# Documentation
+README.md
+CONTRIBUTING.md
+*.md
+
+# Git
+.git
+.gitignore
+.github
+
+# Build artifacts
+apps/server
+packages/database
+packages/api
+
+# Docker
+docker-compose.yml
+docker-compose.prod.yml
+Dockerfile
+.dockerignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
