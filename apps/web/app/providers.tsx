@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink } from "@trpc/client";
 import { trpc } from "../lib/trpcClient";
 import { mockLink } from "../lib/mock/trpcLink";
+import { MockModeNotice } from "./components/MockModeNotice";
 
 function getApiUrl() {
     if (typeof window !== "undefined") return process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
@@ -26,7 +27,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
     return (
         <trpc.Provider client={trpcClient} queryClient={queryClient}>
-            <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+            <QueryClientProvider client={queryClient}>
+                {useMock && <MockModeNotice />}
+                {children}
+            </QueryClientProvider>
         </trpc.Provider>
     );
 }
