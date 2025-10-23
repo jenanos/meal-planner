@@ -1,11 +1,8 @@
-/**
- * Mock AppRouter type for building without @repo/api
- * This is a minimal type definition that matches the structure of the real AppRouter
- */
+import type { AnyRouter } from "@trpc/server";
 
-// Mock router types that match the real API structure
-export type MockAppRouter = {
-  recipe: any;
-  planner: any;
-  ingredient: any;
-};
+/**
+ * Minimal stand-in for the backend AppRouter type. We deliberately fall back to
+ * `AnyRouter` here to avoid depending on the backend package during builds.
+ * The mock store provides the runtime shape that the frontend expects.
+ */
+export type MockAppRouter = AnyRouter;

@@ -4,8 +4,7 @@ export const dynamic = "force-dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
 import { Button, Badge, Input, Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, Separator } from "@repo/ui";
-import type { inferRouterOutputs } from "@trpc/server";
-import type { AppRouter } from "@repo/api";
+import type { MockShoppingListResult } from "../../lib/mock/store";
 import { X } from "lucide-react";
 
 function formatQuantity(quantity: number, unit: string | null) {
@@ -17,8 +16,7 @@ function formatQuantity(quantity: number, unit: string | null) {
   return unit ? `${formatted} ${unit}` : formatted;
 }
 
-type PlannerOutputs = inferRouterOutputs<AppRouter>["planner"];
-type ShoppingListResult = PlannerOutputs["shoppingList"];
+type ShoppingListResult = MockShoppingListResult;
 type ShoppingListItem = ShoppingListResult["items"][number];
 
 export default function ShoppingListPage() {
