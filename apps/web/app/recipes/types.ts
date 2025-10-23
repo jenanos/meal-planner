@@ -1,9 +1,8 @@
-import type { inferRouterOutputs } from "@trpc/server";
-import type { AppRouter } from "@repo/api";
+import type { MockIngredientListResult, MockRecipeListResult } from "../../lib/mock/store";
 
-export type RecipeListItem = inferRouterOutputs<AppRouter>["recipe"]["list"]["items"][number];
+export type RecipeListItem = MockRecipeListResult["items"][number];
 
-export type IngredientSuggestion = inferRouterOutputs<AppRouter>["ingredient"]["list"][number];
+export type IngredientSuggestion = MockIngredientListResult[number];
 
 export type FormIngredient = {
   name: string;

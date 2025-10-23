@@ -814,3 +814,13 @@ export async function handleMockMutation(path: string, input: unknown) {
       throw new Error(`Mock mutation mangler implementasjon: ${path}`);
   }
 }
+
+export type MockRecipeSummary = ReturnType<typeof serializeRecipe>;
+export type MockRecipeListResult = Awaited<ReturnType<typeof handleRecipeList>>;
+export type MockIngredientListResult = Awaited<ReturnType<typeof handleIngredientList>>;
+export type MockIngredientDetailResult = Awaited<ReturnType<typeof handleIngredientDetail>>;
+export type MockWeekPlanResult = Awaited<ReturnType<typeof handleWeekPlan>>;
+export type MockWeekTimelineResult = Awaited<ReturnType<typeof handleWeekTimeline>>;
+export type MockSuggestionsResult = Awaited<ReturnType<typeof handleSuggestions>>;
+export type MockShoppingListResult = Awaited<ReturnType<typeof handleShoppingList>>;
+export type MockExtraSuggestResult = Awaited<ReturnType<typeof handleExtraSuggest>>;

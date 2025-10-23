@@ -1,8 +1,6 @@
-import type { inferRouterOutputs } from "@trpc/server";
-import type { AppRouter } from "@repo/api";
+import type { MockWeekPlanResult } from "../../lib/mock/store";
 
-type PlannerOutputs = inferRouterOutputs<AppRouter>["planner"];
-export type WeekPlanResult = PlannerOutputs["getWeekPlan"];
+export type WeekPlanResult = MockWeekPlanResult;
 export type WeekDay = WeekPlanResult["days"][number];
 export type WeekRecipe = WeekDay["recipe"];
 export type RecipeDTO = NonNullable<WeekRecipe>;

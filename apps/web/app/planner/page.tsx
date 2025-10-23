@@ -23,6 +23,7 @@ import {
 import { createPortal } from "react-dom";
 
 import type { DragPayload, RecipeDTO, WeekPlanResult, WeekState } from "./types";
+import type { MockWeekTimelineResult } from "../../lib/mock/store";
 import { makeEmptyWeek, parseDragId } from "./utils";
 
 const DAY_NAMES = [
@@ -248,10 +249,11 @@ export default function PlannerPage() {
   }, [activeDragPayload, week, longGap, frequent, searchResults]);
 
   const timelineWeeks = useMemo(() => {
-    const weeks = timelineQuery.data?.weeks ?? [];
-    return weeks.map((w) => ({
-      ...w,
-      label: deriveWeekLabel(w.weekStart, currentWeekStart),
+    const rawWeeks = timelineQuery.data?.weeks ?? [];
+    const weeks = rawWeeks as MockWeekTimelineResult["weeks"];
+    return weeks.map((week) => ({
+      ...week,
+      label: deriveWeekLabel(week.weekStart, currentWeekStart),
     }));
   }, [timelineQuery.data, currentWeekStart]);
 
