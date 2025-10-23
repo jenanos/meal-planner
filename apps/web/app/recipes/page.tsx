@@ -12,6 +12,8 @@ import { RecipeCard } from "./components/RecipeCard";
 import { CATEGORIES, STEP_DESCRIPTIONS, STEP_TITLES } from "./constants";
 import type { FormIngredient, IngredientSuggestion, RecipeListItem } from "./types";
 
+type RecipeIngredientSummary = RecipeListItem["ingredients"] extends Array<infer R> ? R : never;
+
 export default function RecipesPage() {
   const utils = trpc.useUtils();
   const [page, setPage] = useState(1);
@@ -89,35 +91,36 @@ export default function RecipesPage() {
     { search: debouncedIngSearch.trim() || undefined },
     { enabled: ingSearch.trim().length > 0, staleTime: 5_000 }
   );
+  const ingredientData = ingredientQuery.data as IngredientSuggestion[] | undefined;
 
   const trimmedIngSearch = ingSearch.trim();
   const normalizedIngKey = trimmedIngSearch.toLowerCase();
 
   useEffect(() => {
-    if (!ingredientQuery.data) return;
+    if (!ingredientData) return;
     const key = debouncedIngSearch.trim().toLowerCase();
     if (!key) return;
     setIngredientSuggestionCache((prev) => {
-      if (prev[key] === ingredientQuery.data) {
+      if (prev[key] === ingredientData) {
         return prev;
       }
-      return { ...prev, [key]: ingredientQuery.data };
+      return { ...prev, [key]: ingredientData };
     });
-  }, [debouncedIngSearch, ingredientQuery.data]);
+  }, [debouncedIngSearch, ingredientData]);
 
   const ingredientSuggestions = useMemo(() => {
     if (!trimmedIngSearch) return [];
-    return ingredientQuery.data ?? ingredientSuggestionCache[normalizedIngKey] ?? [];
-  }, [ingredientQuery.data, ingredientSuggestionCache, normalizedIngKey, trimmedIngSearch]);
+    return ingredientData ?? ingredientSuggestionCache[normalizedIngKey] ?? [];
+  }, [ingredientData, ingredientSuggestionCache, normalizedIngKey, trimmedIngSearch]);
 
   const knownIngredientNames = useMemo(() => {
     const set = new Set<string>();
     Object.values(ingredientSuggestionCache).forEach((list) => {
       list.forEach((ing) => set.add(ing.name.toLowerCase()));
     });
-    ingredientQuery.data?.forEach((ing) => set.add(ing.name.toLowerCase()));
+    ingredientData?.forEach((ing) => set.add(ing.name.toLowerCase()));
     return set;
-  }, [ingredientSuggestionCache, ingredientQuery.data]);
+  }, [ingredientSuggestionCache, ingredientData]);
 
   const create = trpc.recipe.create.useMutation({
     onSuccess: () => {
@@ -137,7 +140,7 @@ export default function RecipesPage() {
   });
 
   const createIngredient = trpc.ingredient.create.useMutation({
-    onSuccess: (newIng) => {
+    onSuccess: (newIng: IngredientSuggestion) => {
       // refresh suggestions so it appears in the list next time
       utils.ingredient.list.invalidate().catch(() => undefined);
       // also add to current selection if not present
@@ -146,15 +149,18 @@ export default function RecipesPage() {
     },
   });
 
-  const allItems = useMemo(() => data?.items ?? [], [data]);
+  const allItems = useMemo<RecipeListItem[]>(() => {
+    const items = data?.items ?? [];
+    return items as RecipeListItem[];
+  }, [data]);
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return allItems;
-    return allItems.filter((r) => {
-      const ingredientText = (r.ingredients ?? [])
-        .map((ri: any) => ri?.name ?? "")
+    return allItems.filter((recipe) => {
+      const ingredientText = (recipe.ingredients ?? [])
+        .map((ri: RecipeIngredientSummary | undefined) => ri?.name ?? "")
         .join(" ");
-      const hay = `${r.name} ${r.category ?? ""} ${r.description ?? ""} ${ingredientText}`.toLowerCase();
+      const hay = `${recipe.name} ${recipe.category ?? ""} ${recipe.description ?? ""} ${ingredientText}`.toLowerCase();
       return hay.includes(term);
     });
   }, [allItems, search]);

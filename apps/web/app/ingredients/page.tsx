@@ -4,8 +4,12 @@ export const dynamic = "force-dynamic";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
 import { Badge, Button, Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, ScrollArea } from "@repo/ui";
+import type { MockIngredientDetailResult, MockIngredientListResult } from "../../lib/mock/store";
 import { IngredientCard } from "./components/IngredientCard";
 import { X } from "lucide-react";
+
+type IngredientListItem = MockIngredientListResult[number];
+type IngredientRecipe = MockIngredientDetailResult["recipes"][number];
 
 export default function IngredientsPage() {
     const [search, setSearch] = useState("");
@@ -40,11 +44,11 @@ export default function IngredientsPage() {
         { enabled: !!selectedId }
     );
 
-    const items = list.data ?? [];
+    const items: IngredientListItem[] = list.data ?? [];
     const filtered = useMemo(() => {
         const term = search.trim().toLowerCase();
         if (!term) return items;
-        return items.filter((i) => i.name.toLowerCase().includes(term));
+        return items.filter((item) => item.name.toLowerCase().includes(term));
     }, [items, search]);
 
     return (
@@ -98,9 +102,9 @@ export default function IngredientsPage() {
                         </div>
                         <ScrollArea className="max-h-64 pr-2">
                             <ul className="list-disc pl-6">
-                                {detail.data.recipes.map((r: any) => (
-                                    <li key={r.id}>
-                                        {r.name} {r.category ? <span className="text-xs text-muted-foreground">({r.category})</span> : null}
+                                {detail.data.recipes.map((recipe: IngredientRecipe) => (
+                                    <li key={recipe.id}>
+                                        {recipe.name} {recipe.category ? <span className="text-xs text-muted-foreground">({recipe.category})</span> : null}
                                     </li>
                                 ))}
                             </ul>
@@ -150,9 +154,9 @@ export default function IngredientsPage() {
                                                 <p className="text-xs text-muted-foreground">Søker…</p>
                                             ) : null}
                                             {(() => {
-                                                const suggestions = dialogSuggest.data ?? [];
+                                                const suggestions: IngredientListItem[] = dialogSuggest.data ?? [];
                                                 const lowered = name.trim().toLowerCase();
-                                                const hasExact = suggestions.some((s: any) => s.name.toLowerCase() === lowered);
+                                                const hasExact = suggestions.some((s) => s.name.toLowerCase() === lowered);
                                                 if (suggestions.length === 0 && !hasExact) {
                                                     return (
                                                         <Badge className="cursor-pointer" onClick={() => setName(name.trim())}>
@@ -163,7 +167,7 @@ export default function IngredientsPage() {
                                                 return (
                                                     <ScrollArea className="max-h-32 pr-2">
                                                         <div className="flex flex-wrap gap-2 pb-2">
-                                                            {suggestions.map((s: any) => (
+                                                              {suggestions.map((s: IngredientListItem) => (
                                                                 <Badge
                                                                     key={s.id}
                                                                     className="cursor-pointer"
