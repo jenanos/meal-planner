@@ -386,8 +386,8 @@ function scoreRecipe(
 function resolveConstraints(input?: z.infer<typeof PlannerConstraints>) {
   return {
     fish: input?.fish ?? 2,
-    vegetarian: input?.vegetarian ?? 3,
-    chicken: input?.chicken ?? 1,
+    vegetarian: input?.vegetarian ?? 2,
+    chicken: input?.chicken ?? 2,
     beef: input?.beef ?? 1,
     preferRecentGapDays: input?.preferRecentGapDays ?? 21,
   };
@@ -501,7 +501,21 @@ async function ensureWeekPlanResponse(weekStart: Date): Promise<WeekPlanResponse
     fetchAllRecipes(),
   ]);
 
-  const entries = planWithEntries?.entries ?? [];
+  let entries = planWithEntries?.entries ?? [];
+  let updatedAt = planWithEntries?.updatedAt ?? null;
+
+  if (!planWithEntries) {
+    const uniqueRecipeCount = new Set(pool.map((recipe) => recipe.id)).size;
+    if (uniqueRecipeCount >= DAYS.length) {
+      const cfg = resolveConstraints();
+      const selected = pickWeekRecipes(pool, cfg);
+      const recipeIds = selected.map((recipe) => recipe.id);
+      const persisted = await writeWeekPlan(weekStart, recipeIds);
+      entries = persisted.entries;
+      updatedAt = persisted.plan.updatedAt;
+    }
+  }
+
   const exclude = entries
     .map((entry) => entry.recipe?.id)
     .filter((id): id is string => Boolean(id));
@@ -510,7 +524,7 @@ async function ensureWeekPlanResponse(weekStart: Date): Promise<WeekPlanResponse
 
   return composeWeekResponse({
     weekStart,
-    updatedAt: planWithEntries?.updatedAt ?? null,
+    updatedAt,
     entries,
     suggestions,
   });
