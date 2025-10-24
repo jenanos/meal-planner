@@ -504,13 +504,16 @@ async function ensureWeekPlanResponse(weekStart: Date): Promise<WeekPlanResponse
   let entries = planWithEntries?.entries ?? [];
   let updatedAt = planWithEntries?.updatedAt ?? null;
 
-  if (!planWithEntries || entries.length === 0) {
-    const cfg = resolveConstraints();
-    const selected = pickWeekRecipes(pool, cfg);
-    const recipeIds = selected.map((recipe) => recipe.id);
-    const persisted = await writeWeekPlan(weekStart, recipeIds);
-    entries = persisted.entries;
-    updatedAt = persisted.plan.updatedAt;
+  if (!planWithEntries) {
+    const uniqueRecipeCount = new Set(pool.map((recipe) => recipe.id)).size;
+    if (uniqueRecipeCount >= DAYS.length) {
+      const cfg = resolveConstraints();
+      const selected = pickWeekRecipes(pool, cfg);
+      const recipeIds = selected.map((recipe) => recipe.id);
+      const persisted = await writeWeekPlan(weekStart, recipeIds);
+      entries = persisted.entries;
+      updatedAt = persisted.plan.updatedAt;
+    }
   }
 
   const exclude = entries
