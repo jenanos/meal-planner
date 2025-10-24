@@ -35,15 +35,15 @@ export function MockModeNotice() {
             >
                 <h2 className="mb-3 text-xl font-semibold text-neutral-900 dark:text-white">Mock mode preview</h2>
                 <p className="mb-3 leading-relaxed text-neutral-700 dark:text-neutral-200">
-                    Hi there! You&apos;re viewing the front-end of my meal planner in <strong>mock mode</strong> so it can
-                    run on Vercel without the private backend. In my day-to-day setup I self-host the full stack with
-                    Docker containers managed through Portainer, exposed securely via a Cloudflare Tunnel, kept
-                    up-to-date with Watchtower, and delivered through GitHub Actions.
+                    You&apos;re viewing the front-end of my meal planner in <strong>mock mode</strong> so it can run on Vercel
+                    without the private backend. The UI behaves like the real app, but data is served locally just for
+                    this preview.
                 </p>
                 <p className="mb-6 leading-relaxed text-neutral-700 dark:text-neutral-200">
-                    This demo is meant to showcase the UI and interaction design. If you&apos;d like a guided tour of the
-                    production-like environment (API, database, automations, and observability), feel free to reach
-                    out and I&apos;ll be happy to walk you through the entire platform.
+                    The full platform extends beyond this mock with a tRPC API, PostgreSQL, scheduled jobs, and
+                    observability tooling powering the real data workflows. I self-host it with containers, secure access
+                    through Cloudflare Tunnel, and manage automation via GitHub Actions, Watchtower, Portainer, and
+                    pgAdmin. Dive into the full setup on <a href="https://github.com/jenanos/meal-planner" target="_blank" rel="noreferrer" className="font-medium text-primary underline">GitHub</a>.
                 </p>
                 <div className="flex justify-end">
                     <button
