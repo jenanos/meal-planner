@@ -1,10 +1,5 @@
 {
   "extends": "@repo/typescript-config/base.json",
-  "references": [
-    {
-      "path": "../database"
-    }
-  ],
   "compilerOptions": {
     "noImplicitAny": false,
     "composite": true,
@@ -16,7 +11,8 @@
     "lib": [
       "ES2020"
     ],
-    "moduleResolution": "Node"
+    "moduleResolution": "Bundler",
+    "paths": {}
     // use defaults for declaration in composite project
     // paths removed - using package.json exports and project references instead
   },

@@ -9,12 +9,14 @@ const IngredientListItem = z.object({
     name: z.string(),
     unit: z.string().optional(),
     usageCount: z.number().int(),
+    isPantryItem: z.boolean(),
 });
 
 const IngredientWithRecipes = z.object({
     id: z.string().uuid(),
     name: z.string(),
     unit: z.string().optional(),
+    isPantryItem: z.boolean(),
     recipes: z.array(
         z.object({
             id: z.string().uuid(),
@@ -44,21 +46,29 @@ export const ingredientRouter = router({
             name: i.name,
             unit: i.unit ?? undefined,
             usageCount: i._count.recipes,
+            isPantryItem: i.isPantryItem,
                 }));
         }),
 
     create: publicProcedure
       .input(IngredientCreate)
-      .output(z.object({ id: z.string().uuid(), name: z.string(), unit: z.string().optional() }))
+      .output(z.object({ id: z.string().uuid(), name: z.string(), unit: z.string().optional(), isPantryItem: z.boolean() }))
       .mutation(async ({ input }) => {
         try {
             const trimmedName = input.name.trim();
             const up = await prisma.ingredient.upsert({
                 where: { name: trimmedName },
-                update: { unit: input.unit?.trim() ?? null },
-                create: { name: trimmedName, unit: input.unit?.trim() ?? null },
+                update: {
+                    unit: input.unit?.trim() ?? null,
+                    isPantryItem: Boolean(input.isPantryItem),
+                },
+                create: {
+                    name: trimmedName,
+                    unit: input.unit?.trim() ?? null,
+                    isPantryItem: Boolean(input.isPantryItem),
+                },
             });
-            return { id: up.id, name: up.name, unit: up.unit ?? undefined };
+            return { id: up.id, name: up.name, unit: up.unit ?? undefined, isPantryItem: up.isPantryItem };
         } catch (e: any) {
             throw new TRPCError({ code: "BAD_REQUEST", message: e?.message ?? "Failed to create ingredient" });
         }
@@ -83,6 +93,7 @@ export const ingredientRouter = router({
             id: ing.id,
             name: ing.name,
             unit: ing.unit ?? undefined,
+            isPantryItem: ing.isPantryItem,
             recipes: ing.recipes.map((ri) => ({
                 id: ri.recipe.id,
                 name: ri.recipe.name,

@@ -1,6 +1,6 @@
 export type SeedCategory = "FISK" | "VEGETAR" | "KYLLING" | "STORFE" | "ANNET";
 
-export type SeedIngredient = { name: string; unit?: string };
+export type SeedIngredient = { name: string; unit?: string; isPantryItem?: boolean };
 
 export type SeedIngredientUsage = { name: string; quantity?: string | number; unit?: string; notes?: string };
 
@@ -19,13 +19,13 @@ export const INGREDIENTS: ReadonlyArray<SeedIngredient> = [
   { name: "løk", unit: "stk" },
   { name: "tomat", unit: "stk" },
   { name: "bønner", unit: "g" },
-  { name: "ris", unit: "g" },
+  { name: "ris", unit: "g", isPantryItem: true },
   { name: "tortillalefser", unit: "stk" },
   { name: "torsk", unit: "g" },
   { name: "poteter", unit: "g" },
   { name: "kylling", unit: "g" },
   { name: "storfekjøtt", unit: "g" },
-  { name: "hvitløk", unit: "fedd" },
+  { name: "hvitløk", unit: "fedd", isPantryItem: true },
   { name: "paprika", unit: "stk" },
 ] as const;
 

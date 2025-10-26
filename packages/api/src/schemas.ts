@@ -7,6 +7,7 @@ export type Category = z.infer<typeof Category>;
 export const IngredientCreate = z.object({
   name: z.string().min(1),
   unit: z.string().min(1).optional(),
+  isPantryItem: z.boolean().optional(),
 });
 export type IngredientCreate = z.infer<typeof IngredientCreate>;
 

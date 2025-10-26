@@ -38,6 +38,7 @@ model Ingredient {
   id   String  @id @default(uuid()) @db.Uuid
   name String  @unique @db.Citext
   unit String? @db.VarChar(32)
+  isPantryItem Boolean @default(false)
 
   recipes RecipeIngredient[]
 }

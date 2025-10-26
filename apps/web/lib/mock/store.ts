@@ -94,6 +94,7 @@ type IngredientRecord = {
   id: string;
   name: string;
   unit: string | null;
+  isPantryItem: boolean;
   recipeIds: Set<string>;
 };
 
@@ -103,6 +104,7 @@ type RecipeIngredientRecord = {
   unit: string | null;
   quantity: number | null;
   notes: string | null;
+  isPantryItem: boolean;
 };
 
 type RecipeRecord = {
@@ -142,7 +144,7 @@ function createInitialState(): MockState {
   const ingredientsById = new Map<string, IngredientRecord>();
   const ingredientsByName = new Map<string, IngredientRecord>();
 
-  function ensureIngredient(name: string, unit?: string | null) {
+  function ensureIngredient(name: string, unit?: string | null, isPantryItem?: boolean) {
     const normalized = normalizeName(name);
     let record = ingredientsByName.get(normalized);
     if (!record) {
@@ -150,18 +152,24 @@ function createInitialState(): MockState {
         id: uuidFromString(`ingredient:${normalized}`),
         name: cleanName(name),
         unit: unit?.trim() ?? null,
+        isPantryItem: Boolean(isPantryItem),
         recipeIds: new Set<string>(),
       };
       ingredientsByName.set(normalized, record);
       ingredientsById.set(record.id, record);
-    } else if (unit && !record.unit) {
-      record.unit = unit.trim();
+    } else {
+      if (unit && !record.unit) {
+        record.unit = unit.trim();
+      }
+      if (typeof isPantryItem === "boolean") {
+        record.isPantryItem = isPantryItem;
+      }
     }
     return record;
   }
 
   SEED_INGREDIENTS.forEach((ing) => {
-    ensureIngredient(ing.name, ing.unit ?? null);
+    ensureIngredient(ing.name, ing.unit ?? null, ing.isPantryItem ?? false);
   });
 
   const recipesById = new Map<string, RecipeRecord>();
@@ -178,6 +186,7 @@ function createInitialState(): MockState {
         unit,
         quantity,
         notes: usage.notes?.trim() ?? null,
+        isPantryItem: ingRecord.isPantryItem,
       };
     });
   }
@@ -222,7 +231,7 @@ function createInitialState(): MockState {
 
 const state = createInitialState();
 
-function ensureIngredient(name: string, unit?: string | null) {
+function ensureIngredient(name: string, unit?: string | null, isPantryItem?: boolean) {
   const normalized = normalizeName(name);
   let record = state.ingredientsByName.get(normalized);
   if (!record) {
@@ -230,12 +239,18 @@ function ensureIngredient(name: string, unit?: string | null) {
       id: randomId("ingredient"),
       name: cleanName(name),
       unit: unit?.trim() ?? null,
+      isPantryItem: Boolean(isPantryItem),
       recipeIds: new Set<string>(),
     };
     state.ingredientsByName.set(normalized, record);
     state.ingredientsById.set(record.id, record);
-  } else if (unit && !record.unit) {
-    record.unit = unit.trim();
+  } else {
+    if (unit && !record.unit) {
+      record.unit = unit.trim();
+    }
+    if (typeof isPantryItem === "boolean") {
+      record.isPantryItem = isPantryItem;
+    }
   }
   return record;
 }
@@ -274,6 +289,7 @@ function serializeRecipe(recipe: RecipeRecord) {
       unit: ing.unit ?? null,
       quantity: ing.quantity,
       notes: ing.notes,
+      isPantryItem: ing.isPantryItem,
     })),
   };
 }
@@ -385,6 +401,7 @@ function aggregateShopping(weekStarts: string[]) {
       weekStart: string;
     }[];
     weeks: Set<string>;
+    isPantryItem: boolean;
   };
 
   const accMap = new Map<string, Accumulator>();
@@ -408,9 +425,13 @@ function aggregateShopping(weekStarts: string[]) {
             hasMissing: false,
             details: [],
             weeks: new Set<string>(),
+            isPantryItem: ing.isPantryItem,
           });
         }
         const bucket = accMap.get(key)!;
+        if (ing.isPantryItem) {
+          bucket.isPantryItem = true;
+        }
         if (ing.quantity != null) {
           bucket.totalQuantity += ing.quantity;
           bucket.hasQuantity = true;
@@ -444,6 +465,7 @@ function aggregateShopping(weekStarts: string[]) {
         details: bucket.details,
         weekStarts: weeks,
         checked,
+        isPantryItem: bucket.isPantryItem,
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name, "nb", { sensitivity: "base" }));
@@ -505,6 +527,7 @@ async function handleRecipeCreate(input: any) {
       unit,
       quantity,
       notes: typeof usage?.notes === "string" && usage.notes.trim() ? usage.notes.trim() : null,
+      isPantryItem: ing.isPantryItem,
     });
   });
 
@@ -557,6 +580,7 @@ async function handleRecipeUpdate(input: any) {
         unit,
         quantity,
         notes: typeof usage?.notes === "string" && usage.notes.trim() ? usage.notes.trim() : null,
+        isPantryItem: ing.isPantryItem,
       };
     })
     .filter((item): item is RecipeIngredientRecord => Boolean(item));
@@ -572,6 +596,7 @@ async function handleIngredientList(input?: any) {
       name: ing.name,
       unit: ing.unit ?? undefined,
       usageCount: ing.recipeIds.size,
+      isPantryItem: ing.isPantryItem,
     }))
     .filter((item) => (term ? item.name.toLowerCase().includes(term) : true))
     .sort((a, b) => a.name.localeCompare(b.name, "nb", { sensitivity: "base" }));
@@ -582,11 +607,15 @@ async function handleIngredientCreate(input: any) {
   const name = cleanName(input?.name ?? "");
   if (!name) throw new Error("Navn er påkrevd");
   const unit = typeof input?.unit === "string" && input.unit.trim() ? input.unit.trim() : undefined;
-  const ing = ensureIngredient(name, unit);
+  const isPantryItem = typeof input?.isPantryItem === "boolean" ? input.isPantryItem : undefined;
+  const ing = ensureIngredient(name, unit, isPantryItem);
   if (unit) {
     ing.unit = unit;
   }
-  return { id: ing.id, name: ing.name, unit: ing.unit ?? undefined };
+  if (typeof isPantryItem === "boolean") {
+    ing.isPantryItem = isPantryItem;
+  }
+  return { id: ing.id, name: ing.name, unit: ing.unit ?? undefined, isPantryItem: ing.isPantryItem };
 }
 
 async function handleIngredientDetail(input: any) {
@@ -604,7 +633,7 @@ async function handleIngredientDetail(input: any) {
       healthScore: recipe.healthScore,
     }))
     .sort((a, b) => a.name.localeCompare(b.name, "nb", { sensitivity: "base" }));
-  return { id: ing.id, name: ing.name, unit: ing.unit ?? undefined, recipes };
+  return { id: ing.id, name: ing.name, unit: ing.unit ?? undefined, isPantryItem: ing.isPantryItem, recipes };
 }
 
 async function handleWeekPlan(input: any) {

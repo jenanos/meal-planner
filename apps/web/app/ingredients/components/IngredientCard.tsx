@@ -8,6 +8,7 @@ export type IngredientCardProps = {
         name: string;
         unit?: string | null;
         usageCount?: number;
+        isPantryItem?: boolean;
     };
     index: number;
     selected?: boolean;
@@ -32,6 +33,11 @@ export function IngredientCard({ ingredient, index, selected, onClick }: Ingredi
         >
             <div className="flex h-full min-h-[120px] flex-col items-center justify-center gap-1 p-4 text-center">
                 <div className="font-medium line-clamp-2 break-words">{ingredient.name}</div>
+                {ingredient.isPantryItem ? (
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full">
+                        Basisvare
+                    </div>
+                ) : null}
                 {ingredient.unit ? (
                     <div className="text-xs text-muted-foreground">{ingredient.unit}</div>
                 ) : null}
