@@ -42,6 +42,7 @@ type RecipeDTO = {
     unit: string | null;
     quantity: number | null;
     notes: string | null;
+    isPantryItem: boolean;
   }[];
 };
 
@@ -80,6 +81,7 @@ function toDTO(r: any): RecipeDTO {
       unit: ri.ingredient.unit ?? null,
       quantity: toNumber(ri.quantity),
       notes: ri.notes ?? null,
+      isPantryItem: Boolean(ri.ingredient.isPantryItem),
     })),
   };
 }
@@ -706,6 +708,7 @@ export const plannerRouter = router({
           weekStart: string;
         }[];
         weeks: Set<string>;
+        isPantryItem: boolean;
       };
 
       const map = new Map<string, Accumulator>();
@@ -728,9 +731,13 @@ export const plannerRouter = router({
                 hasMissingQuantities: false,
                 details: [],
                 weeks: new Set<string>(),
+                isPantryItem: ingredient.isPantryItem,
               });
             }
             const acc = map.get(key)!;
+            if (ingredient.isPantryItem) {
+              acc.isPantryItem = true;
+            }
             const quantity = ingredient.quantity;
             if (quantity != null) {
               acc.sumQuantity += quantity;
@@ -763,6 +770,7 @@ export const plannerRouter = router({
           checked: Array.from(item.weeks.values()).every((weekIso) =>
             statusMap.get(`${weekIso}::${item.ingredientId}::${item.unit ?? ""}`)
           ),
+          isPantryItem: item.isPantryItem,
         }))
         .sort((a, b) => a.name.localeCompare(b.name, "nb", { sensitivity: "base" }));
 

@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
-import { Badge, Button, Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, ScrollArea } from "@repo/ui";
+import { Badge, Button, Checkbox, Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, ScrollArea } from "@repo/ui";
 import type { MockIngredientDetailResult, MockIngredientListResult } from "../../lib/mock/store";
 import { IngredientCard } from "./components/IngredientCard";
 import { X } from "lucide-react";
@@ -19,6 +19,7 @@ export default function IngredientsPage() {
     const [name, setName] = useState("");
     const [unit, setUnit] = useState("");
     const [debouncedName, setDebouncedName] = useState("");
+    const [isPantryItem, setIsPantryItem] = useState(false);
 
     const list = trpc.ingredient.list.useQuery({ search: deferredSearch.trim() || undefined });
     // Debounce dialog "name" for suggestions
@@ -35,6 +36,7 @@ export default function IngredientsPage() {
         onSuccess: () => {
             setName("");
             setUnit("");
+            setIsPantryItem(false);
             setIsDialogOpen(false);
             list.refetch();
         },
@@ -77,7 +79,7 @@ export default function IngredientsPage() {
                 {filtered.map((i, idx) => (
                     <IngredientCard
                         key={i.id}
-                        ingredient={{ id: i.id, name: i.name, unit: i.unit, usageCount: i.usageCount }}
+                        ingredient={{ id: i.id, name: i.name, unit: i.unit, usageCount: i.usageCount, isPantryItem: i.isPantryItem }}
                         index={idx}
                         selected={i.id === selectedId}
                         onClick={() => setSelectedId(i.id)}
@@ -98,6 +100,11 @@ export default function IngredientsPage() {
                             <span className="font-medium">{detail.data.name}</span>{" "}
                             {detail.data.unit ? (
                                 <span className="text-muted-foreground">({detail.data.unit})</span>
+                            ) : null}
+                            {detail.data.isPantryItem ? (
+                                <Badge variant="outline" className="ml-2 text-xs uppercase tracking-wide">
+                                    Basisvare
+                                </Badge>
                             ) : null}
                         </div>
                         <ScrollArea className="max-h-64 pr-2">
@@ -141,7 +148,7 @@ export default function IngredientsPage() {
                             onSubmit={(e) => {
                                 e.preventDefault();
                                 if (!name.trim()) return;
-                                create.mutate({ name: name.trim(), unit: unit.trim() || undefined });
+                                create.mutate({ name: name.trim(), unit: unit.trim() || undefined, isPantryItem });
                             }}
                         >
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -195,6 +202,12 @@ export default function IngredientsPage() {
                                 <div>
                                     <label className="text-sm">Enhet</label>
                                     <Input className="focus-visible:ring-inset" value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="f.eks. g, ml, stk" />
+                                </div>
+                                <div className="sm:col-span-3 flex items-center gap-2">
+                                    <Checkbox id="is-pantry" checked={isPantryItem} onCheckedChange={(checked) => setIsPantryItem(Boolean(checked))} />
+                                    <label htmlFor="is-pantry" className="text-sm select-none">
+                                        Marker som basisvare
+                                    </label>
                                 </div>
                             </div>
                             {/* Footer removed: primary action sits in header */}

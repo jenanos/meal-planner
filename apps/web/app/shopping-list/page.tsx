@@ -77,16 +77,27 @@ export default function ShoppingListPage() {
   const isLoading = shoppingQuery.isLoading;
   const isFetching = shoppingQuery.isFetching;
 
-  const sortedItems = useMemo(() => {
-    const unchecked: ShoppingListItem[] = [];
-    const checked: ShoppingListItem[] = [];
+  const { regularItems, pantryItems } = useMemo(() => {
+    const regularUnchecked: ShoppingListItem[] = [];
+    const regularChecked: ShoppingListItem[] = [];
+    const pantryUnchecked: ShoppingListItem[] = [];
+    const pantryChecked: ShoppingListItem[] = [];
+
     for (const item of items) {
       const key = `${item.ingredientId}::${item.unit ?? ""}`;
-      if (checkedMap[key]) checked.push(item);
-      else unchecked.push(item);
+      if (removedKeys.has(key)) continue;
+      const isItemChecked = checkedMap[key];
+      const targetUnchecked = item.isPantryItem ? pantryUnchecked : regularUnchecked;
+      const targetChecked = item.isPantryItem ? pantryChecked : regularChecked;
+      if (isItemChecked) targetChecked.push(item);
+      else targetUnchecked.push(item);
     }
-    return [...unchecked, ...checked];
-  }, [items, checkedMap]);
+
+    return {
+      regularItems: [...regularUnchecked, ...regularChecked],
+      pantryItems: [...pantryUnchecked, ...pantryChecked],
+    };
+  }, [items, checkedMap, removedKeys]);
 
   const includedWeekLabels = useMemo(() => {
     const weeks = shoppingQuery.data?.includedWeekStarts ?? (shoppingQuery.data?.weekStart ? [shoppingQuery.data.weekStart] : []);
@@ -185,6 +196,75 @@ export default function ShoppingListPage() {
     shoppingQuery.refetch().catch(() => undefined);
   }
 
+  function renderShoppingItems(list: ShoppingListItem[]) {
+    return list.map((item) => {
+      const key = `${item.ingredientId}::${item.unit ?? ""}`;
+      if (removedKeys.has(key)) return null;
+      const checked = isChecked(item);
+      const quantityLabel =
+        item.totalQuantity != null && item.unit !== null
+          ? formatQuantity(item.totalQuantity, item.unit)
+          : item.totalQuantity != null
+            ? formatQuantity(item.totalQuantity, null)
+            : null;
+
+      return (
+        <li key={key} className={`border rounded-lg p-3 bg-white ${checked ? "opacity-75" : ""}`}>
+          <div className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              className="mt-1 h-5 w-5"
+              checked={checked}
+              onChange={() => toggleItem(item)}
+              aria-label={`Marker ${item.name} som kjøpt`}
+            />
+            <div className="flex-1 min-w-0 flex flex-col gap-2">
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <div className={`font-medium ${checked ? "text-gray-500" : "text-gray-900"}`}>{item.name}</div>
+                <div className={`text-xs ${checked ? "text-gray-400" : "text-gray-700"}`}>
+                  {quantityLabel ?? "Mengde ikke spesifisert"}
+                  {item.hasMissingQuantities && quantityLabel ? " • noen mengder mangler" : null}
+                </div>
+              </div>
+              {item.details.length ? (
+                <div className="flex flex-wrap gap-2 w-full">
+                  {item.details.map((detail, index) => {
+                    const detailLabel =
+                      detail.quantity != null
+                        ? formatQuantity(detail.quantity, detail.unit ?? item.unit)
+                        : undefined;
+                    const hsl = fallBadgePalette[index % fallBadgePalette.length];
+                    return (
+                      <Badge
+                        key={`${detail.recipeId}-${index}`}
+                        className={`border-0 text-[11px] font-medium text-white ${checked ? "opacity-70" : ""}`}
+                        style={{ backgroundColor: `hsl(${hsl})` }}
+                      >
+                        {detail.recipeName}
+                        {detailLabel ? ` – ${detailLabel}` : ""}
+                      </Badge>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-red-600 shrink-0 self-center"
+              aria-label={`Fjern ${item.name} fra handlelisten`}
+              onClick={() => removeItem(item)}
+              title={`Fjern ${item.name}`}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </li>
+      );
+    });
+  }
+
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-bold text-center">Handleliste</h1>
@@ -276,77 +356,11 @@ export default function ShoppingListPage() {
 
       {isLoading ? (
         <p className="text-sm text-gray-500">Laster handleliste…</p>
-      ) : !sortedItems.length ? (
+      ) : !regularItems.length && !pantryItems.length ? (
         <p className="text-sm text-gray-500">Ingen oppskrifter valgt for denne uken ennå.</p>
       ) : (
         <div className="max-w-2xl mx-auto w-full">
-          <ul className="space-y-3">
-            {sortedItems.map((item) => {
-              const key = `${item.ingredientId}::${item.unit ?? ""}`;
-              const quantityLabel =
-                item.totalQuantity != null ? formatQuantity(item.totalQuantity, item.unit) : null;
-              const checked = isChecked(item);
-              if (removedKeys.has(key)) return null;
-              return (
-                <li
-                  key={key}
-                  className={`border rounded-lg p-3 transition ${checked ? "bg-gray-100 border-gray-200" : "bg-white"
-                    }`}
-                >
-                  <div className={`flex items-center gap-3 ${checked ? "text-gray-400" : ""}`}>
-                    <input
-                      type="checkbox"
-                      className="h-5 w-5"
-                      checked={checked}
-                      onChange={() => toggleItem(item)}
-                      aria-label={`Marker ${item.name} som kjøpt`}
-                    />
-                    <div className="flex-1 min-w-0 flex flex-col gap-2">
-                      <div className="flex items-baseline gap-2 flex-wrap">
-                        <div className={`font-medium ${checked ? "text-gray-500" : "text-gray-900"}`}>{item.name}</div>
-                        <div className={`text-xs ${checked ? "text-gray-400" : "text-gray-700"}`}>
-                          {quantityLabel ?? "Mengde ikke spesifisert"}
-                          {item.hasMissingQuantities && quantityLabel ? " • noen mengder mangler" : null}
-                        </div>
-                      </div>
-                      {item.details.length ? (
-                        <div className="flex flex-wrap gap-2 w-full">
-                          {item.details.map((detail, index) => {
-                            const detailLabel =
-                              detail.quantity != null
-                                ? formatQuantity(detail.quantity, detail.unit ?? item.unit)
-                                : undefined;
-                            const hsl = fallBadgePalette[index % fallBadgePalette.length];
-                            return (
-                              <Badge
-                                key={`${detail.recipeId}-${index}`}
-                                className={`border-0 text-[11px] font-medium text-white ${checked ? "opacity-70" : ""}`}
-                                style={{ backgroundColor: `hsl(${hsl})` }}
-                              >
-                                {detail.recipeName}
-                                {detailLabel ? ` – ${detailLabel}` : ""}
-                              </Badge>
-                            );
-                          })}
-                        </div>
-                      ) : null}
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-600 shrink-0 self-center"
-                      aria-label={`Fjern ${item.name} fra handlelisten`}
-                      onClick={() => removeItem(item)}
-                      title={`Fjern ${item.name}`}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+          <ul className="space-y-3">{renderShoppingItems(regularItems)}</ul>
           {/* Extras section */}
           <div className="my-6">
             <Separator className="my-4" />
@@ -381,6 +395,15 @@ export default function ShoppingListPage() {
                   </li>
                 ))}
               </ul>
+            )}
+          </div>
+          <div className="my-6">
+            <Separator className="my-4" />
+            <h2 className="text-sm font-semibold mb-2">Sjekk at du har dette:</h2>
+            {pantryItems.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Ingen basisvarer i ukesplanen.</p>
+            ) : (
+              <ul className="space-y-3">{renderShoppingItems(pantryItems)}</ul>
             )}
           </div>
         </div>

@@ -14,8 +14,15 @@ async function main() {
     const trimmedName = ing.name.trim();
     await prisma.ingredient.upsert({
       where: { name: trimmedName },
-      update: { unit: ing.unit ?? null },
-      create: { name: trimmedName, unit: ing.unit ?? null },
+      update: {
+        unit: ing.unit ?? null,
+        isPantryItem: Boolean(ing.isPantryItem),
+      },
+      create: {
+        name: trimmedName,
+        unit: ing.unit ?? null,
+        isPantryItem: Boolean(ing.isPantryItem),
+      },
     });
   }
 
