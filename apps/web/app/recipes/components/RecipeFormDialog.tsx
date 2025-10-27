@@ -243,7 +243,7 @@ export function RecipeFormDialog({
                         <div className="flex flex-col gap-2 col-span-2 items-center">
                           <label className="text-sm font-medium text-center">Kategori</label>
                           <div className="flex w-full items-center justify-evenly">
-                            {(["FISK", "KYLLING", "VEGETAR", "ANNET"] as const).map((categoryKey) => {
+                            {CATEGORIES.map((categoryKey) => {
                               const selected = cat === categoryKey;
                               return (
                                 <Button
