@@ -477,103 +477,115 @@ export default function ShoppingListPage() {
     <div className="space-y-6">
       <h1 className="text-xl font-bold text-center">Handleliste</h1>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-3">
-          <Button
-            type="button"
-            variant={includeNextWeek ? "default" : "outline"}
-            size="sm"
-            onClick={() => setIncludeNextWeek((prev) => !prev)}
-            aria-pressed={includeNextWeek}
-          >
-            {includeNextWeek ? "Fjern neste ukes plan" : "Inkluder neste ukes plan"}
-          </Button>
+      <div className="space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              type="button"
+              variant={includeNextWeek ? "default" : "outline"}
+              size="sm"
+              onClick={() => setIncludeNextWeek((prev) => !prev)}
+              aria-pressed={includeNextWeek}
+            >
+              {includeNextWeek ? "Fjern neste uke" : "Inkluder neste uke"}
+            </Button>
+            <Dialog open={isAddExtraOpen} onOpenChange={setIsAddExtraOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="bg-emerald-500 text-white hover:bg-emerald-600 focus-visible:ring-emerald-600"
+                >
+                  Legg til element
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground max-sm:w-[calc(100vw-2rem)]max-sm:mx-auto sm:max-w-md sm:max-h-[min(100vh-4rem,32rem)] sm:shadow-2xl sm:ring-1 sm:ring-border sm:rounded-xl max-sm:bg-background max-sm:!left-1/2 max-sm:!top-[calc(env(safe-area-inset-top)+1rem)] max-sm:!h-[50dvh] max-sm:!max-h-[50dvh] max-sm:!-translate-x-1/2 max-sm:!translate-y-0 max-sm:!rounded-2xl max-sm:!border-0 max-sm:!shadow-none max-sm:p-6">
+                <div className="flex h-full min-h-0 flex-col">
+                  <DialogHeader className="sm:px-0 sm:pt-0">
+                    <div className="mb-3 flex items-center justify-between">
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={!extraInput.trim()}
+                        onClick={() => addOrToggleExtra(extraInput.trim())}
+                      >
+                        Legg til
+                      </Button>
+                      <DialogClose asChild>
+                        <Button type="button" variant="ghost" size="icon" aria-label="Lukk">
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </DialogClose>
+                    </div>
+                    <DialogTitle>Legg til i handlelisten</DialogTitle>
+                    <DialogDescription className="max-sm:hidden">
+                      Skriv inn et element. Tidligere elementer dukker opp som forslag.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-3 max-sm:flex-1 max-sm:min-h-0 max-sm:overflow-y-auto">
+                    <Input
+                      className="focus-visible:ring-inset"
+                      autoFocus
+                      placeholder="F.eks. vaskemiddel"
+                      value={extraInput}
+                      onChange={(e) => setExtraInput(e.target.value)}
+                    />
+                    {extraInput.trim().length > 0 && (
+                      <div className="min-h-6">
+                        {extraSuggest.isLoading ? (
+                          <p className="text-xs text-muted-foreground">Søker…</p>
+                        ) : (
+                          (() => {
+                            const suggestions = (extraSuggest.data ?? []) as Array<{ id: string; name: string }>;
+                            const exists = suggestions.some((s) => s.name.toLowerCase() === extraInput.trim().toLowerCase());
+                            return (
+                              <div className="flex flex-wrap gap-2">
+                                {suggestions.map((s) => (
+                                  <Badge key={s.id} className="cursor-pointer" onClick={() => addOrToggleExtra(s.name)}>
+                                    {s.name}
+                                  </Badge>
+                                ))}
+                                {!exists && (
+                                  <Badge className="cursor-pointer" onClick={() => addOrToggleExtra(extraInput.trim())}>
+                                    Legg til "{extraInput.trim()}"
+                                  </Badge>
+                                )}
+                              </div>
+                            );
+                          })()
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {/* Footer removed - primary action is in header */}
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
           {isFetching && <span className="text-xs text-gray-500">Oppdaterer…</span>}
         </div>
-        <div className="flex flex-wrap items-center gap-3 justify-end">
+        <div className="flex flex-wrap items-center gap-3">
           <Select value={viewMode} onValueChange={(value) => setViewMode(value as "by-day" | "alphabetical")}>
             <SelectTrigger className="h-9 w-[180px]">
               <SelectValue placeholder="Velg visning" />
             </SelectTrigger>
-            <SelectContent align="end">
+            <SelectContent>
               <SelectItem value="by-day">Etter ukesplan</SelectItem>
               <SelectItem value="alphabetical">Alfabetisk</SelectItem>
             </SelectContent>
           </Select>
           {viewMode === "by-day" && occurrenceOptions.length > 0 ? (
-            <DayFilterDropdown
-              label={dayFilterLabel}
-              options={occurrenceOptions}
-              selectedKeys={visibleDayKeySet}
-              onToggle={toggleDayKey}
-              onSelectAll={() => setVisibleDayKeys(occurrenceOptions.map((option) => option.key))}
-              onSelectNone={() => setVisibleDayKeys([])}
-            />
+            <div className="ml-auto">
+              <DayFilterDropdown
+                label={dayFilterLabel}
+                options={occurrenceOptions}
+                selectedKeys={visibleDayKeySet}
+                onToggle={toggleDayKey}
+                onSelectAll={() => setVisibleDayKeys(occurrenceOptions.map((option) => option.key))}
+                onSelectNone={() => setVisibleDayKeys([])}
+              />
+            </div>
           ) : null}
-          <Dialog open={isAddExtraOpen} onOpenChange={setIsAddExtraOpen}>
-            <DialogTrigger asChild>
-              <Button type="button" variant="outline" size="sm">Legg til element</Button>
-            </DialogTrigger>
-            <DialogContent className="isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground max-sm:w-[calc(100vw-2rem)] max-sm:mx-auto sm:max-w-md sm:max-h-[min(100vh-4rem,32rem)] sm:shadow-2xl sm:ring-1 sm:ring-border sm:rounded-xl max-sm:bg-background max-sm:!left-1/2 max-sm:!top-[calc(env(safe-area-inset-top)+1rem)] max-sm:!h-[50dvh] max-sm:!max-h-[50dvh] max-sm:!-translate-x-1/2 max-sm:!translate-y-0 max-sm:!rounded-2xl max-sm:!border-0 max-sm:!shadow-none max-sm:p-6">
-              <div className="flex h-full min-h-0 flex-col">
-                <DialogHeader className="sm:px-0 sm:pt-0">
-                  <div className="mb-3 flex items-center justify-between">
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={!extraInput.trim()}
-                      onClick={() => addOrToggleExtra(extraInput.trim())}
-                    >
-                      Legg til
-                    </Button>
-                    <DialogClose asChild>
-                      <Button type="button" variant="ghost" size="icon" aria-label="Lukk">
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </DialogClose>
-                  </div>
-                  <DialogTitle>Legg til i handlelisten</DialogTitle>
-                  <DialogDescription className="max-sm:hidden">Skriv inn et element. Tidligere elementer dukker opp som forslag.</DialogDescription>
-                </DialogHeader>
-                <div className="space-y-3 max-sm:flex-1 max-sm:min-h-0 max-sm:overflow-y-auto">
-                  <Input
-                    className="focus-visible:ring-inset"
-                    autoFocus
-                    placeholder="F.eks. vaskemiddel"
-                    value={extraInput}
-                    onChange={(e) => setExtraInput(e.target.value)}
-                  />
-                  {extraInput.trim().length > 0 && (
-                    <div className="min-h-6">
-                      {extraSuggest.isLoading ? (
-                        <p className="text-xs text-muted-foreground">Søker…</p>
-                      ) : (
-                        (() => {
-                          const suggestions = (extraSuggest.data ?? []) as Array<{ id: string; name: string }>;
-                          const exists = suggestions.some((s) => s.name.toLowerCase() === extraInput.trim().toLowerCase());
-                          return (
-                            <div className="flex flex-wrap gap-2">
-                              {suggestions.map((s) => (
-                                <Badge key={s.id} className="cursor-pointer" onClick={() => addOrToggleExtra(s.name)}>
-                                  {s.name}
-                                </Badge>
-                              ))}
-                              {!exists && (
-                                <Badge className="cursor-pointer" onClick={() => addOrToggleExtra(extraInput.trim())}>
-                                  Legg til "{extraInput.trim()}"
-                                </Badge>
-                              )}
-                            </div>
-                          );
-                        })()
-                      )}
-                    </div>
-                  )}
-                </div>
-                {/* Footer removed - primary action is in header */}
-              </div>
-            </DialogContent>
-          </Dialog>
         </div>
       </div>
 
