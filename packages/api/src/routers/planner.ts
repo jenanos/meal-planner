@@ -178,6 +178,36 @@ function addWeeks(date: Date, weeks: number) {
   return addDays(date, weeks * 7);
 }
 
+const WEEKDAY_FORMATTER = new Intl.DateTimeFormat("nb-NO", { weekday: "long" });
+const WEEKDAY_WITH_DATE_FORMATTER = new Intl.DateTimeFormat("nb-NO", {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+});
+const SHORT_DATE_FORMATTER = new Intl.DateTimeFormat("nb-NO", {
+  day: "numeric",
+  month: "numeric",
+});
+
+function capitalize(input: string) {
+  if (!input) return input;
+  return input.charAt(0).toUpperCase() + input.slice(1);
+}
+
+function describeOccurrence(weekStartISO: string, dayIndex: number) {
+  const weekStart = new Date(weekStartISO);
+  const date = addDays(weekStart, dayIndex);
+  const weekdayLabel = capitalize(WEEKDAY_FORMATTER.format(date));
+  const longLabel = capitalize(WEEKDAY_WITH_DATE_FORMATTER.format(date));
+  const shortLabel = SHORT_DATE_FORMATTER.format(date);
+  return {
+    dateISO: date.toISOString(),
+    weekdayLabel,
+    longLabel,
+    shortLabel,
+  };
+}
+
 function countOccurrences(ids: string[]) {
   const map = new Map<string, number>();
   ids.forEach((id) => {
@@ -692,6 +722,14 @@ export const plannerRouter = router({
         statusMap.set(key, status.checked);
       });
 
+      type OccurrenceAccumulator = {
+        weekStartISO: string;
+        dayIndex: number;
+        quantityTotal: number;
+        hasQuantity: boolean;
+        hasMissing: boolean;
+      };
+
       type Accumulator = {
         ingredientId: string;
         name: string;
@@ -706,9 +744,11 @@ export const plannerRouter = router({
           unit: string | null;
           notes: string | null;
           weekStart: string;
+          dayIndex: number;
         }[];
         weeks: Set<string>;
         isPantryItem: boolean;
+        occurrences: Map<string, OccurrenceAccumulator>;
       };
 
       const map = new Map<string, Accumulator>();
@@ -732,6 +772,7 @@ export const plannerRouter = router({
                 details: [],
                 weeks: new Set<string>(),
                 isPantryItem: ingredient.isPantryItem,
+                occurrences: new Map<string, OccurrenceAccumulator>(),
               });
             }
             const acc = map.get(key)!;
@@ -745,33 +786,87 @@ export const plannerRouter = router({
             } else {
               acc.hasMissingQuantities = true;
             }
+            const weekIso = week.toISOString();
+            const dayIndex = entry.dayIndex ?? 0;
             acc.details.push({
               recipeId: recipe.id,
               recipeName: recipe.name,
               quantity,
               unit,
               notes: ingredient.notes,
-              weekStart: week.toISOString(),
+              weekStart: weekIso,
+              dayIndex,
             });
-            acc.weeks.add(week.toISOString());
+            acc.weeks.add(weekIso);
+            const occurrenceKey = `${weekIso}::${dayIndex}`;
+            if (!acc.occurrences.has(occurrenceKey)) {
+              acc.occurrences.set(occurrenceKey, {
+                weekStartISO: weekIso,
+                dayIndex,
+                quantityTotal: 0,
+                hasQuantity: false,
+                hasMissing: false,
+              });
+            }
+            const occurrenceBucket = acc.occurrences.get(occurrenceKey)!;
+            if (quantity != null) {
+              occurrenceBucket.quantityTotal += quantity;
+              occurrenceBucket.hasQuantity = true;
+            } else {
+              occurrenceBucket.hasMissing = true;
+            }
           }
         }
       }
 
       const items = Array.from(map.values())
-        .map((item) => ({
-          ingredientId: item.ingredientId,
-          name: item.name,
-          unit: item.unit,
-          totalQuantity: item.hasQuantities ? item.sumQuantity : null,
-          hasMissingQuantities: item.hasMissingQuantities,
-          details: item.details,
-          weekStarts: Array.from(item.weeks.values()),
-          checked: Array.from(item.weeks.values()).every((weekIso) =>
-            statusMap.get(`${weekIso}::${item.ingredientId}::${item.unit ?? ""}`)
-          ),
-          isPantryItem: item.isPantryItem,
-        }))
+        .map((item) => {
+          const occurrenceArray = Array.from(item.occurrences.values());
+          const occurrences = occurrenceArray
+            .map((occurrence) => {
+              const labels = describeOccurrence(occurrence.weekStartISO, occurrence.dayIndex);
+              const statusKeyByDay = `${occurrence.weekStartISO}::${occurrence.dayIndex}::${item.ingredientId}::${item.unit ?? ""}`;
+              const statusKeyByWeek = `${occurrence.weekStartISO}::${item.ingredientId}::${item.unit ?? ""}`;
+              const isChecked =
+                statusMap.get(statusKeyByDay) ?? statusMap.get(statusKeyByWeek) ?? false;
+              return {
+                weekStart: occurrence.weekStartISO,
+                dayIndex: occurrence.dayIndex,
+                dateISO: labels.dateISO,
+                weekdayLabel: labels.weekdayLabel,
+                longLabel: labels.longLabel,
+                shortLabel: labels.shortLabel,
+                quantity: occurrence.hasQuantity ? occurrence.quantityTotal : null,
+                hasMissingQuantities: occurrence.hasMissing,
+                checked: isChecked,
+              };
+            })
+            .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+
+          const isItemChecked =
+            occurrenceArray.length > 0
+              ? occurrenceArray.every((occurrence) => {
+                  const statusKeyByDay = `${occurrence.weekStartISO}::${occurrence.dayIndex}::${item.ingredientId}::${item.unit ?? ""}`;
+                  const statusKeyByWeek = `${occurrence.weekStartISO}::${item.ingredientId}::${item.unit ?? ""}`;
+                  return (statusMap.get(statusKeyByDay) ?? statusMap.get(statusKeyByWeek) ?? false) === true;
+                })
+              : Array.from(item.weeks.values()).every((weekIso) =>
+                  statusMap.get(`${weekIso}::${item.ingredientId}::${item.unit ?? ""}`)
+                );
+
+          return {
+            ingredientId: item.ingredientId,
+            name: item.name,
+            unit: item.unit,
+            totalQuantity: item.hasQuantities ? item.sumQuantity : null,
+            hasMissingQuantities: item.hasMissingQuantities,
+            details: item.details,
+            weekStarts: Array.from(item.weeks.values()),
+            occurrences,
+            checked: isItemChecked,
+            isPantryItem: item.isPantryItem,
+          };
+        })
         .sort((a, b) => a.name.localeCompare(b.name, "nb", { sensitivity: "base" }));
 
       // Include extra shopping items for these weeks
@@ -797,15 +892,41 @@ export const plannerRouter = router({
     }),
 
   updateShoppingItem: publicProcedure
-    .input(z.object({
-      ingredientId: z.string().uuid(),
-      unit: z.string().nullable().optional(),
-      weeks: z.array(z.string()),
-      checked: z.boolean(),
-    }))
+    .input(
+      z.object({
+        ingredientId: z.string().uuid(),
+        unit: z.string().nullable().optional(),
+        weeks: z.array(z.string()).optional(),
+        occurrences: z
+          .array(
+            z.object({
+              weekStart: z.string(),
+              dayIndex: z.number().int().min(0).max(6),
+            })
+          )
+          .optional(),
+        checked: z.boolean(),
+      })
+    )
     .mutation(async ({ input }) => {
-      const weekDates = input.weeks.map((week) => startOfWeek(week));
       const unitKey = input.unit ?? ""; // alltid string
+      const weekMap = new Map<number, Date>();
+
+      for (const occurrence of input.occurrences ?? []) {
+        const week = startOfWeek(occurrence.weekStart);
+        weekMap.set(week.getTime(), week);
+      }
+
+      for (const week of input.weeks ?? []) {
+        const normalized = startOfWeek(week);
+        weekMap.set(normalized.getTime(), normalized);
+      }
+
+      if (weekMap.size === 0) {
+        throw new Error("Mangler uke for oppdatering av handleliste");
+      }
+
+      const weekDates = Array.from(weekMap.values());
 
       await prisma.$transaction(
         weekDates.map((week) =>
