@@ -3,38 +3,41 @@ export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
-import { Button, Badge, Input, Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, Separator } from "@repo/ui";
-import type { MockShoppingListResult } from "../../lib/mock/store";
+import {
+  Button,
+  Badge,
+  Input,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogTrigger,
+  Separator,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@repo/ui";
 import { X } from "lucide-react";
-
-function formatQuantity(quantity: number, unit: string | null) {
-  const formatter = new Intl.NumberFormat("nb-NO", {
-    maximumFractionDigits: 2,
-    minimumFractionDigits: quantity % 1 === 0 ? 0 : 1,
-  });
-  const formatted = formatter.format(quantity);
-  return unit ? `${formatted} ${unit}` : formatted;
-}
-
-type ShoppingListResult = MockShoppingListResult;
-type ShoppingListItem = ShoppingListResult["items"][number];
+import { DayFilterDropdown } from "./components/day-filter-dropdown";
+import {
+  ShoppingListDayView,
+  type ShoppingListDaySection,
+} from "./components/shopping-list-day-view";
+import { FALL_BADGE_PALETTE, formatQuantity } from "./utils";
+import type { ShoppingListItem, ShoppingListOccurrence } from "./types";
 
 export default function ShoppingListPage() {
-  // High-contrast fall palette for badges (H S L), designed for white text
-  const fallBadgePalette = [
-    "24 94% 42%",  // amber
-    "18 80% 40%",  // pumpkin
-    "12 78% 36%",  // rust
-    "6 72% 36%",   // brick red
-    "30 85% 38%",  // orange
-    "40 70% 32%",  // ochre
-    "16 68% 34%",  // terracotta
-  ];
   // Lock to current week only; backend can handle includeNextWeek
   const currentWeekStart = useMemo(() => new Date().toISOString(), []);
   const activeWeekStart = currentWeekStart;
   const [includeNextWeek, setIncludeNextWeek] = useState(false);
-  const [checkedMap, setCheckedMap] = useState<Record<string, boolean>>({});
+  const [viewMode, setViewMode] = useState<"by-day" | "alphabetical">("by-day");
+  const [checkedByOccurrence, setCheckedByOccurrence] = useState<Record<string, boolean>>({});
+  const [visibleDayKeys, setVisibleDayKeys] = useState<string[]>([]);
   const [removedKeys, setRemovedKeys] = useState<Set<string>>(new Set());
   // Extras UI state
   const [isAddExtraOpen, setIsAddExtraOpen] = useState(false);
@@ -65,10 +68,12 @@ export default function ShoppingListPage() {
   useEffect(() => {
     const next: Record<string, boolean> = {};
     for (const item of shoppingQuery.data?.items ?? []) {
-      const key = `${item.ingredientId}::${item.unit ?? ""}`;
-      next[key] = item.checked ?? false;
+      for (const occurrence of item.occurrences ?? []) {
+        const key = `${occurrence.weekStart}::${occurrence.dayIndex}::${item.ingredientId}::${item.unit ?? ""}`;
+        next[key] = occurrence.checked ?? false;
+      }
     }
-    setCheckedMap(next);
+    setCheckedByOccurrence(next);
   }, [includedWeeksSignature, shoppingQuery.data?.items]);
 
   const items = shoppingQuery.data?.items ?? [];
@@ -76,6 +81,57 @@ export default function ShoppingListPage() {
   const extras = extrasAll.filter((e: { weekStart: string }) => e.weekStart === (shoppingQuery.data?.weekStart ?? activeWeekStart));
   const isLoading = shoppingQuery.isLoading;
   const isFetching = shoppingQuery.isFetching;
+
+  const occurrenceOptions = useMemo(() => {
+    const map = new Map<
+      string,
+      { key: string; weekdayLabel: string; shortLabel: string; longLabel: string; dateISO: string }
+    >();
+    for (const item of items) {
+      if (item.isPantryItem) continue;
+      for (const occurrence of item.occurrences ?? []) {
+        const key = `${occurrence.weekStart}::${occurrence.dayIndex}`;
+        if (!map.has(key)) {
+          map.set(key, {
+            key,
+            weekdayLabel: occurrence.weekdayLabel,
+            shortLabel: occurrence.shortLabel,
+            longLabel: occurrence.longLabel,
+            dateISO: occurrence.dateISO,
+          });
+        }
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+  }, [items]);
+
+  useEffect(() => {
+    const optionKeys = occurrenceOptions.map((option) => option.key);
+    setVisibleDayKeys((prev) => {
+      if (optionKeys.length === 0) return [];
+      const prevSet = new Set(prev);
+      const missing = optionKeys.some((key) => !prevSet.has(key));
+      const extra = Array.from(prevSet).some((key) => !optionKeys.includes(key));
+      if (prevSet.size === 0 || missing || extra) {
+        return optionKeys;
+      }
+      return prev;
+    });
+  }, [occurrenceOptions]);
+
+  const visibleDayKeySet = useMemo(() => new Set(visibleDayKeys), [visibleDayKeys]);
+
+  const dayFilterLabel = useMemo(() => {
+    if (occurrenceOptions.length === 0) return "Alle dager";
+    if (visibleDayKeys.length === 0) return "Ingen dager";
+    if (visibleDayKeys.length === occurrenceOptions.length) return "Alle dager";
+    const selected = occurrenceOptions.filter((option) => visibleDayKeySet.has(option.key));
+    if (selected.length === 0) return "Ingen dager";
+    if (selected.length <= 2) {
+      return selected.map((option) => option.weekdayLabel).join(", ");
+    }
+    return `${selected.length} dager`;
+  }, [occurrenceOptions, visibleDayKeySet, visibleDayKeys.length]);
 
   const { regularItems, pantryItems } = useMemo(() => {
     const regularUnchecked: ShoppingListItem[] = [];
@@ -86,7 +142,13 @@ export default function ShoppingListPage() {
     for (const item of items) {
       const key = `${item.ingredientId}::${item.unit ?? ""}`;
       if (removedKeys.has(key)) continue;
-      const isItemChecked = checkedMap[key];
+      const occurrences = item.occurrences ?? [];
+      const isItemChecked = occurrences.length
+        ? occurrences.every((occurrence) => {
+            const occKey = `${occurrence.weekStart}::${occurrence.dayIndex}::${item.ingredientId}::${item.unit ?? ""}`;
+            return checkedByOccurrence[occKey] ?? occurrence.checked ?? false;
+          })
+        : item.checked ?? false;
       const targetUnchecked = item.isPantryItem ? pantryUnchecked : regularUnchecked;
       const targetChecked = item.isPantryItem ? pantryChecked : regularChecked;
       if (isItemChecked) targetChecked.push(item);
@@ -97,7 +159,7 @@ export default function ShoppingListPage() {
       regularItems: [...regularUnchecked, ...regularChecked],
       pantryItems: [...pantryUnchecked, ...pantryChecked],
     };
-  }, [items, checkedMap, removedKeys]);
+  }, [items, checkedByOccurrence, removedKeys]);
 
   const includedWeekLabels = useMemo(() => {
     const weeks = shoppingQuery.data?.includedWeekStarts ?? (shoppingQuery.data?.weekStart ? [shoppingQuery.data.weekStart] : []);
@@ -109,11 +171,83 @@ export default function ShoppingListPage() {
   const extraRemove = trpc.planner.extraRemove.useMutation();
   const extraAdd = trpc.planner.extraAdd.useMutation();
 
-  function toggleItem(item: ShoppingListItem) {
-    const key = `${item.ingredientId}::${item.unit ?? ""}`;
-    const currentValue = checkedMap[key] ?? item.checked ?? false;
+  function getOccurrenceKey(item: ShoppingListItem, occurrence: ShoppingListOccurrence) {
+    return `${occurrence.weekStart}::${occurrence.dayIndex}::${item.ingredientId}::${item.unit ?? ""}`;
+  }
+
+  function isOccurrenceChecked(item: ShoppingListItem, occurrence: ShoppingListOccurrence) {
+    const key = getOccurrenceKey(item, occurrence);
+    return checkedByOccurrence[key] ?? occurrence.checked ?? false;
+  }
+
+  function areAllOccurrencesChecked(item: ShoppingListItem) {
+    const occurrences = item.occurrences ?? [];
+    if (occurrences.length === 0) {
+      return item.checked ?? false;
+    }
+    return occurrences.every((occurrence) => isOccurrenceChecked(item, occurrence));
+  }
+
+  function getPreviousCheckedOccurrence(item: ShoppingListItem, occurrence: ShoppingListOccurrence) {
+    const occurrences = item.occurrences ?? [];
+    let previous: ShoppingListOccurrence | null = null;
+    for (const candidate of occurrences) {
+      const candidateKey = `${candidate.weekStart}::${candidate.dayIndex}`;
+      const currentKey = `${occurrence.weekStart}::${occurrence.dayIndex}`;
+      if (candidateKey === currentKey) {
+        break;
+      }
+      if (isOccurrenceChecked(item, candidate)) {
+        previous = candidate;
+      }
+    }
+    return previous;
+  }
+
+  function toggleAllOccurrences(item: ShoppingListItem) {
+    const occurrences = item.occurrences ?? [];
+    const keys = occurrences.map((occurrence) => getOccurrenceKey(item, occurrence));
+    const prevValues = keys.map((key) => checkedByOccurrence[key] ?? false);
+    const nextValue = occurrences.some((occurrence) => !isOccurrenceChecked(item, occurrence));
+    setCheckedByOccurrence((prev) => {
+      const next = { ...prev };
+      keys.forEach((key) => {
+        next[key] = nextValue;
+      });
+      return next;
+    });
+    updateShoppingItem.mutate(
+      {
+        ingredientId: item.ingredientId,
+        unit: item.unit ?? null,
+        occurrences: occurrences.map((occurrence) => ({
+          weekStart: occurrence.weekStart,
+          dayIndex: occurrence.dayIndex,
+        })),
+        checked: nextValue,
+      },
+      {
+        onError: () => {
+          setCheckedByOccurrence((prev) => {
+            const next = { ...prev };
+            keys.forEach((key, index) => {
+              next[key] = prevValues[index];
+            });
+            return next;
+          });
+        },
+        onSuccess: () => {
+          shoppingQuery.refetch().catch(() => undefined);
+        },
+      }
+    );
+  }
+
+  function toggleSingleOccurrence(item: ShoppingListItem, occurrence: ShoppingListOccurrence) {
+    const key = getOccurrenceKey(item, occurrence);
+    const currentValue = checkedByOccurrence[key] ?? occurrence.checked ?? false;
     const nextValue = !currentValue;
-    setCheckedMap((prev) => ({
+    setCheckedByOccurrence((prev) => ({
       ...prev,
       [key]: nextValue,
     }));
@@ -121,12 +255,12 @@ export default function ShoppingListPage() {
       {
         ingredientId: item.ingredientId,
         unit: item.unit ?? null,
-        weeks: item.weekStarts ?? [activeWeekStart],
+        occurrences: [{ weekStart: occurrence.weekStart, dayIndex: occurrence.dayIndex }],
         checked: nextValue,
       },
       {
         onError: () => {
-          setCheckedMap((prev) => ({
+          setCheckedByOccurrence((prev) => ({
             ...prev,
             [key]: currentValue,
           }));
@@ -138,20 +272,83 @@ export default function ShoppingListPage() {
     );
   }
 
-  function isChecked(item: ShoppingListItem) {
-    const key = `${item.ingredientId}::${item.unit ?? ""}`;
-    return Boolean(checkedMap[key]);
+  const daySections = useMemo<ShoppingListDaySection[]>(() => {
+    const sections = new Map<
+      string,
+      ShoppingListDaySection & { dateISO: string }
+    >();
+
+    for (const item of regularItems) {
+      const removalKey = `${item.ingredientId}::${item.unit ?? ""}`;
+      if (removedKeys.has(removalKey)) continue;
+      for (const occurrence of item.occurrences ?? []) {
+        const sectionKey = `${occurrence.weekStart}::${occurrence.dayIndex}`;
+        if (!visibleDayKeySet.has(sectionKey)) continue;
+        if (!sections.has(sectionKey)) {
+          sections.set(sectionKey, {
+            key: sectionKey,
+            weekdayLabel: occurrence.weekdayLabel,
+            longLabel: occurrence.longLabel,
+            entries: [],
+            dateISO: occurrence.dateISO,
+          });
+        }
+        sections.get(sectionKey)!.entries.push({ item, occurrence });
+      }
+    }
+
+    return Array.from(sections.values())
+      .sort((a, b) => a.dateISO.localeCompare(b.dateISO))
+      .map(({ dateISO: _date, entries, ...section }) => ({
+        ...section,
+        entries: [...entries].sort((a, b) =>
+          a.item.name.localeCompare(b.item.name, "nb", { sensitivity: "base" })
+        ),
+      }));
+  }, [regularItems, removedKeys, visibleDayKeySet]);
+
+  function toggleDayKey(dayKey: string, checked: boolean) {
+    setVisibleDayKeys((prev) => {
+      const next = new Set(prev);
+      if (checked) {
+        next.add(dayKey);
+      } else {
+        next.delete(dayKey);
+      }
+      return occurrenceOptions
+        .map((option) => option.key)
+        .filter((key) => next.has(key));
+    });
   }
 
   function removeItem(item: ShoppingListItem) {
     const key = `${item.ingredientId}::${item.unit ?? ""}`;
     setRemovedKeys((prev) => new Set(prev).add(key));
-    // Mark as checked for all included weeks so it's effectively dismissed
+    const occurrences = item.occurrences ?? [];
+    const occurrencePayload = occurrences.map((occurrence) => ({
+      weekStart: occurrence.weekStart,
+      dayIndex: occurrence.dayIndex,
+    }));
+    const previousValues = occurrences.map((occurrence) => ({
+      key: getOccurrenceKey(item, occurrence),
+      value: isOccurrenceChecked(item, occurrence),
+    }));
+    if (occurrences.length > 0) {
+      setCheckedByOccurrence((prev) => {
+        const next = { ...prev };
+        previousValues.forEach(({ key: occKey }) => {
+          next[occKey] = true;
+        });
+        return next;
+      });
+    }
+    // Mark as checked for selected occurrences so it's effectively dismissed
     updateShoppingItem.mutate(
       {
         ingredientId: item.ingredientId,
         unit: item.unit ?? null,
-        weeks: item.weekStarts ?? [activeWeekStart],
+        occurrences: occurrencePayload.length ? occurrencePayload : undefined,
+        weeks: occurrencePayload.length ? undefined : item.weekStarts ?? [activeWeekStart],
         checked: true,
       },
       {
@@ -161,6 +358,15 @@ export default function ShoppingListPage() {
             copy.delete(key);
             return copy;
           });
+          if (occurrences.length > 0) {
+            setCheckedByOccurrence((prev) => {
+              const next = { ...prev };
+              previousValues.forEach(({ key: occKey, value }) => {
+                next[occKey] = value;
+              });
+              return next;
+            });
+          }
         },
         onSuccess: () => {
           shoppingQuery.refetch().catch(() => undefined);
@@ -196,11 +402,11 @@ export default function ShoppingListPage() {
     shoppingQuery.refetch().catch(() => undefined);
   }
 
-  function renderShoppingItems(list: ShoppingListItem[]) {
+  function renderAlphabeticalItems(list: ShoppingListItem[]) {
     return list.map((item) => {
       const key = `${item.ingredientId}::${item.unit ?? ""}`;
       if (removedKeys.has(key)) return null;
-      const checked = isChecked(item);
+      const checked = areAllOccurrencesChecked(item);
       const quantityLabel =
         item.totalQuantity != null && item.unit !== null
           ? formatQuantity(item.totalQuantity, item.unit)
@@ -215,7 +421,7 @@ export default function ShoppingListPage() {
               type="checkbox"
               className="mt-1 h-5 w-5"
               checked={checked}
-              onChange={() => toggleItem(item)}
+              onChange={() => toggleAllOccurrences(item)}
               aria-label={`Marker ${item.name} som kjøpt`}
             />
             <div className="flex-1 min-w-0 flex flex-col gap-2">
@@ -233,7 +439,7 @@ export default function ShoppingListPage() {
                       detail.quantity != null
                         ? formatQuantity(detail.quantity, detail.unit ?? item.unit)
                         : undefined;
-                    const hsl = fallBadgePalette[index % fallBadgePalette.length];
+                  const hsl = FALL_BADGE_PALETTE[index % FALL_BADGE_PALETTE.length];
                     return (
                       <Badge
                         key={`${detail.recipeId}-${index}`}
@@ -270,7 +476,7 @@ export default function ShoppingListPage() {
       <h1 className="text-xl font-bold text-center">Handleliste</h1>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Button
             type="button"
             variant={includeNextWeek ? "default" : "outline"}
@@ -282,7 +488,26 @@ export default function ShoppingListPage() {
           </Button>
           {isFetching && <span className="text-xs text-gray-500">Oppdaterer…</span>}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 justify-end">
+          <Select value={viewMode} onValueChange={(value) => setViewMode(value as "by-day" | "alphabetical")}>
+            <SelectTrigger className="h-9 w-[180px]">
+              <SelectValue placeholder="Velg visning" />
+            </SelectTrigger>
+            <SelectContent align="end">
+              <SelectItem value="by-day">Etter ukesplan</SelectItem>
+              <SelectItem value="alphabetical">Alfabetisk</SelectItem>
+            </SelectContent>
+          </Select>
+          {viewMode === "by-day" && occurrenceOptions.length > 0 ? (
+            <DayFilterDropdown
+              label={dayFilterLabel}
+              options={occurrenceOptions}
+              selectedKeys={visibleDayKeySet}
+              onToggle={toggleDayKey}
+              onSelectAll={() => setVisibleDayKeys(occurrenceOptions.map((option) => option.key))}
+              onSelectNone={() => setVisibleDayKeys([])}
+            />
+          ) : null}
           <Dialog open={isAddExtraOpen} onOpenChange={setIsAddExtraOpen}>
             <DialogTrigger asChild>
               <Button type="button" variant="outline" size="sm">Legg til element</Button>
@@ -360,7 +585,19 @@ export default function ShoppingListPage() {
         <p className="text-sm text-gray-500">Ingen oppskrifter valgt for denne uken ennå.</p>
       ) : (
         <div className="max-w-2xl mx-auto w-full">
-          <ul className="space-y-3">{renderShoppingItems(regularItems)}</ul>
+          {viewMode === "alphabetical" ? (
+            <ul className="space-y-3">{renderAlphabeticalItems(regularItems)}</ul>
+          ) : (
+            <ShoppingListDayView
+              sections={daySections}
+              getOccurrenceKey={getOccurrenceKey}
+              isOccurrenceChecked={isOccurrenceChecked}
+              getPreviousCheckedOccurrence={getPreviousCheckedOccurrence}
+              onToggleOccurrence={toggleSingleOccurrence}
+              onRemoveItem={removeItem}
+              removedKeys={removedKeys}
+            />
+          )}
           {/* Extras section */}
           <div className="my-6">
             <Separator className="my-4" />
@@ -403,7 +640,7 @@ export default function ShoppingListPage() {
             {pantryItems.length === 0 ? (
               <p className="text-sm text-muted-foreground">Ingen basisvarer i ukesplanen.</p>
             ) : (
-              <ul className="space-y-3">{renderShoppingItems(pantryItems)}</ul>
+              <ul className="space-y-3">{renderAlphabeticalItems(pantryItems)}</ul>
             )}
           </div>
         </div>
