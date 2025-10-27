@@ -31,7 +31,7 @@ import type { CarouselApi } from "@repo/ui";
 
 import { EVERYDAY_LABELS, HEALTH_LABELS } from "../../../lib/scoreLabels";
 import { CategoryEmoji } from "../../components/CategoryEmoji";
-import { CATEGORIES } from "../constants";
+import { CATEGORIES } from "@repo/database";
 import type { FormIngredient, IngredientSuggestion, RecipeListItem } from "../types";
 import { StepNav } from "./StepNav";
 
