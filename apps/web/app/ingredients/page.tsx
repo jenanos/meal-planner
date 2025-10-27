@@ -51,7 +51,7 @@ export default function IngredientsPage() {
     });
 
     const update = trpc.ingredient.update.useMutation({
-        onSuccess: (_data, variables) => {
+        onSuccess: (_data: unknown, variables: { id: string }) => {
             list.refetch();
             setIsDialogOpen(false);
             const nextId = variables.id;
