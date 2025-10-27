@@ -30,6 +30,8 @@ import {
 import { FALL_BADGE_PALETTE, formatQuantity } from "./utils";
 import type { ShoppingListItem, ShoppingListOccurrence } from "./types";
 
+const EMPTY_ITEMS: ShoppingListItem[] = [];
+
 export default function ShoppingListPage() {
   // Lock to current week only; backend can handle includeNextWeek
   const currentWeekStart = useMemo(() => new Date().toISOString(), []);
@@ -65,18 +67,18 @@ export default function ShoppingListPage() {
     [shoppingQuery.data?.includedWeekStarts, shoppingQuery.data?.weekStart]
   );
 
+  const items = shoppingQuery.data?.items ?? EMPTY_ITEMS;
+
   useEffect(() => {
     const next: Record<string, boolean> = {};
-    for (const item of shoppingQuery.data?.items ?? []) {
+    for (const item of items) {
       for (const occurrence of item.occurrences ?? []) {
         const key = getOccurrenceKey(item, occurrence);
         next[key] = occurrence.checked ?? false;
       }
     }
     setCheckedByOccurrence(next);
-  }, [includedWeeksSignature, shoppingQuery.data?.items]);
-
-  const items = shoppingQuery.data?.items ?? [];
+  }, [includedWeeksSignature, items]);
   const extrasAll = ((shoppingQuery.data as any)?.extras ?? []) as Array<{ id: string; name: string; weekStart: string; checked: boolean }>;
   const extras = extrasAll.filter((e: { weekStart: string }) => e.weekStart === (shoppingQuery.data?.weekStart ?? activeWeekStart));
   const isLoading = shoppingQuery.isLoading;
@@ -107,12 +109,18 @@ export default function ShoppingListPage() {
 
   useEffect(() => {
     const optionKeys = occurrenceOptions.map((option) => option.key);
+    const optionKeySet = new Set(optionKeys);
     setVisibleDayKeys((prev) => {
-      if (optionKeys.length === 0) return [];
+      if (optionKeys.length === 0) {
+        return prev.length === 0 ? prev : [];
+      }
+      const hasRemoved = prev.some((key) => !optionKeySet.has(key));
       const prevSet = new Set(prev);
-      const missing = optionKeys.some((key) => !prevSet.has(key));
-      const extra = Array.from(prevSet).some((key) => !optionKeys.includes(key));
-      if (prevSet.size === 0 || missing || extra) {
+      const hasMissing = optionKeys.some((key) => !prevSet.has(key));
+      if (prev.length === 0 || hasMissing || hasRemoved) {
+        if (prev.length === optionKeys.length && prev.every((key, index) => key === optionKeys[index])) {
+          return prev;
+        }
         return optionKeys;
       }
       return prev;
