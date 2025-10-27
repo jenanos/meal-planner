@@ -146,44 +146,47 @@ export default function IngredientsPage() {
                 <DialogContent className="isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground max-sm:w-[calc(100vw-2rem)] max-sm:mx-auto sm:max-w-lg sm:max-h-[min(100vh-4rem,32rem)] sm:shadow-2xl sm:ring-1 sm:ring-border sm:rounded-xl max-sm:bg-background max-sm:!left-1/2 max-sm:!top-[calc(env(safe-area-inset-top)+1rem)] max-sm:!h-[50dvh] max-sm:!max-h-[50dvh] max-sm:!-translate-x-1/2 max-sm:!translate-y-0 max-sm:!rounded-2xl max-sm:!border-0 max-sm:!shadow-none max-sm:p-6">
                     <div className="flex h-full min-h-0 flex-col gap-4 max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-[env(safe-area-inset-bottom)]">
                         <DialogHeader className="sm:px-0 sm:pt-0">
-                            <div className="mb-3 flex items-start justify-between gap-4">
-                                <div className="space-y-2">
-                                    <DialogTitle className="leading-tight">
-                                        {viewDetail.data?.name ?? "Ingrediens"}
-                                    </DialogTitle>
-                                    <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                                        {viewDetail.data?.unit ? <span>Enhet: {viewDetail.data.unit}</span> : null}
-                                        {viewDetail.data?.isPantryItem ? (
-                                            <Badge variant="outline" className="text-xs uppercase tracking-wide">
-                                                Basisvare
-                                            </Badge>
-                                        ) : null}
-                                    </div>
-                                </div>
+                            <div className="mb-3 flex items-center justify-between">
+                                <Button type="button" size="sm" onClick={startEditing} disabled={!viewDetail.data}>
+                                    Endre ingrediens
+                                </Button>
                                 <DialogClose asChild>
                                     <Button type="button" variant="ghost" size="icon" aria-label="Lukk">
                                         <X className="size-4" />
                                     </Button>
                                 </DialogClose>
                             </div>
+                            <div className="space-y-2">
+                                <DialogTitle className="leading-tight">
+                                    {viewDetail.data?.name ?? "Ingrediens"}
+                                </DialogTitle>
+                                <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                                    {viewDetail.data?.unit ? <span>Enhet: {viewDetail.data.unit}</span> : null}
+                                    {viewDetail.data?.isPantryItem ? (
+                                        <Badge variant="outline" className="text-xs uppercase tracking-wide">
+                                            Basisvare
+                                        </Badge>
+                                    ) : null}
+                                </div>
+                            </div>
                             <DialogDescription className="max-sm:hidden">
                                 Oversikt over hvilke oppskrifter som bruker ingrediensen.
                             </DialogDescription>
                         </DialogHeader>
 
-                        {viewDetail.isLoading ? <p>Laster…</p> : null}
-                        {viewDetail.error ? (
-                            <p className="text-sm text-destructive">
-                                Kunne ikke laste ingrediensen. Prøv igjen senere.
-                            </p>
-                        ) : null}
-                        {viewDetail.data ? (
-                            <div className="space-y-4">
-                                <div>
-                                    <h3 className="text-sm font-medium">Oppskrifter</h3>
-                                    {viewDetail.data.recipes.length ? (
-                                        <ScrollArea className="mt-2 max-h-64 pr-2">
-                                            <ul className="space-y-2 pr-1">
+                        <div className="flex-1 min-h-0 space-y-4 overflow-y-auto pr-1">
+                            {viewDetail.isLoading ? <p>Laster…</p> : null}
+                            {viewDetail.error ? (
+                                <p className="text-sm text-destructive">
+                                    Kunne ikke laste ingrediensen. Prøv igjen senere.
+                                </p>
+                            ) : null}
+                            {viewDetail.data ? (
+                                <div className="space-y-4 pb-2">
+                                    <div>
+                                        <h3 className="text-sm font-medium">Oppskrifter med denne ingrediensen:</h3>
+                                        {viewDetail.data.recipes.length ? (
+                                            <ul className="mt-2 space-y-2">
                                                 {viewDetail.data.recipes.map((recipe: IngredientRecipe) => (
                                                     <li key={recipe.id} className="text-sm">
                                                         <span className="font-medium">{recipe.name}</span>{" "}
@@ -193,20 +196,15 @@ export default function IngredientsPage() {
                                                     </li>
                                                 ))}
                                             </ul>
-                                        </ScrollArea>
-                                    ) : (
-                                        <p className="text-sm text-muted-foreground">
-                                            Ingen oppskrifter bruker denne ingrediensen ennå.
-                                        </p>
-                                    )}
+                                        ) : (
+                                            <p className="text-sm text-muted-foreground">
+                                                Ingen oppskrifter bruker denne ingrediensen ennå.
+                                            </p>
+                                        )}
+                                    </div>
                                 </div>
-                                <div className="flex justify-end">
-                                    <Button type="button" onClick={startEditing} disabled={!viewDetail.data}>
-                                        Endre ingrediens
-                                    </Button>
-                                </div>
-                            </div>
-                        ) : null}
+                            ) : null}
+                        </div>
                     </div>
                 </DialogContent>
             </Dialog>
