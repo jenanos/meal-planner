@@ -12,6 +12,23 @@ export { Separator } from "./components/shadcn/separator"
 export { Textarea } from "./components/shadcn/textarea"
 export { ScrollArea } from "./components/shadcn/scroll-area"
 export { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription, DialogClose } from "./components/shadcn/dialog"
+export {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuCheckboxItem,
+  DropdownMenuRadioItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuGroup,
+  DropdownMenuPortal,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuRadioGroup,
+} from "./components/shadcn/dropdown-menu"
 export { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious, useCarousel } from "./components/shadcn/carousel"
 export type { CarouselApi, CarouselEvent, CarouselOptions, CarouselPlugin } from "./components/shadcn/carousel"
 
