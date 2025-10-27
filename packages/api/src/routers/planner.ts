@@ -1,4 +1,4 @@
-import { prisma } from "@repo/database";
+import { prisma, Prisma } from "@repo/database";
 import { router, publicProcedure } from "../trpc";
 import { PlannerConstraints, WeekPlanInput, ExtraItemSuggest, ExtraItemUpsert, ExtraShoppingToggle, ExtraShoppingRemove } from "../schemas";
 import { z } from "zod";
@@ -716,10 +716,17 @@ export const plannerRouter = router({
         },
       });
 
-      const statusMap = new Map<string, boolean>();
+      const statusMap = new Map<
+        string,
+        { checked: boolean; firstCheckedDayIndex: number | null }
+      >();
       statuses.forEach((status) => {
         const key = `${status.weekStart.toISOString()}::${status.ingredientId}::${status.unit ?? ""}`;
-        statusMap.set(key, status.checked);
+        statusMap.set(key, {
+          checked: status.checked,
+          firstCheckedDayIndex:
+            status.firstCheckedDayIndex == null ? null : status.firstCheckedDayIndex,
+        });
       });
 
       type OccurrenceAccumulator = {
@@ -822,13 +829,21 @@ export const plannerRouter = router({
       const items = Array.from(map.values())
         .map((item) => {
           const occurrenceArray = Array.from(item.occurrences.values());
+          const firstCheckedByWeek = new Map<string, number>();
           const occurrences = occurrenceArray
             .map((occurrence) => {
               const labels = describeOccurrence(occurrence.weekStartISO, occurrence.dayIndex);
               const statusKeyByDay = `${occurrence.weekStartISO}::${occurrence.dayIndex}::${item.ingredientId}::${item.unit ?? ""}`;
               const statusKeyByWeek = `${occurrence.weekStartISO}::${item.ingredientId}::${item.unit ?? ""}`;
-              const isChecked =
-                statusMap.get(statusKeyByDay) ?? statusMap.get(statusKeyByWeek) ?? false;
+              const statusByDay = statusMap.get(statusKeyByDay);
+              const statusByWeek = statusMap.get(statusKeyByWeek);
+              const isChecked = statusByDay?.checked ?? statusByWeek?.checked ?? false;
+              if (statusByWeek?.firstCheckedDayIndex != null) {
+                firstCheckedByWeek.set(
+                  occurrence.weekStartISO,
+                  statusByWeek.firstCheckedDayIndex
+                );
+              }
               return {
                 weekStart: occurrence.weekStartISO,
                 dayIndex: occurrence.dayIndex,
@@ -848,11 +863,21 @@ export const plannerRouter = router({
               ? occurrenceArray.every((occurrence) => {
                   const statusKeyByDay = `${occurrence.weekStartISO}::${occurrence.dayIndex}::${item.ingredientId}::${item.unit ?? ""}`;
                   const statusKeyByWeek = `${occurrence.weekStartISO}::${item.ingredientId}::${item.unit ?? ""}`;
-                  return (statusMap.get(statusKeyByDay) ?? statusMap.get(statusKeyByWeek) ?? false) === true;
+                  const statusByDay = statusMap.get(statusKeyByDay);
+                  const statusByWeek = statusMap.get(statusKeyByWeek);
+                  return statusByDay?.checked ?? statusByWeek?.checked ?? false;
                 })
               : Array.from(item.weeks.values()).every((weekIso) =>
-                  statusMap.get(`${weekIso}::${item.ingredientId}::${item.unit ?? ""}`)
+                  statusMap.get(`${weekIso}::${item.ingredientId}::${item.unit ?? ""}`)?.checked ??
+                  false
                 );
+
+          const firstCheckedOccurrences = Array.from(firstCheckedByWeek.entries()).map(
+            ([weekStartISO, dayIndex]) => ({
+              weekStart: weekStartISO,
+              dayIndex,
+            })
+          );
 
           return {
             ingredientId: item.ingredientId,
@@ -865,6 +890,7 @@ export const plannerRouter = router({
             occurrences,
             checked: isItemChecked,
             isPantryItem: item.isPantryItem,
+            firstCheckedOccurrences,
           };
         })
         .sort((a, b) => a.name.localeCompare(b.name, "nb", { sensitivity: "base" }));
@@ -910,27 +936,51 @@ export const plannerRouter = router({
     )
     .mutation(async ({ input }) => {
       const unitKey = input.unit ?? ""; // alltid string
-      const weekMap = new Map<number, Date>();
+      const weekMeta = new Map<number, { week: Date; dayIndices: number[] }>();
 
       for (const occurrence of input.occurrences ?? []) {
         const week = startOfWeek(occurrence.weekStart);
-        weekMap.set(week.getTime(), week);
+        const key = week.getTime();
+        if (!weekMeta.has(key)) {
+          weekMeta.set(key, { week, dayIndices: [] });
+        }
+        weekMeta.get(key)!.dayIndices.push(occurrence.dayIndex);
       }
 
       for (const week of input.weeks ?? []) {
         const normalized = startOfWeek(week);
-        weekMap.set(normalized.getTime(), normalized);
+        const key = normalized.getTime();
+        if (!weekMeta.has(key)) {
+          weekMeta.set(key, { week: normalized, dayIndices: [] });
+        }
       }
 
-      if (weekMap.size === 0) {
+      if (weekMeta.size === 0) {
         throw new Error("Mangler uke for oppdatering av handleliste");
       }
 
-      const weekDates = Array.from(weekMap.values());
+      const weekEntries = Array.from(weekMeta.values());
 
       await prisma.$transaction(
-        weekDates.map((week) =>
-          prisma.shoppingState.upsert({
+        weekEntries.map(({ week, dayIndices }) => {
+          const firstDayIndex =
+            input.checked && dayIndices.length > 0
+              ? Math.min(...dayIndices)
+              : null;
+
+          const updateData: Prisma.ShoppingStateUpdateInput = {
+            checked: input.checked,
+          };
+
+          if (input.checked) {
+            if (dayIndices.length > 0) {
+              updateData.firstCheckedDayIndex = firstDayIndex;
+            }
+          } else {
+            updateData.firstCheckedDayIndex = null;
+          }
+
+          return prisma.shoppingState.upsert({
             where: {
               weekStart_ingredientId_unit: {
                 weekStart: week,
@@ -943,12 +993,11 @@ export const plannerRouter = router({
               ingredientId: input.ingredientId,
               unit: unitKey, // endret fra null|string
               checked: input.checked,
+              firstCheckedDayIndex: firstDayIndex,
             },
-            update: {
-              checked: input.checked,
-            },
-          })
-        )
+            update: updateData,
+          });
+        })
       );
 
       return { ok: true };

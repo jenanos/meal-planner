@@ -46,6 +46,7 @@ export function DayFilterDropdown({
             key={option.key}
             checked={selectedKeys.has(option.key)}
             onCheckedChange={(checked) => onToggle(option.key, Boolean(checked))}
+            onSelect={(event) => event.preventDefault()}
             className="cursor-pointer"
           >
             <div className="flex w-full items-center justify-between gap-3">
@@ -61,6 +62,7 @@ export function DayFilterDropdown({
             if (checked) onSelectAll();
             else onSelectNone();
           }}
+          onSelect={(event) => event.preventDefault()}
           className="cursor-pointer text-muted-foreground"
         >
           Velg alle
@@ -71,6 +73,7 @@ export function DayFilterDropdown({
             if (checked) onSelectNone();
             else onSelectAll();
           }}
+          onSelect={(event) => event.preventDefault()}
           className="cursor-pointer text-muted-foreground"
         >
           Skjul alle

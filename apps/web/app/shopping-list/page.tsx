@@ -1,7 +1,7 @@
 "use client";
 export const dynamic = "force-dynamic";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
 import {
   Button,
@@ -41,6 +41,7 @@ export default function ShoppingListPage() {
   const [checkedByOccurrence, setCheckedByOccurrence] = useState<Record<string, boolean>>({});
   const [visibleDayKeys, setVisibleDayKeys] = useState<string[]>([]);
   const [removedKeys, setRemovedKeys] = useState<Set<string>>(new Set());
+  const previousOptionKeysRef = useRef<string[]>([]);
   // Extras UI state
   const [isAddExtraOpen, setIsAddExtraOpen] = useState(false);
   const [extraInput, setExtraInput] = useState("");
@@ -109,22 +110,32 @@ export default function ShoppingListPage() {
 
   useEffect(() => {
     const optionKeys = occurrenceOptions.map((option) => option.key);
-    const optionKeySet = new Set(optionKeys);
     setVisibleDayKeys((prev) => {
       if (optionKeys.length === 0) {
-        return prev.length === 0 ? prev : [];
+        return [];
       }
-      const hasRemoved = prev.some((key) => !optionKeySet.has(key));
-      const prevSet = new Set(prev);
-      const hasMissing = optionKeys.some((key) => !prevSet.has(key));
-      if (prev.length === 0 || hasMissing || hasRemoved) {
-        if (prev.length === optionKeys.length && prev.every((key, index) => key === optionKeys[index])) {
-          return prev;
-        }
+      if (prev.length === 0) {
         return optionKeys;
       }
-      return prev;
+      const prevSet = new Set(prev);
+      const filtered = optionKeys.filter((key) => prevSet.has(key));
+      if (filtered.length === 0) {
+        return optionKeys;
+      }
+      const previousOptionKeys = previousOptionKeysRef.current;
+      const previouslySelectedAll =
+        previousOptionKeys.length > 0 &&
+        prev.length === previousOptionKeys.length &&
+        previousOptionKeys.every((key, index) => key === prev[index]);
+      if (previouslySelectedAll && filtered.length !== optionKeys.length) {
+        return optionKeys;
+      }
+      if (filtered.length !== prev.length) {
+        return filtered;
+      }
+      return filtered;
     });
+    previousOptionKeysRef.current = optionKeys;
   }, [occurrenceOptions]);
 
   const visibleDayKeySet = useMemo(() => new Set(visibleDayKeys), [visibleDayKeys]);
@@ -190,20 +201,16 @@ export default function ShoppingListPage() {
     return occurrences.every((occurrence) => isOccurrenceChecked(item, occurrence));
   }
 
-  function getPreviousCheckedOccurrence(item: ShoppingListItem, occurrence: ShoppingListOccurrence) {
-    const occurrences = item.occurrences ?? [];
-    let previous: ShoppingListOccurrence | null = null;
-    for (const candidate of occurrences) {
-      const candidateKey = `${candidate.weekStart}::${candidate.dayIndex}`;
-      const currentKey = `${occurrence.weekStart}::${occurrence.dayIndex}`;
-      if (candidateKey === currentKey) {
-        break;
-      }
-      if (isOccurrenceChecked(item, candidate)) {
-        previous = candidate;
-      }
-    }
-    return previous;
+  function getFirstCheckedOccurrence(item: ShoppingListItem, occurrence: ShoppingListOccurrence) {
+    const entries = item.firstCheckedOccurrences ?? [];
+    const match = entries.find((entry) => entry.weekStart === occurrence.weekStart);
+    if (!match) return null;
+    if (match.dayIndex === occurrence.dayIndex) return null;
+    if (occurrence.dayIndex <= match.dayIndex) return null;
+    return (item.occurrences ?? []).find(
+      (candidate) =>
+        candidate.weekStart === match.weekStart && candidate.dayIndex === match.dayIndex
+    ) ?? null;
   }
 
   function toggleAllOccurrences(item: ShoppingListItem) {
@@ -607,7 +614,7 @@ export default function ShoppingListPage() {
               sections={daySections}
               getOccurrenceKey={getOccurrenceKey}
               isOccurrenceChecked={isOccurrenceChecked}
-              getPreviousCheckedOccurrence={getPreviousCheckedOccurrence}
+              getFirstCheckedOccurrence={getFirstCheckedOccurrence}
               onToggleOccurrence={toggleSingleOccurrence}
               onRemoveItem={removeItem}
               removedKeys={removedKeys}

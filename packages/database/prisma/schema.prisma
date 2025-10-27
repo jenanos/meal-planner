@@ -93,6 +93,7 @@ model ShoppingState {
   ingredientId String @db.Uuid
   unit         String? @db.VarChar(32)
   checked      Boolean  @default(false)
+  firstCheckedDayIndex Int?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
