@@ -1,4 +1,10 @@
-export const CATEGORIES = ["FISK", "VEGETAR", "KYLLING", "STORFE", "ANNET"] as const;
+export const CATEGORIES = [
+  "FISK",
+  "KYLLING",
+  "STORFE",
+  "VEGETAR",
+  "ANNET",
+] as const;
 
 export const STEP_TITLES = ["Navn", "Detaljer", "Ingredienser", "Beskrivelse"] as const;
 
