@@ -169,6 +169,7 @@ type MockState = {
   extrasCatalogByName: Map<string, ExtraCatalogRecord>;
   weekPlans: Map<string, WeekPlanRecord>;
   shoppingChecks: Map<string, boolean>;
+  shoppingFirstChecked: Map<string, number>;
   extrasByWeek: Map<string, Map<string, ExtraEntryRecord>>;
 };
 
