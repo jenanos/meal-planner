@@ -478,23 +478,24 @@ export default function ShoppingListPage() {
       <h1 className="text-xl font-bold text-center">Handleliste</h1>
 
       <div className="space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              type="button"
-              variant={includeNextWeek ? "default" : "outline"}
-              size="sm"
-              onClick={() => setIncludeNextWeek((prev) => !prev)}
-              aria-pressed={includeNextWeek}
-            >
-              {includeNextWeek ? "Fjern neste uke" : "Inkluder neste uke"}
-            </Button>
+        <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-row sm:items-center sm:justify-between">
+          <Button
+            type="button"
+            variant={includeNextWeek ? "default" : "outline"}
+            size="sm"
+            onClick={() => setIncludeNextWeek((prev) => !prev)}
+            aria-pressed={includeNextWeek}
+            className="w-full sm:w-auto"
+          >
+            {includeNextWeek ? "Fjern neste uke" : "Inkluder neste uke"}
+          </Button>
+          <div className="w-full justify-self-end sm:w-auto sm:justify-self-end sm:ml-auto">
             <Dialog open={isAddExtraOpen} onOpenChange={setIsAddExtraOpen}>
               <DialogTrigger asChild>
                 <Button
                   type="button"
                   size="sm"
-                  className="bg-emerald-500 text-white hover:bg-emerald-600 focus-visible:ring-emerald-600"
+                  className="w-full sm:w-auto bg-emerald-500 text-white hover:bg-emerald-600 focus-visible:ring-emerald-600"
                 >
                   Legg til element
                 </Button>
@@ -562,9 +563,8 @@ export default function ShoppingListPage() {
               </DialogContent>
             </Dialog>
           </div>
-          {isFetching && <span className="text-xs text-gray-500">Oppdaterer…</span>}
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 justify-between">
           <Select value={viewMode} onValueChange={(value) => setViewMode(value as "by-day" | "alphabetical")}>
             <SelectTrigger className="h-9 w-[180px]">
               <SelectValue placeholder="Velg visning" />
@@ -574,8 +574,8 @@ export default function ShoppingListPage() {
               <SelectItem value="alphabetical">Alfabetisk</SelectItem>
             </SelectContent>
           </Select>
-          {viewMode === "by-day" && occurrenceOptions.length > 0 ? (
-            <div className="ml-auto">
+          <div className="flex items-center gap-3">
+            {viewMode === "by-day" && occurrenceOptions.length > 0 ? (
               <DayFilterDropdown
                 label={dayFilterLabel}
                 options={occurrenceOptions}
@@ -584,8 +584,9 @@ export default function ShoppingListPage() {
                 onSelectAll={() => setVisibleDayKeys(occurrenceOptions.map((option) => option.key))}
                 onSelectNone={() => setVisibleDayKeys([])}
               />
-            </div>
-          ) : null}
+            ) : null}
+            {isFetching && <span className="text-xs text-gray-500">Oppdaterer…</span>}
+          </div>
         </div>
       </div>
 
