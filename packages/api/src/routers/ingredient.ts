@@ -1,6 +1,6 @@
 import { prisma } from "@repo/database";
 import { router, publicProcedure } from "../trpc";
-import { IngredientById, IngredientCreate, IngredientListQuery } from "../schemas";
+import { IngredientById, IngredientCreate, IngredientListQuery, IngredientUpdate } from "../schemas";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
@@ -71,6 +71,29 @@ export const ingredientRouter = router({
             return { id: up.id, name: up.name, unit: up.unit ?? undefined, isPantryItem: up.isPantryItem };
         } catch (e: any) {
             throw new TRPCError({ code: "BAD_REQUEST", message: e?.message ?? "Failed to create ingredient" });
+        }
+    }),
+
+    update: publicProcedure
+      .input(IngredientUpdate)
+      .output(z.object({ id: z.string().uuid(), name: z.string(), unit: z.string().optional(), isPantryItem: z.boolean() }))
+      .mutation(async ({ input }) => {
+        try {
+            const trimmedName = input.name.trim();
+            const updated = await prisma.ingredient.update({
+                where: { id: input.id },
+                data: {
+                    name: trimmedName,
+                    unit: input.unit?.trim() ?? null,
+                    isPantryItem: Boolean(input.isPantryItem),
+                },
+            });
+            return { id: updated.id, name: updated.name, unit: updated.unit ?? undefined, isPantryItem: updated.isPantryItem };
+        } catch (e: any) {
+            if (e?.code === "P2025") {
+                throw new TRPCError({ code: "NOT_FOUND", message: "Ingredient not found" });
+            }
+            throw new TRPCError({ code: "BAD_REQUEST", message: e?.message ?? "Failed to update ingredient" });
         }
     }),
 

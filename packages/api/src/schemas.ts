@@ -11,6 +11,11 @@ export const IngredientCreate = z.object({
 });
 export type IngredientCreate = z.infer<typeof IngredientCreate>;
 
+export const IngredientUpdate = IngredientCreate.extend({
+  id: z.string().uuid(),
+});
+export type IngredientUpdate = z.infer<typeof IngredientUpdate>;
+
 export const IngredientById = z.object({
   id: z.string().uuid(),
 });

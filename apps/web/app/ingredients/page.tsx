@@ -14,8 +14,10 @@ type IngredientRecipe = MockIngredientDetailResult["recipes"][number];
 export default function IngredientsPage() {
     const [search, setSearch] = useState("");
     const deferredSearch = useDeferredValue(search);
-    const [selectedId, setSelectedId] = useState<string | null>(null);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+    const [viewIngredientId, setViewIngredientId] = useState<string | null>(null);
+    const [editingId, setEditingId] = useState<string | null>(null);
     const [name, setName] = useState("");
     const [unit, setUnit] = useState("");
     const [debouncedName, setDebouncedName] = useState("");
@@ -32,19 +34,55 @@ export default function IngredientsPage() {
         { search: debouncedName.trim() || undefined },
         { enabled: debouncedName.trim().length > 0, staleTime: 5_000 }
     );
+
+    const resetForm = () => {
+        setName("");
+        setUnit("");
+        setIsPantryItem(false);
+        setEditingId(null);
+    };
+
     const create = trpc.ingredient.create.useMutation({
         onSuccess: () => {
-            setName("");
-            setUnit("");
-            setIsPantryItem(false);
-            setIsDialogOpen(false);
             list.refetch();
+            setIsDialogOpen(false);
+            resetForm();
         },
     });
-    const detail = trpc.ingredient.getWithRecipes.useQuery(
-        { id: selectedId! },
-        { enabled: !!selectedId }
+
+    const update = trpc.ingredient.update.useMutation({
+        onSuccess: (_data: unknown, variables: { id: string }) => {
+            list.refetch();
+            setIsDialogOpen(false);
+            const nextId = variables.id;
+            resetForm();
+            if (nextId) {
+                setViewIngredientId(nextId);
+                setIsViewDialogOpen(true);
+            }
+        },
+    });
+
+    const viewDetail = trpc.ingredient.getWithRecipes.useQuery(
+        { id: viewIngredientId! },
+        { enabled: !!viewIngredientId }
     );
+
+    const startEditing = () => {
+        const data = viewDetail.data;
+        if (!data) return;
+        setEditingId(data.id);
+        setName(data.name);
+        setUnit(data.unit ?? "");
+        setIsPantryItem(data.isPantryItem);
+        setIsDialogOpen(true);
+        setIsViewDialogOpen(false);
+    };
+
+    const isEditMode = editingId !== null;
+    const activeMutation = isEditMode ? update : create;
+    const isSubmitting = activeMutation.isPending;
+    const actionLabel = isEditMode ? (isSubmitting ? "Oppdaterer…" : "Oppdater") : isSubmitting ? "Legger til…" : "Legg til";
 
     const items: IngredientListItem[] = list.data ?? [];
     const filtered = useMemo(() => {
@@ -68,7 +106,10 @@ export default function IngredientsPage() {
                     variant="outline"
                     size="sm"
                     className="min-w-[12rem]"
-                    onClick={() => setIsDialogOpen(true)}
+                    onClick={() => {
+                        resetForm();
+                        setIsDialogOpen(true);
+                    }}
                     type="button"
                 >
                     Legg til ingrediens
@@ -81,8 +122,11 @@ export default function IngredientsPage() {
                         key={i.id}
                         ingredient={{ id: i.id, name: i.name, unit: i.unit, usageCount: i.usageCount, isPantryItem: i.isPantryItem }}
                         index={idx}
-                        selected={i.id === selectedId}
-                        onClick={() => setSelectedId(i.id)}
+                        selected={i.id === viewIngredientId}
+                        onClick={() => {
+                            setViewIngredientId(i.id);
+                            setIsViewDialogOpen(true);
+                        }}
                     />
                 ))}
                 {!filtered.length && (
@@ -90,37 +134,90 @@ export default function IngredientsPage() {
                 )}
             </div>
 
-            <div className="rounded-lg border p-4">
-                <h2 className="font-semibold mb-2">Oppskrifter med valgt ingrediens</h2>
-                {!selectedId && <p className="text-sm text-muted-foreground">Velg en ingrediens</p>}
-                {selectedId && detail.isLoading && <p>Laster…</p>}
-                {selectedId && detail.data && (
-                    <div className="space-y-2">
-                        <div className="text-sm">
-                            <span className="font-medium">{detail.data.name}</span>{" "}
-                            {detail.data.unit ? (
-                                <span className="text-muted-foreground">({detail.data.unit})</span>
+            <Dialog
+                open={isViewDialogOpen}
+                onOpenChange={(open) => {
+                    setIsViewDialogOpen(open);
+                    if (!open) {
+                        setViewIngredientId(null);
+                    }
+                }}
+            >
+                <DialogContent className="isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground max-sm:w-[calc(100vw-2rem)] max-sm:mx-auto sm:max-w-lg sm:max-h-[min(100vh-4rem,32rem)] sm:shadow-2xl sm:ring-1 sm:ring-border sm:rounded-xl max-sm:bg-background max-sm:!left-1/2 max-sm:!top-[calc(env(safe-area-inset-top)+1rem)] max-sm:!h-[50dvh] max-sm:!max-h-[50dvh] max-sm:!-translate-x-1/2 max-sm:!translate-y-0 max-sm:!rounded-2xl max-sm:!border-0 max-sm:!shadow-none max-sm:p-6">
+                    <div className="flex h-full min-h-0 flex-col gap-4 max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-[env(safe-area-inset-bottom)]">
+                        <DialogHeader className="sm:px-0 sm:pt-0">
+                            <div className="mb-3 flex items-center justify-between">
+                                <Button type="button" size="sm" onClick={startEditing} disabled={!viewDetail.data}>
+                                    Endre ingrediens
+                                </Button>
+                                <DialogClose asChild>
+                                    <Button type="button" variant="ghost" size="icon" aria-label="Lukk">
+                                        <X className="size-4" />
+                                    </Button>
+                                </DialogClose>
+                            </div>
+                            <div className="space-y-2">
+                                <DialogTitle className="leading-tight">
+                                    {viewDetail.data?.name ?? "Ingrediens"}
+                                </DialogTitle>
+                                <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                                    {viewDetail.data?.unit ? <span>Enhet: {viewDetail.data.unit}</span> : null}
+                                    {viewDetail.data?.isPantryItem ? (
+                                        <Badge variant="outline" className="text-xs uppercase tracking-wide">
+                                            Basisvare
+                                        </Badge>
+                                    ) : null}
+                                </div>
+                            </div>
+                            <DialogDescription className="max-sm:hidden">
+                                Oversikt over hvilke oppskrifter som bruker ingrediensen.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="flex-1 min-h-0 space-y-4 overflow-y-auto pr-1">
+                            {viewDetail.isLoading ? <p>Laster…</p> : null}
+                            {viewDetail.error ? (
+                                <p className="text-sm text-destructive">
+                                    Kunne ikke laste ingrediensen. Prøv igjen senere.
+                                </p>
                             ) : null}
-                            {detail.data.isPantryItem ? (
-                                <Badge variant="outline" className="ml-2 text-xs uppercase tracking-wide">
-                                    Basisvare
-                                </Badge>
+                            {viewDetail.data ? (
+                                <div className="space-y-4 pb-2">
+                                    <div>
+                                        <h3 className="text-sm font-medium">Oppskrifter med denne ingrediensen:</h3>
+                                        {viewDetail.data.recipes.length ? (
+                                            <ul className="mt-2 space-y-2">
+                                                {viewDetail.data.recipes.map((recipe: IngredientRecipe) => (
+                                                    <li key={recipe.id} className="text-sm">
+                                                        <span className="font-medium">{recipe.name}</span>{" "}
+                                                        {recipe.category ? (
+                                                            <span className="text-xs text-muted-foreground">({recipe.category})</span>
+                                                        ) : null}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        ) : (
+                                            <p className="text-sm text-muted-foreground">
+                                                Ingen oppskrifter bruker denne ingrediensen ennå.
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
                             ) : null}
                         </div>
-                        <ScrollArea className="max-h-64 pr-2">
-                            <ul className="list-disc pl-6">
-                                {detail.data.recipes.map((recipe: IngredientRecipe) => (
-                                    <li key={recipe.id}>
-                                        {recipe.name} {recipe.category ? <span className="text-xs text-muted-foreground">({recipe.category})</span> : null}
-                                    </li>
-                                ))}
-                            </ul>
-                        </ScrollArea>
                     </div>
-                )}
-            </div>
+                </DialogContent>
+            </Dialog>
 
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <Dialog
+                open={isDialogOpen}
+                onOpenChange={(open) => {
+                    setIsDialogOpen(open);
+                    if (!open) {
+                        resetForm();
+                    }
+                }}
+            >
                 <DialogContent className="isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground max-sm:w-[calc(100vw-2rem)] max-sm:mx-auto sm:max-w-md sm:max-h-[min(100vh-4rem,32rem)] sm:shadow-2xl sm:ring-1 sm:ring-border sm:rounded-xl max-sm:bg-background max-sm:!left-1/2 max-sm:!top-[calc(env(safe-area-inset-top)+1rem)] max-sm:!h-[50dvh] max-sm:!max-h-[50dvh] max-sm:!-translate-x-1/2 max-sm:!translate-y-0 max-sm:!rounded-2xl max-sm:!border-0 max-sm:!shadow-none max-sm:p-6">
                     <div className="flex h-full min-h-0 flex-col max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-[env(safe-area-inset-bottom)]">
                         <DialogHeader className="sm:px-0 sm:pt-0">
@@ -129,9 +226,9 @@ export default function IngredientsPage() {
                                     type="submit"
                                     form="ingredient-form"
                                     size="sm"
-                                    disabled={create.isPending || !name.trim()}
+                                    disabled={isSubmitting || !name.trim()}
                                 >
-                                    {create.isPending ? "Legger til…" : "Legg til"}
+                                    {actionLabel}
                                 </Button>
                                 <DialogClose asChild>
                                     <Button type="button" variant="ghost" size="icon" aria-label="Lukk">
@@ -139,8 +236,10 @@ export default function IngredientsPage() {
                                     </Button>
                                 </DialogClose>
                             </div>
-                            <DialogTitle>Ny ingrediens</DialogTitle>
-                            <DialogDescription className="max-sm:hidden">Legg til en ny ingrediens i databasen.</DialogDescription>
+                            <DialogTitle>{isEditMode ? "Oppdater ingrediens" : "Ny ingrediens"}</DialogTitle>
+                            <DialogDescription className="max-sm:hidden">
+                                {isEditMode ? "Oppdater informasjon om ingrediensen." : "Legg til en ny ingrediens i databasen."}
+                            </DialogDescription>
                         </DialogHeader>
                         <form
                             id="ingredient-form"
@@ -148,7 +247,12 @@ export default function IngredientsPage() {
                             onSubmit={(e) => {
                                 e.preventDefault();
                                 if (!name.trim()) return;
-                                create.mutate({ name: name.trim(), unit: unit.trim() || undefined, isPantryItem });
+                                const payload = { name: name.trim(), unit: unit.trim() || undefined, isPantryItem };
+                                if (isEditMode && editingId) {
+                                    update.mutate({ id: editingId, ...payload });
+                                } else {
+                                    create.mutate(payload);
+                                }
                             }}
                         >
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
