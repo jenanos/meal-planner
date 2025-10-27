@@ -3,6 +3,8 @@ import { EXTRA_CATALOG, INGREDIENTS as SEED_INGREDIENTS, RECIPES as SEED_RECIPES
 import type { SeedIngredientUsage, SeedRecipe } from "./seed-data";
 
 const MS_PER_DAY = 86_400_000;
+const MIN_DAY_INDEX = 0;
+const MAX_DAY_INDEX = 6;
 
 const WEEKDAY_FORMATTER = new Intl.DateTimeFormat("nb-NO", { weekday: "long" });
 const WEEKDAY_WITH_DATE_FORMATTER = new Intl.DateTimeFormat("nb-NO", {
@@ -820,23 +822,23 @@ async function handleUpdateShoppingItem(input: any) {
   if (!ingredientId) throw new Error("ingredientId mangler");
   const unitKey = typeof input?.unit === "string" ? input.unit : "";
   const checked = Boolean(input?.checked);
-  const occurrences = Array.isArray(input?.occurrences)
+  const occurrences: Array<{ weekStart: string; dayIndex: number }> = Array.isArray(input?.occurrences)
     ? input.occurrences
         .map((occ: any) => {
           const week = startOfWeekISO(occ?.weekStart);
           const dayIndex = typeof occ?.dayIndex === "number" && Number.isFinite(occ.dayIndex)
-            ? Math.max(0, Math.min(6, Math.trunc(occ.dayIndex)))
+            ? Math.max(MIN_DAY_INDEX, Math.min(MAX_DAY_INDEX, Math.trunc(occ.dayIndex)))
             : null;
           return dayIndex == null ? null : { weekStart: week, dayIndex };
         })
-        .filter((occ: { weekStart: string; dayIndex: number } | null): occ is {
+        .filter((occurrence: { weekStart: string; dayIndex: number } | null): occurrence is {
           weekStart: string;
           dayIndex: number;
-        } => Boolean(occ))
+        } => Boolean(occurrence))
     : [];
   if (occurrences.length > 0) {
-    occurrences.forEach((occ) => {
-      state.shoppingChecks.set(`${occ.weekStart}::${occ.dayIndex}::${ingredientId}::${unitKey}`, checked);
+    occurrences.forEach((occurrence) => {
+      state.shoppingChecks.set(`${occurrence.weekStart}::${occurrence.dayIndex}::${ingredientId}::${unitKey}`, checked);
     });
   } else {
     const weeks: string[] = Array.isArray(input?.weeks)

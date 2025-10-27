@@ -69,7 +69,7 @@ export default function ShoppingListPage() {
     const next: Record<string, boolean> = {};
     for (const item of shoppingQuery.data?.items ?? []) {
       for (const occurrence of item.occurrences ?? []) {
-        const key = `${occurrence.weekStart}::${occurrence.dayIndex}::${item.ingredientId}::${item.unit ?? ""}`;
+        const key = getOccurrenceKey(item, occurrence);
         next[key] = occurrence.checked ?? false;
       }
     }
@@ -142,13 +142,7 @@ export default function ShoppingListPage() {
     for (const item of items) {
       const key = `${item.ingredientId}::${item.unit ?? ""}`;
       if (removedKeys.has(key)) continue;
-      const occurrences = item.occurrences ?? [];
-      const isItemChecked = occurrences.length
-        ? occurrences.every((occurrence) => {
-            const occKey = `${occurrence.weekStart}::${occurrence.dayIndex}::${item.ingredientId}::${item.unit ?? ""}`;
-            return checkedByOccurrence[occKey] ?? occurrence.checked ?? false;
-          })
-        : item.checked ?? false;
+      const isItemChecked = areAllOccurrencesChecked(item);
       const targetUnchecked = item.isPantryItem ? pantryUnchecked : regularUnchecked;
       const targetChecked = item.isPantryItem ? pantryChecked : regularChecked;
       if (isItemChecked) targetChecked.push(item);
