@@ -1,4 +1,10 @@
-export { CATEGORIES } from "@repo/database";
+export const CATEGORIES = [
+  "FISK",
+  "KYLLING",
+  "STORFE",
+  "VEGETAR",
+  "ANNET",
+] as const;
 
 export const STEP_TITLES = ["Navn", "Detaljer", "Ingredienser", "Beskrivelse"] as const;
 
