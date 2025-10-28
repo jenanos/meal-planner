@@ -12,9 +12,10 @@ type WeekSlotProps = {
   index: number;
   dayName: DayName;
   recipe: RecipeDTO | null;
+  onRecipeClick?: (_recipe: RecipeDTO) => void;
 };
 
-export function WeekSlot({ index, dayName, recipe }: WeekSlotProps) {
+export function WeekSlot({ index, dayName, recipe, onRecipeClick }: WeekSlotProps) {
   // Use the same format as draggable IDs so parseDragId works
   const dropId = makeDragId({ source: "week", index, recipeId: recipe?.id || "empty" });
   const { isOver, setNodeRef } = useDroppable({ id: dropId });
@@ -32,7 +33,13 @@ export function WeekSlot({ index, dayName, recipe }: WeekSlotProps) {
       <DraggableRecipe id={makeDragId({ source: "week", index, recipeId: recipe.id })}>
         {({ setNodeRef: setDragRef, listeners, attributes, style, isDragging }) => (
           <div ref={setDragRef} style={style} {...listeners} {...attributes} data-dragging={isDragging ? "true" : "false"}>
-            <WeekCard index={index} dayName={dayName} recipe={recipe} isDraggingTarget={isOver} />
+            <WeekCard
+              index={index}
+              dayName={dayName}
+              recipe={recipe}
+              isDraggingTarget={isOver}
+              onClick={onRecipeClick ? () => onRecipeClick(recipe) : undefined}
+            />
           </div>
         )}
       </DraggableRecipe>

@@ -24,6 +24,7 @@ export type Props = {
     onDragStart?: React.DragEventHandler;
     onDragOver?: React.DragEventHandler;
     onDragLeave?: React.DragEventHandler;
+    onClick?: () => void;
 };
 
 export function WeekCard({
@@ -34,6 +35,7 @@ export function WeekCard({
     onDragStart,
     onDragOver,
     onDragLeave,
+    onClick,
 }: Props) {
     // Palett og hover-gradienter fra felles palette-modul
     const baseHsl = dayBaseHsl[dayName];
@@ -53,6 +55,19 @@ export function WeekCard({
             onDragOver={(e) => { e.preventDefault(); onDragOver?.(e); }}
             onDragLeave={(e) => { onDragLeave?.(e); }}
             onDrop={(e) => { e.preventDefault(); onDrop?.(e); }}
+            onClick={onClick}
+            role={onClick ? "button" : undefined}
+            tabIndex={onClick ? 0 : undefined}
+            onKeyDown={
+                onClick
+                    ? (event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              onClick();
+                          }
+                      }
+                    : undefined
+            }
         >
             <div className="flex h-full min-h-[160px] flex-col items-center justify-center gap-2 p-4 text-center">
                 <div className="text-xs text-muted-foreground">{dayName}</div>
