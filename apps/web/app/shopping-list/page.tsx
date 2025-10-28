@@ -281,12 +281,22 @@ export default function ShoppingListPage() {
   const daySections = useMemo<ShoppingListDaySection[]>(() => {
     const sections = new Map<
       string,
-      ShoppingListDaySection & { dateISO: string }
+      ShoppingListDaySection & { dateISO: string; recipeNameSet: Set<string> }
     >();
 
     for (const item of regularItems) {
       const removalKey = `${item.ingredientId}::${item.unit ?? ""}`;
       if (removedKeys.has(removalKey)) continue;
+
+      const recipeNamesByOccurrence = new Map<string, string[]>();
+      for (const detail of item.details ?? []) {
+        const occurrenceKey = `${detail.weekStart}::${detail.dayIndex}`;
+        if (!recipeNamesByOccurrence.has(occurrenceKey)) {
+          recipeNamesByOccurrence.set(occurrenceKey, []);
+        }
+        recipeNamesByOccurrence.get(occurrenceKey)!.push(detail.recipeName);
+      }
+
       for (const occurrence of item.occurrences ?? []) {
         const sectionKey = `${occurrence.weekStart}::${occurrence.dayIndex}`;
         if (!visibleDayKeySet.has(sectionKey)) continue;
@@ -297,16 +307,26 @@ export default function ShoppingListPage() {
             longLabel: occurrence.longLabel,
             entries: [],
             dateISO: occurrence.dateISO,
+            recipeNames: [],
+            recipeNameSet: new Set<string>(),
           });
         }
-        sections.get(sectionKey)!.entries.push({ item, occurrence });
+        const section = sections.get(sectionKey)!;
+        section.entries.push({ item, occurrence });
+        const matchingRecipeNames = recipeNamesByOccurrence.get(sectionKey);
+        if (matchingRecipeNames) {
+          for (const recipeName of matchingRecipeNames) {
+            section.recipeNameSet.add(recipeName);
+          }
+        }
       }
     }
 
     return Array.from(sections.values())
       .sort((a, b) => a.dateISO.localeCompare(b.dateISO))
-      .map(({ dateISO: _date, entries, ...section }) => ({
+      .map(({ dateISO: _date, entries, recipeNameSet, ...section }) => ({
         ...section,
+        recipeNames: Array.from(recipeNameSet),
         entries: [...entries].sort((a, b) =>
           a.item.name.localeCompare(b.item.name, "nb", { sensitivity: "base" })
         ),
