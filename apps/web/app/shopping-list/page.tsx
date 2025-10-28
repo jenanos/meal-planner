@@ -287,6 +287,16 @@ export default function ShoppingListPage() {
     for (const item of regularItems) {
       const removalKey = `${item.ingredientId}::${item.unit ?? ""}`;
       if (removedKeys.has(removalKey)) continue;
+
+      const recipeNamesByOccurrence = new Map<string, string[]>();
+      for (const detail of item.details ?? []) {
+        const occurrenceKey = `${detail.weekStart}::${detail.dayIndex}`;
+        if (!recipeNamesByOccurrence.has(occurrenceKey)) {
+          recipeNamesByOccurrence.set(occurrenceKey, []);
+        }
+        recipeNamesByOccurrence.get(occurrenceKey)!.push(detail.recipeName);
+      }
+
       for (const occurrence of item.occurrences ?? []) {
         const sectionKey = `${occurrence.weekStart}::${occurrence.dayIndex}`;
         if (!visibleDayKeySet.has(sectionKey)) continue;
@@ -303,9 +313,10 @@ export default function ShoppingListPage() {
         }
         const section = sections.get(sectionKey)!;
         section.entries.push({ item, occurrence });
-        for (const detail of item.details ?? []) {
-          if (detail.weekStart === occurrence.weekStart && detail.dayIndex === occurrence.dayIndex) {
-            section.recipeNameSet.add(detail.recipeName);
+        const matchingRecipeNames = recipeNamesByOccurrence.get(sectionKey);
+        if (matchingRecipeNames) {
+          for (const recipeName of matchingRecipeNames) {
+            section.recipeNameSet.add(recipeName);
           }
         }
       }

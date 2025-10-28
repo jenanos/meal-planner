@@ -48,7 +48,9 @@ export function ShoppingListDayView({
         <div key={section.key} className="space-y-3">
           <div className="flex flex-wrap items-baseline gap-2">
             <span className="text-sm font-semibold text-gray-900">
-              {section.recipeNames.length ? section.recipeNames.join(", ") : section.weekdayLabel}
+              {section.recipeNames.length > 0
+                ? section.recipeNames.join(", ")
+                : section.weekdayLabel}
             </span>
             <span className="text-xs font-normal text-muted-foreground">{section.longLabel}</span>
           </div>
