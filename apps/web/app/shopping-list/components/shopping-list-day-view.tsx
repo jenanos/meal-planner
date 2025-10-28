@@ -96,10 +96,9 @@ export function ShoppingListDayView({
               }
 
               const firstChecked = getFirstCheckedOccurrence(item, occurrence);
-              const purchasedHint =
-                firstChecked && occurrence.dayIndex > firstChecked.dayIndex
-                  ? `Kjøpt på ${firstChecked.weekdayLabel.toLowerCase()}`
-                  : null;
+              const purchasedHint = firstChecked
+                ? `Kjøpt på ${firstChecked.weekdayLabel.toLowerCase()}`
+                : null;
 
               return (
                 <li

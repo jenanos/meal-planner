@@ -724,8 +724,7 @@ export const plannerRouter = router({
         const key = `${status.weekStart.toISOString()}::${status.ingredientId}::${status.unit ?? ""}`;
         statusMap.set(key, {
           checked: status.checked,
-          firstCheckedDayIndex:
-            status.firstCheckedDayIndex == null ? null : status.firstCheckedDayIndex,
+          firstCheckedDayIndex: status.firstCheckedDayIndex,
         });
       });
 

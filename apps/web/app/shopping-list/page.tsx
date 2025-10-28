@@ -130,9 +130,6 @@ export default function ShoppingListPage() {
       if (previouslySelectedAll && filtered.length !== optionKeys.length) {
         return optionKeys;
       }
-      if (filtered.length !== prev.length) {
-        return filtered;
-      }
       return filtered;
     });
     previousOptionKeysRef.current = optionKeys;
