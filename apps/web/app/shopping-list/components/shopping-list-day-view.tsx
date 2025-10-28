@@ -9,6 +9,7 @@ export interface ShoppingListDaySection {
   key: string;
   weekdayLabel: ShoppingListOccurrence["weekdayLabel"];
   longLabel: ShoppingListOccurrence["longLabel"];
+  recipeNames: string[];
   entries: Array<{
     item: ShoppingListItem;
     occurrence: ShoppingListOccurrence;
@@ -45,11 +46,11 @@ export function ShoppingListDayView({
     <div className="space-y-6">
       {sections.map((section) => (
         <div key={section.key} className="space-y-3">
-          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-            {section.weekdayLabel}
-            <span className="ml-2 text-[11px] font-normal normal-case text-muted-foreground">
-              {section.longLabel}
+          <div className="flex flex-wrap items-baseline gap-2">
+            <span className="text-sm font-semibold text-gray-900">
+              {section.recipeNames.length ? section.recipeNames.join(", ") : section.weekdayLabel}
             </span>
+            <span className="text-xs font-normal text-muted-foreground">{section.longLabel}</span>
           </div>
           <ul className="space-y-3">
             {section.entries.map(({ item, occurrence }) => {

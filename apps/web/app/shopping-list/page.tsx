@@ -281,7 +281,7 @@ export default function ShoppingListPage() {
   const daySections = useMemo<ShoppingListDaySection[]>(() => {
     const sections = new Map<
       string,
-      ShoppingListDaySection & { dateISO: string }
+      ShoppingListDaySection & { dateISO: string; recipeNameSet: Set<string> }
     >();
 
     for (const item of regularItems) {
@@ -297,16 +297,25 @@ export default function ShoppingListPage() {
             longLabel: occurrence.longLabel,
             entries: [],
             dateISO: occurrence.dateISO,
+            recipeNames: [],
+            recipeNameSet: new Set<string>(),
           });
         }
-        sections.get(sectionKey)!.entries.push({ item, occurrence });
+        const section = sections.get(sectionKey)!;
+        section.entries.push({ item, occurrence });
+        for (const detail of item.details ?? []) {
+          if (detail.weekStart === occurrence.weekStart && detail.dayIndex === occurrence.dayIndex) {
+            section.recipeNameSet.add(detail.recipeName);
+          }
+        }
       }
     }
 
     return Array.from(sections.values())
       .sort((a, b) => a.dateISO.localeCompare(b.dateISO))
-      .map(({ dateISO: _date, entries, ...section }) => ({
+      .map(({ dateISO: _date, entries, recipeNameSet, ...section }) => ({
         ...section,
+        recipeNames: Array.from(recipeNameSet),
         entries: [...entries].sort((a, b) =>
           a.item.name.localeCompare(b.item.name, "nb", { sensitivity: "base" })
         ),
