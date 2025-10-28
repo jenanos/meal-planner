@@ -27,6 +27,7 @@ export type MobileEditorProps = {
     _source: "longGap" | "frequent" | "search",
     _recipe: RecipeDTO
   ) => Promise<void> | void;
+  onRecipeClick?: (_recipe: RecipeDTO) => void;
 };
 
 export function MobileEditor({
@@ -45,13 +46,20 @@ export function MobileEditor({
   onChangeView,
   onSearchTermChange,
   onPickFromSource,
+  onRecipeClick,
 }: MobileEditorProps) {
   if (!isMobileEditorOpen) {
     return (
       <div className="space-y-3">
         <div className="flex flex-col gap-2">
           {week.map((recipe, index) => (
-            <WeekSlot key={index} index={index} dayName={dayNames[index]} recipe={recipe} />
+            <WeekSlot
+              key={index}
+              index={index}
+              dayName={dayNames[index]}
+              recipe={recipe}
+              onRecipeClick={onRecipeClick}
+            />
           ))}
         </div>
         <Button
@@ -75,7 +83,13 @@ export function MobileEditor({
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-2">
           {week.map((recipe, index) => (
-            <WeekSlot key={index} index={index} dayName={dayNames[index]} recipe={recipe} />
+            <WeekSlot
+              key={index}
+              index={index}
+              dayName={dayNames[index]}
+              recipe={recipe}
+              onRecipeClick={onRecipeClick}
+            />
           ))}
         </div>
         <div className="flex flex-col gap-3">

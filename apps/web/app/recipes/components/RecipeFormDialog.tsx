@@ -73,6 +73,7 @@ interface RecipeFormDialogProps {
   onSubmit: (_event: React.FormEvent<HTMLFormElement>) => void;
   createIsPending: boolean;
   updateIsPending: boolean;
+  hideTrigger?: boolean;
 }
 
 export function RecipeFormDialog({
@@ -113,6 +114,7 @@ export function RecipeFormDialog({
   onSubmit,
   createIsPending,
   updateIsPending,
+  hideTrigger = false,
 }: RecipeFormDialogProps) {
   const stepLabels = stepTitles.map((t) => t);
   const hasName = name.trim().length > 0;
@@ -125,20 +127,22 @@ export function RecipeFormDialog({
   const scrollThisStep = currentStep !== detailsStepIndex;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="min-w-[12rem]"
-          onClick={(event) => {
-            event.preventDefault();
-            onCreateClick();
-          }}
-          type="button"
-        >
-          Legg til oppskrift
-        </Button>
-      </DialogTrigger>
+      {!hideTrigger ? (
+        <DialogTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-w-[12rem]"
+            onClick={(event) => {
+              event.preventDefault();
+              onCreateClick();
+            }}
+            type="button"
+          >
+            Legg til oppskrift
+          </Button>
+        </DialogTrigger>
+      ) : null}
       <DialogContent className={dialogContentClassName}>
         <div className="flex h-full min-h-0 flex-col max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-[env(safe-area-inset-bottom)]">
           <DialogHeader className="text-center sm:text-left sm:px-0 sm:pt-0">

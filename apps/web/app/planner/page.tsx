@@ -10,6 +10,11 @@ import { SearchSection } from "./components/SearchSection";
 import { MobileEditor } from "./components/MobileEditor";
 import { CategoryEmoji } from "../components/CategoryEmoji";
 import { startOfWeekISO, deriveWeekLabel } from "../../lib/week";
+import { RecipeViewDialog } from "../recipes/components/RecipeViewDialog";
+import { RecipeFormDialog } from "../recipes/components/RecipeFormDialog";
+import { STEP_DESCRIPTIONS, STEP_TITLES } from "../recipes/constants";
+import type { RecipeListItem } from "../recipes/types";
+import { useRecipeDialogState } from "../recipes/hooks/useRecipeDialogState";
 
 import {
   DndContext,
@@ -79,6 +84,82 @@ export default function PlannerPage() {
     [week]
   );
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const recipeDialogItems = useMemo<RecipeListItem[]>(() => {
+    const map = new Map<string, RecipeDTO>();
+    week.forEach((recipe) => {
+      if (recipe) map.set(recipe.id, recipe);
+    });
+    longGap.forEach((recipe) => {
+      map.set(recipe.id, recipe);
+    });
+    frequent.forEach((recipe) => {
+      map.set(recipe.id, recipe);
+    });
+    searchResults.forEach((recipe) => {
+      map.set(recipe.id, recipe);
+    });
+    return Array.from(map.values()) as RecipeListItem[];
+  }, [week, longGap, frequent, searchResults]);
+
+  const {
+    dialogContentClassName,
+    isEditDialogOpen,
+    onFormOpenChange,
+    openCreate,
+    openView,
+    createIsPending,
+    updateIsPending,
+    editId,
+    currentStep,
+    isLastStep,
+    nextDisabled,
+    nextLabel,
+    carouselApi,
+    setCarouselApi,
+    name,
+    setName,
+    matchingRecipes,
+    onSelectExistingRecipe,
+    cat,
+    setCat,
+    everyday,
+    setEveryday,
+    health,
+    setHealth,
+    desc,
+    setDesc,
+    ingSearch,
+    setIngSearch,
+    trimmedIngSearch,
+    ingredientSuggestions,
+    isIngredientQueryFetching,
+    ingList,
+    addIngredientByName,
+    removeIngredient,
+    upsertQuantity,
+    submitRecipe,
+    isViewDialogOpen,
+    onViewOpenChange,
+    viewRecipe,
+    viewCurrentStep,
+    viewCarouselApi,
+    setViewCarouselApi,
+    formatIngredientLine,
+    startEditFromView,
+  } = useRecipeDialogState({
+    recipes: recipeDialogItems,
+    stepTitles: STEP_TITLES,
+    hideTrigger: true,
+    onUpdateSuccess: async () => {
+      await utils.recipe.list.invalidate().catch(() => undefined);
+      await utils.planner.getWeekPlan.invalidate({ weekStart: activeWeekStart }).catch(() => undefined);
+      await weekPlanQuery.refetch().catch(() => undefined);
+    },
+  });
+
+  const handleRecipeClick = useCallback((recipe: RecipeDTO) => {
+    openView(recipe.id);
+  }, [openView]);
 
   const applyWeekData = useCallback(
     (res: WeekPlanResult) => {
@@ -99,6 +180,7 @@ export default function PlannerPage() {
       applyWeekData(weekPlanQuery.data);
     }
   }, [weekPlanQuery.data, applyWeekData]);
+
 
   const commitWeekPlan = useCallback(
     async (nextWeek: WeekState) => {
@@ -274,6 +356,59 @@ export default function PlannerPage() {
         onSelectWeek={handleSelectWeek}
       />
 
+      <RecipeFormDialog
+        open={isEditDialogOpen}
+        onOpenChange={onFormOpenChange}
+        onCreateClick={openCreate}
+        dialogContentClassName={dialogContentClassName}
+        editId={editId}
+        currentStep={currentStep}
+        stepTitles={STEP_TITLES}
+        stepDescriptions={STEP_DESCRIPTIONS}
+        carouselApi={carouselApi}
+        setCarouselApi={setCarouselApi}
+        isLastStep={isLastStep}
+        nextDisabled={nextDisabled}
+        nextLabel={nextLabel}
+        name={name}
+        onNameChange={setName}
+        matchingRecipes={matchingRecipes}
+        onSelectExistingRecipe={onSelectExistingRecipe}
+        cat={cat}
+        onCategoryChange={setCat}
+        everyday={everyday}
+        onEverydayChange={setEveryday}
+        health={health}
+        onHealthChange={setHealth}
+        desc={desc}
+        onDescChange={setDesc}
+        ingSearch={ingSearch}
+        onIngSearchChange={setIngSearch}
+        trimmedIngSearch={trimmedIngSearch}
+        ingredientSuggestions={ingredientSuggestions}
+        isIngredientQueryFetching={isIngredientQueryFetching}
+        ingList={ingList}
+        addIngredientByName={addIngredientByName}
+        removeIngredient={removeIngredient}
+        upsertQuantity={upsertQuantity}
+        onSubmit={submitRecipe}
+        createIsPending={createIsPending}
+        updateIsPending={updateIsPending}
+        hideTrigger
+      />
+
+      <RecipeViewDialog
+        open={isViewDialogOpen}
+        onOpenChange={onViewOpenChange}
+        dialogContentClassName={dialogContentClassName}
+        viewRecipe={viewRecipe}
+        viewCurrentStep={viewCurrentStep}
+        viewCarouselApi={viewCarouselApi}
+        setViewCarouselApi={setViewCarouselApi}
+        formatIngredientLine={formatIngredientLine}
+        onEdit={startEditFromView}
+      />
+
       {/* Mobile version - separate DndContext to avoid offset issues */}
       <div className="sm:hidden">
         <DndContext
@@ -299,6 +434,7 @@ export default function PlannerPage() {
             onChangeView={setMobileEditorView}
             onSearchTermChange={setSearchTerm}
             onPickFromSource={handlePickFromSource}
+            onRecipeClick={handleRecipeClick}
           />
 
           {typeof document !== "undefined" &&
@@ -341,6 +477,7 @@ export default function PlannerPage() {
                 index={index}
                 dayName={DAY_NAMES[index]}
                 recipe={recipe}
+                onRecipeClick={handleRecipeClick}
               />
             ))}
           </div>
