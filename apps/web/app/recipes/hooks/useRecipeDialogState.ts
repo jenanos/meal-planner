@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import type { CarouselApi } from "@repo/ui";
 import { cn } from "@repo/ui";
 
-import { trpc } from "../../lib/trpcClient";
+import { trpc } from "../../../lib/trpcClient";
 import { CATEGORIES } from "../constants";
 import type { FormIngredient, IngredientSuggestion, RecipeListItem } from "../types";
 
