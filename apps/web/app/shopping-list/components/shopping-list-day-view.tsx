@@ -19,7 +19,7 @@ interface ShoppingListDayViewProps {
   sections: ShoppingListDaySection[];
   getOccurrenceKey: (_item: ShoppingListItem, _occurrence: ShoppingListOccurrence) => string;
   isOccurrenceChecked: (_item: ShoppingListItem, _occurrence: ShoppingListOccurrence) => boolean;
-  getPreviousCheckedOccurrence: (
+  getFirstCheckedOccurrence: (
     _item: ShoppingListItem,
     _occurrence: ShoppingListOccurrence
   ) => ShoppingListOccurrence | null;
@@ -32,7 +32,7 @@ export function ShoppingListDayView({
   sections,
   getOccurrenceKey,
   isOccurrenceChecked,
-  getPreviousCheckedOccurrence,
+  getFirstCheckedOccurrence,
   onToggleOccurrence,
   onRemoveItem,
   removedKeys,
@@ -95,11 +95,10 @@ export function ShoppingListDayView({
                 infoParts.push(`totalt ${totalQuantityLabel}`);
               }
 
-              const previousChecked = getPreviousCheckedOccurrence(item, occurrence);
-              const purchasedHint =
-                previousChecked && !checked
-                  ? `Kjøpt på ${previousChecked.weekdayLabel.toLowerCase()}`
-                  : null;
+              const firstChecked = getFirstCheckedOccurrence(item, occurrence);
+              const purchasedHint = firstChecked
+                ? `Kjøpt på ${firstChecked.weekdayLabel.toLowerCase()}`
+                : null;
 
               return (
                 <li

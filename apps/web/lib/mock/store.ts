@@ -169,6 +169,7 @@ type MockState = {
   extrasCatalogByName: Map<string, ExtraCatalogRecord>;
   weekPlans: Map<string, WeekPlanRecord>;
   shoppingChecks: Map<string, boolean>;
+  shoppingFirstChecked: Map<string, number>;
   extrasByWeek: Map<string, Map<string, ExtraEntryRecord>>;
 };
 
@@ -257,6 +258,7 @@ function createInitialState(): MockState {
     extrasCatalogByName,
     weekPlans: new Map<string, WeekPlanRecord>(),
     shoppingChecks: new Map<string, boolean>(),
+    shoppingFirstChecked: new Map<string, number>(),
     extrasByWeek: new Map<string, Map<string, ExtraEntryRecord>>(),
   };
 }
@@ -516,6 +518,7 @@ function aggregateShopping(weekStarts: string[]) {
     .map((bucket) => {
       const weeks = Array.from(bucket.weeks.values());
       const unitKey = bucket.unit ?? "";
+      const firstCheckedByWeek = new Map<string, number>();
       const occurrences = Array.from(bucket.occurrences.values())
         .map((occurrence) => {
           const dayKey = `${occurrence.weekStart}::${occurrence.dayIndex}::${bucket.ingredientId}::${unitKey}`;
@@ -523,6 +526,10 @@ function aggregateShopping(weekStarts: string[]) {
           const isChecked = Boolean(
             state.shoppingChecks.get(dayKey) ?? state.shoppingChecks.get(weekKey) ?? false
           );
+          const firstCheckedDayIndex = state.shoppingFirstChecked.get(weekKey);
+          if (typeof firstCheckedDayIndex === "number") {
+            firstCheckedByWeek.set(occurrence.weekStart, firstCheckedDayIndex);
+          }
           const { dateISO, weekdayLabel, longLabel, shortLabel } = describeDay(
             occurrence.weekStart,
             occurrence.dayIndex
@@ -541,6 +548,9 @@ function aggregateShopping(weekStarts: string[]) {
         })
         .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
       const checked = occurrences.length ? occurrences.every((occ) => occ.checked) : false;
+      const firstCheckedOccurrences = Array.from(firstCheckedByWeek.entries()).map(
+        ([weekStart, dayIndex]) => ({ weekStart, dayIndex })
+      );
       return {
         ingredientId: bucket.ingredientId,
         name: bucket.name,
@@ -552,6 +562,7 @@ function aggregateShopping(weekStarts: string[]) {
         occurrences,
         checked,
         isPantryItem: bucket.isPantryItem,
+        firstCheckedOccurrences,
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name, "nb", { sensitivity: "base" }));
@@ -822,7 +833,7 @@ async function handleUpdateShoppingItem(input: any) {
   if (!ingredientId) throw new Error("ingredientId mangler");
   const unitKey = typeof input?.unit === "string" ? input.unit : "";
   const checked = Boolean(input?.checked);
-  const occurrences: Array<{ weekStart: string; dayIndex: number }> = Array.isArray(input?.occurrences)
+  const occurrenceList: Array<{ weekStart: string; dayIndex: number }> = Array.isArray(input?.occurrences)
     ? input.occurrences
         .map((occ: any) => {
           const week = startOfWeekISO(occ?.weekStart);
@@ -836,23 +847,53 @@ async function handleUpdateShoppingItem(input: any) {
           dayIndex: number;
         } => Boolean(occurrence))
     : [];
-  if (occurrences.length > 0) {
-    occurrences.forEach((occurrence) => {
-      state.shoppingChecks.set(`${occurrence.weekStart}::${occurrence.dayIndex}::${ingredientId}::${unitKey}`, checked);
-    });
-  } else {
-    const weeks: string[] = Array.isArray(input?.weeks)
-      ? input.weeks.map((week: any) => startOfWeekISO(week))
-      : [];
-    if (weeks.length > 0) {
-      weeks.forEach((week) => {
-        state.shoppingChecks.set(`${week}::${ingredientId}::${unitKey}`, checked);
-      });
-    } else if (input?.weekStart) {
-      const week = startOfWeekISO(input.weekStart);
-      state.shoppingChecks.set(`${week}::${ingredientId}::${unitKey}`, checked);
+
+  const weekMeta = new Map<string, { dayIndices: number[] }>();
+
+  occurrenceList.forEach((occurrence) => {
+    if (!weekMeta.has(occurrence.weekStart)) {
+      weekMeta.set(occurrence.weekStart, { dayIndices: [] });
     }
+    weekMeta.get(occurrence.weekStart)!.dayIndices.push(occurrence.dayIndex);
+    state.shoppingChecks.set(
+      `${occurrence.weekStart}::${occurrence.dayIndex}::${ingredientId}::${unitKey}`,
+      checked
+    );
+  });
+
+  const weeks: string[] = Array.isArray(input?.weeks)
+    ? input.weeks.map((week: any) => startOfWeekISO(week))
+    : [];
+  weeks.forEach((week) => {
+    if (!weekMeta.has(week)) {
+      weekMeta.set(week, { dayIndices: [] });
+    }
+  });
+
+  if (weekMeta.size === 0 && input?.weekStart) {
+    const week = startOfWeekISO(input.weekStart);
+    weekMeta.set(week, { dayIndices: [] });
   }
+
+  if (weekMeta.size === 0) {
+    throw new Error("weekStart mangler for handlelisteoppdatering");
+  }
+
+  weekMeta.forEach((meta, week) => {
+    const weekKey = `${week}::${ingredientId}::${unitKey}`;
+    state.shoppingChecks.set(weekKey, checked);
+    if (checked) {
+      if (meta.dayIndices.length > 0) {
+        const firstDayIndex = Math.min(...meta.dayIndices);
+        state.shoppingFirstChecked.set(weekKey, firstDayIndex);
+      } else {
+        state.shoppingFirstChecked.delete(weekKey);
+      }
+    } else {
+      state.shoppingFirstChecked.delete(weekKey);
+    }
+  });
+
   return { ok: true };
 }
 
