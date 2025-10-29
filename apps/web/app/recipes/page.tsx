@@ -102,7 +102,7 @@ export default function RecipesPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-bold text-center">Oppskrifter</h1>
+      <h1 className="page-title">Oppskrifter</h1>
       <div className="flex items-center justify-between gap-4">
         <div className="flex-1 max-w-md">
           <Input

@@ -57,27 +57,37 @@ export function ResponsiveNav({ items }: Props) {
             )),
         [items, pathname]
     );
+    const activeLabel = useMemo(() => {
+        const current = items.find(({ href }) => href === pathname);
+        return current?.label ?? "Meal Planner";
+    }, [items, pathname]);
 
     return (
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+        <div className="mx-auto w-full max-w-6xl px-4 py-2 md:py-3">
             {/* Desktop nav */}
-            <div className="hidden gap-3 md:flex">{links}</div>
+            <div className="hidden items-center gap-3 md:flex">{links}</div>
 
-            {/* Mobile: hamburger */}
-            <button
-                type="button"
-                className={`md:hidden inline-flex items-center justify-center rounded-full border px-3 py-2 text-sm font-medium text-foreground/80 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ${open ? "invisible pointer-events-none" : ""}`}
-                aria-label="Åpne meny"
-                aria-expanded={open}
-                aria-controls="mobile-nav"
-                onClick={() => setOpen((v) => !v)}
-            >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
-                    <path d="M3.75 6.75h16.5a.75.75 0 000-1.5H3.75a.75.75 0 000 1.5z" />
-                    <path d="M3.75 12.75h16.5a.75.75 0 000-1.5H3.75a.75.75 0 000 1.5z" />
-                    <path d="M3.75 18.75h16.5a.75.75 0 000-1.5H3.75a.75.75 0 000 1.5z" />
-                </svg>
-            </button>
+            {/* Mobile header */}
+            <div className="flex items-center justify-between md:hidden">
+                <span className="inline-flex h-10 w-10 items-center justify-center" aria-hidden="true" />
+                <span className="flex-1 text-center text-sm font-semibold text-foreground/85">
+                    {activeLabel}
+                </span>
+                <button
+                    type="button"
+                    className={`inline-flex h-10 w-10 items-center justify-center rounded-full border text-sm font-medium text-foreground/80 transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ${open ? "invisible pointer-events-none" : ""}`}
+                    aria-label="Åpne meny"
+                    aria-expanded={open}
+                    aria-controls="mobile-nav"
+                    onClick={() => setOpen((v) => !v)}
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
+                        <path d="M3.75 6.75h16.5a.75.75 0 000-1.5H3.75a.75.75 0 000 1.5z" />
+                        <path d="M3.75 12.75h16.5a.75.75 0 000-1.5H3.75a.75.75 0 000 1.5z" />
+                        <path d="M3.75 18.75h16.5a.75.75 0 000-1.5H3.75a.75.75 0 000 1.5z" />
+                    </svg>
+                </button>
+            </div>
 
             {/* Mobile menu panel (portal to body to avoid stacking issues) */}
             {mounted && open &&

@@ -465,7 +465,7 @@ export default function ShoppingListPage() {
                       detail.quantity != null
                         ? formatQuantity(detail.quantity, detail.unit ?? item.unit)
                         : undefined;
-                  const hsl = FALL_BADGE_PALETTE[index % FALL_BADGE_PALETTE.length];
+                    const hsl = FALL_BADGE_PALETTE[index % FALL_BADGE_PALETTE.length];
                     return (
                       <Badge
                         key={`${detail.recipeId}-${index}`}
@@ -499,7 +499,7 @@ export default function ShoppingListPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-bold text-center">Handleliste</h1>
+      <h1 className="page-title">Handleliste</h1>
 
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-row sm:items-center sm:justify-between">

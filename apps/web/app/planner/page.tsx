@@ -347,7 +347,7 @@ export default function PlannerPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-bold text-center">Ukesplan</h1>
+      <h1 className="page-title">Ukesplan</h1>
 
       <WeekSelector
         weeks={timelineWeeks.map((w, i) => ({ week: w, index: i }))}
