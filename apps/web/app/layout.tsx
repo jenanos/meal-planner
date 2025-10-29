@@ -28,7 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <ResponsiveNav items={NAV_ITEMS} />
             </nav>
           </header>
-          <main className="app-shell mx-auto mt-0 mb-10 w-full max-w-6xl px-4 pb-10 pt-4 sm:px-6 sm:pt-6 sm:pb-12 md:mt-10 md:mb-16 md:px-8 md:py-10">
+          <main className="app-shell mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 sm:py-12 md:px-8 md:py-10">
             {children}
           </main>
         </Providers>
