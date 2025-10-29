@@ -235,29 +235,6 @@
     }
   }
 
-  .page-title {
-    @apply sr-only;
-  }
-
-  @media (min-width: 768px) {
-    .page-title {
-      position: static;
-      width: auto;
-      height: auto;
-      padding: 0;
-      margin: 0 0 1.75rem;
-      overflow: visible;
-      clip: auto;
-      white-space: normal;
-      border-width: 0;
-      display: block;
-      text-align: center;
-      font-size: clamp(1.5rem, 2vw, 1.875rem);
-      font-weight: 700;
-      color: hsl(var(--foreground));
-    }
-  }
-
   /* Ensure dialogs have pleasant side clearance on small screens */
   .dialog-content-responsive {
     max-width: min(100vw - 2rem, 40rem);

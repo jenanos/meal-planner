@@ -93,7 +93,7 @@ export default function IngredientsPage() {
 
     return (
         <div className="space-y-6">
-            <h1 className="page-title">Ingredienser</h1>
+            <h1 className="hidden text-xl font-bold text-center md:block">Ingredienser</h1>
             <div className="flex items-center justify-between gap-4">
                 <div className="flex-1 max-w-md">
                     <Input

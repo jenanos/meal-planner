@@ -499,7 +499,7 @@ export default function ShoppingListPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="page-title">Handleliste</h1>
+      <h1 className="hidden text-xl font-bold text-center md:block">Handleliste</h1>
 
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-row sm:items-center sm:justify-between">
