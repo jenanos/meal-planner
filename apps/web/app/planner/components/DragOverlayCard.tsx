@@ -75,13 +75,13 @@ export function DragOverlayCard({ payload, overIndex, dayNames, week, longGap, f
       gradientSize={300}
       gradientOpacity={0.6}
     >
-      <div className="px-4 py-3">
-        <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">
+      <div className="px-3 py-2.5 sm:px-4 sm:py-3">
+        <div className="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
           {isAdd ? "Legg til" : "Flytter"}
         </div>
         <div className="font-medium leading-snug line-clamp-2">{recipe.name}</div>
         {recipe.category ? <CategoryEmoji category={recipe.category as any} /> : null}
-        <div className="mt-2 inline-block rounded-full bg-primary/10 text-primary px-2 py-1 text-[11px]">{targetLabel}</div>
+        <div className="mt-2 inline-block rounded-full bg-primary/10 px-2 py-1 text-[11px] text-primary">{targetLabel}</div>
       </div>
     </MagicCard>
   );

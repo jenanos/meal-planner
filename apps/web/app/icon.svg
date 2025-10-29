@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Butta app ikon">
+  <defs>
+    <linearGradient id="butta-icon" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="hsl(46, 100%, 72%)" />
+      <stop offset="55%" stop-color="hsl(28, 91%, 68%)" />
+      <stop offset="100%" stop-color="hsl(12, 88%, 67%)" />
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#butta-icon)" />
+  <text
+    x="64"
+    y="70"
+    font-size="70"
+    text-anchor="middle"
+    dominant-baseline="central"
+    font-family="'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif"
+  >🛒</text>
+</svg>

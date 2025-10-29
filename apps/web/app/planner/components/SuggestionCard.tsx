@@ -29,7 +29,7 @@ export function SuggestionCard({ recipe, source, index, isInWeek, onPick, onDrag
 
     return (
         <MagicCard
-            className={`${isInWeek ? "cursor-not-allowed opacity-90" : "cursor-grab"} relative rounded-lg flex h-full w-full items-center justify-center text-center`}
+            className={`${isInWeek ? "cursor-not-allowed opacity-90" : "cursor-grab"} relative flex h-full w-full items-center justify-center rounded-lg text-center`}
             style={baseHsl ? ({ ["--magic-card-bg" as any]: baseHsl } as React.CSSProperties) : undefined}
             gradientFrom={source === "frequent" ? "#EA580C" : source === "longGap" ? "#92400E" : "#F59E0B"}
             gradientTo={source === "frequent" ? "#16A34A" : source === "longGap" ? "#DC2626" : "#84CC16"}
@@ -44,13 +44,13 @@ export function SuggestionCard({ recipe, source, index, isInWeek, onPick, onDrag
                 onDragStart?.(e);
             }}
         >
-            <div className="flex h-full min-h-[160px] flex-col items-center justify-center gap-2 p-4 text-center">
+            <div className="flex h-full min-h-[128px] flex-col items-center justify-center gap-1 p-2.5 text-center sm:min-h-[160px] sm:gap-2 sm:p-4">
                 <div className="font-medium break-words text-sm leading-tight">{recipe.name}</div>
                 {recipe.category ? <CategoryEmoji category={recipe.category as any} /> : null}
             </div>
 
             {isInWeek && (
-                <div className="pointer-events-none absolute inset-0 rounded-lg bg-background/70 backdrop-blur-xs flex items-center justify-center px-3 text-center">
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg bg-background/70 px-2.5 text-center backdrop-blur-xs sm:px-3">
                     <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                         Allerede i ukeplanen
                     </span>

@@ -2,7 +2,14 @@ import "./globals.css";
 import { Providers } from "./providers";
 import ResponsiveNav from "./components/ResponsiveNav";
 
-export const metadata = { title: "Meal Planner" };
+export const metadata = {
+  title: "Butta – Måltidsplanlegger",
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+  },
+};
 
 const NAV_ITEMS = [
   { href: "/", label: "Ukesplan" },
