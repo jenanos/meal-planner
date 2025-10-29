@@ -61,19 +61,19 @@ export function WeekCard({
             onKeyDown={
                 onClick
                     ? (event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              onClick();
-                          }
-                      }
+                        if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            onClick();
+                        }
+                    }
                     : undefined
             }
         >
-            <div className="flex h-full min-h-[160px] flex-col items-center justify-center gap-2 p-4 text-center">
-                <div className="text-xs text-muted-foreground">{dayName}</div>
+            <div className="flex h-full min-h-[128px] flex-col items-center justify-center gap-1 p-2.5 text-center sm:min-h-[160px] sm:p-4 sm:gap-2">
+                <div className="text-[11px] text-muted-foreground sm:text-xs">{dayName}</div>
                 {recipe ? (
-                    <div className="space-y-1 flex flex-col items-center justify-center">
-                        <div className="font-medium break-words text-sm leading-tight">{recipe.name}</div>
+                    <div className="flex flex-col items-center justify-center space-y-0.5 sm:space-y-1.5">
+                        <div className="break-words text-sm font-medium leading-tight">{recipe.name}</div>
                         {recipe.category ? <CategoryEmoji category={recipe.category as any} /> : null}
                     </div>
                 ) : (

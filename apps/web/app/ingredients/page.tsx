@@ -93,7 +93,7 @@ export default function IngredientsPage() {
 
     return (
         <div className="space-y-6">
-            <h1 className="text-xl font-bold text-center">Ingredienser</h1>
+            <h1 className="hidden text-xl font-bold text-center md:block">Ingredienser</h1>
             <div className="flex items-center justify-between gap-4">
                 <div className="flex-1 max-w-md">
                     <Input
@@ -278,7 +278,7 @@ export default function IngredientsPage() {
                                                 return (
                                                     <ScrollArea className="max-h-32 pr-2">
                                                         <div className="flex flex-wrap gap-2 pb-2">
-                                                              {suggestions.map((s: IngredientListItem) => (
+                                                            {suggestions.map((s: IngredientListItem) => (
                                                                 <Badge
                                                                     key={s.id}
                                                                     className="cursor-pointer"

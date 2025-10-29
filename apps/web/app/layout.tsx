@@ -2,7 +2,14 @@ import "./globals.css";
 import { Providers } from "./providers";
 import ResponsiveNav from "./components/ResponsiveNav";
 
-export const metadata = { title: "Meal Planner" };
+export const metadata = {
+  title: "Butta – Måltidsplanlegger",
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+  },
+};
 
 const NAV_ITEMS = [
   { href: "/", label: "Ukesplan" },
@@ -21,7 +28,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <ResponsiveNav items={NAV_ITEMS} />
             </nav>
           </header>
-          <main className="app-shell mx-auto my-10 max-w-6xl px-6 py-10">{children}</main>
+          <main className="app-shell mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 sm:py-12 md:px-8 md:py-10">
+            {children}
+          </main>
         </Providers>
       </body>
     </html>

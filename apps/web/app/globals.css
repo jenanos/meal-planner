@@ -54,6 +54,17 @@
       /* dempet beige */
     );
 
+  --fall-gradient-mobile: radial-gradient(circle at 20% -15%,
+      hsl(36 100% 99%) 0%,
+      /* nesten hvit */
+      hsl(30 90% 97%) 38%,
+      /* lys aprikos */
+      hsl(24 70% 95%) 70%,
+      /* varm beige */
+      hsl(20 55% 92%) 100%
+      /* dempet kontrast */
+    );
+
   /* Rainbow button hues */
   --color-1: 0 100% 63%;
   --color-2: 270 100% 63%;
@@ -178,6 +189,13 @@
     background-attachment: fixed;
   }
 
+  @media (max-width: 767px) {
+    body {
+      background-image: var(--fall-gradient-mobile);
+      background-color: hsl(36 100% 99%);
+    }
+  }
+
   /* global CSS */
   html,
   body {
@@ -206,6 +224,15 @@
     border: 1px solid hsl(var(--border) / 0.6);
     border-radius: var(--radius-xl);
     box-shadow: 0 30px 60px -32px color-mix(in oklab, hsl(var(--primary)) 32%, transparent);
+  }
+
+  @media (max-width: 767px) {
+    .app-shell {
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      box-shadow: none;
+    }
   }
 
   /* Ensure dialogs have pleasant side clearance on small screens */
