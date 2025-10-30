@@ -116,14 +116,17 @@ export default function ShoppingListPage() {
       }
       if (prev.length === 0) {
         const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
+        todayStart.setUTCHours(0, 0, 0, 0);
         const upcomingKeys = occurrenceOptions
           .filter((option) => {
             const optionDate = new Date(option.dateISO);
             if (Number.isNaN(optionDate.getTime())) {
-              return true;
+              console.warn(
+                `[ShoppingList] Invalid dateISO encountered: "${option.dateISO}" for option key "${option.key}". Excluding from upcomingKeys.`
+              );
+              return false;
             }
-            optionDate.setHours(0, 0, 0, 0);
+            optionDate.setUTCHours(0, 0, 0, 0);
             return optionDate >= todayStart;
           })
           .map((option) => option.key);
