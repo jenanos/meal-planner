@@ -100,7 +100,7 @@ export function ShoppingListDayView({
 
               const firstChecked = getFirstCheckedOccurrence(item, occurrence);
               const purchasedHint = firstChecked
-                ? `Kjøpt på ${firstChecked.weekdayLabel.toLowerCase()}`
+                ? `Kjøpt for ${firstChecked.weekdayLabel.toLowerCase()} - sjekk at vi har nok av dette`
                 : null;
 
               return (
