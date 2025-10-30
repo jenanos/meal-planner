@@ -81,7 +81,14 @@ export default function ShoppingListPage() {
     setCheckedByOccurrence(next);
   }, [includedWeeksSignature, items]);
   const extrasAll = ((shoppingQuery.data as any)?.extras ?? []) as Array<{ id: string; name: string; weekStart: string; checked: boolean }>;
-  const extras = extrasAll.filter((e: { weekStart: string }) => e.weekStart === (shoppingQuery.data?.weekStart ?? activeWeekStart));
+  const extras = useMemo(() => {
+    const relevant = extrasAll.filter(
+      (e: { weekStart: string }) => e.weekStart === (shoppingQuery.data?.weekStart ?? activeWeekStart)
+    );
+    const unchecked = relevant.filter((entry) => !entry.checked);
+    const checked = relevant.filter((entry) => entry.checked);
+    return [...unchecked, ...checked];
+  }, [extrasAll, shoppingQuery.data?.weekStart, activeWeekStart]);
   const isLoading = shoppingQuery.isLoading;
   const isFetching = shoppingQuery.isFetching;
 
@@ -343,11 +350,16 @@ export default function ShoppingListPage() {
       .map(({ dateISO: _date, entries, recipeNameSet, ...section }) => ({
         ...section,
         recipeNames: Array.from(recipeNameSet),
-        entries: [...entries].sort((a, b) =>
-          a.item.name.localeCompare(b.item.name, "nb", { sensitivity: "base" })
-        ),
+        entries: [...entries].sort((a, b) => {
+          const aChecked = isOccurrenceChecked(a.item, a.occurrence);
+          const bChecked = isOccurrenceChecked(b.item, b.occurrence);
+          if (aChecked !== bChecked) {
+            return aChecked ? 1 : -1;
+          }
+          return a.item.name.localeCompare(b.item.name, "nb", { sensitivity: "base" });
+        }),
       }));
-  }, [regularItems, removedKeys, visibleDayKeySet]);
+  }, [regularItems, removedKeys, visibleDayKeySet, checkedByOccurrence]);
 
   function toggleDayKey(dayKey: string, checked: boolean) {
     setVisibleDayKeys((prev) => {
