@@ -115,7 +115,23 @@ export default function ShoppingListPage() {
         return [];
       }
       if (prev.length === 0) {
-        return optionKeys;
+        const todayStart = new Date();
+        todayStart.setUTCHours(0, 0, 0, 0);
+        const upcomingKeys = occurrenceOptions
+          .filter((option) => {
+            const optionDate = new Date(option.dateISO);
+            if (Number.isNaN(optionDate.getTime())) {
+              console.warn(
+                `[ShoppingList] Invalid dateISO encountered: "${option.dateISO}" for option key "${option.key}". Excluding from upcomingKeys.`
+              );
+              return false;
+            }
+            optionDate.setUTCHours(0, 0, 0, 0);
+            return optionDate >= todayStart;
+          })
+          .map((option) => option.key);
+
+        return upcomingKeys.length > 0 ? upcomingKeys : optionKeys;
       }
       const prevSet = new Set(prev);
       const filtered = optionKeys.filter((key) => prevSet.has(key));
