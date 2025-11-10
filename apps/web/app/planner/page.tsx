@@ -47,6 +47,8 @@ export default function PlannerPage() {
   const currentWeekStart = useMemo(() => startOfWeekISO(), []);
   const [activeWeekStart, setActiveWeekStart] = useState(currentWeekStart);
   const [week, setWeek] = useState<WeekState>(makeEmptyWeek);
+  const [previewWeek, setPreviewWeek] = useState<WeekState | null>(null);
+  const [draggingWeekIndex, setDraggingWeekIndex] = useState<number | null>(null);
   const [longGap, setLongGap] = useState<RecipeDTO[]>([]);
   const [frequent, setFrequent] = useState<RecipeDTO[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -80,14 +82,15 @@ export default function PlannerPage() {
 
   const saveWeek = trpc.planner.saveWeekPlan.useMutation();
 
-  const selectedIds = useMemo(
-    () => week.filter((recipe): recipe is RecipeDTO => Boolean(recipe)).map((recipe) => recipe.id),
-    [week]
-  );
+  const selectedIds = useMemo(() => {
+    const baseWeek = previewWeek ?? week;
+    return baseWeek.filter((recipe): recipe is RecipeDTO => Boolean(recipe)).map((recipe) => recipe.id);
+  }, [previewWeek, week]);
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const recipeDialogItems = useMemo<RecipeListItem[]>(() => {
     const map = new Map<string, RecipeDTO>();
-    week.forEach((recipe) => {
+    const baseWeek = previewWeek ?? week;
+    baseWeek.forEach((recipe) => {
       if (recipe) map.set(recipe.id, recipe);
     });
     longGap.forEach((recipe) => {
@@ -100,7 +103,7 @@ export default function PlannerPage() {
       map.set(recipe.id, recipe);
     });
     return Array.from(map.values()) as RecipeListItem[];
-  }, [week, longGap, frequent, searchResults]);
+  }, [previewWeek, week, longGap, frequent, searchResults]);
 
   const {
     dialogContentClassName,
@@ -169,6 +172,8 @@ export default function PlannerPage() {
         nextWeek.filter((recipe): recipe is RecipeDTO => Boolean(recipe)).map((r) => r.id.toLowerCase())
       );
       setWeek(nextWeek);
+      setPreviewWeek(null);
+      setDraggingWeekIndex(null);
       setLongGap(res.suggestions.longGap.filter((item) => !currentIds.has(item.id.toLowerCase())));
       setFrequent(res.suggestions.frequent.filter((item) => !currentIds.has(item.id.toLowerCase())));
       utils.planner.getWeekPlan.setData({ weekStart: res.weekStart }, res);
@@ -201,29 +206,57 @@ export default function PlannerPage() {
     [activeWeekStart, saveWeek, applyWeekData]
   );
 
-  const handleDragStart = useCallback((event: any) => {
-    setActiveId(event.active.id);
-  }, []);
+  const handleDragStart = useCallback(
+    (event: any) => {
+      setActiveId(event.active.id);
+      const payload = parseDragId(event.active.id);
+      if (payload?.source === "week") {
+        setPreviewWeek([...week]);
+        setDraggingWeekIndex(payload.index);
+      }
+    },
+    [week]
+  );
 
-  const handleDragOver = useCallback((event: any) => {
-    const { over } = event;
-    if (!over) {
-      setOverIndex(null);
-      return;
-    }
-    const payload = parseDragId(over.id);
-    if (payload?.source === "week") {
-      setOverIndex(payload.index);
-    } else {
-      setOverIndex(null);
-    }
-  }, []);
+  const handleDragOver = useCallback(
+    (event: any) => {
+      const { active, over } = event;
+      if (!over) {
+        setOverIndex(null);
+        return;
+      }
+      const overPayload = parseDragId(over.id);
+      if (overPayload?.source === "week") {
+        setOverIndex(overPayload.index);
+      } else {
+        setOverIndex(null);
+      }
+
+      const activePayload = parseDragId(active.id);
+
+      if (
+        activePayload?.source === "week" &&
+        overPayload?.source === "week" &&
+        draggingWeekIndex !== null &&
+        overPayload.index !== draggingWeekIndex
+      ) {
+        setPreviewWeek((current) => {
+          const base = current ?? [...week];
+          return arrayMove(base, draggingWeekIndex, overPayload.index);
+        });
+        setDraggingWeekIndex(overPayload.index);
+      }
+    },
+    [draggingWeekIndex, week]
+  );
 
   const handleDragEnd = useCallback(
     (event: any) => {
       const { active, over } = event;
       setActiveId(null);
       setOverIndex(null);
+      setPreviewWeek(null);
+      setDraggingWeekIndex(null);
 
       if (!over) return;
 
@@ -319,6 +352,8 @@ export default function PlannerPage() {
   }, [searchQuery.data, searchQuery.error]);
 
   const activeDragPayload = activeId ? parseDragId(activeId) : null;
+  const displayWeek = previewWeek ?? week;
+
   const activeDragRecipe = useMemo(() => {
     if (!activeDragPayload) return null;
     if (activeDragPayload.source === "week") return week[activeDragPayload.index];
@@ -417,7 +452,7 @@ export default function PlannerPage() {
           onDragEnd={handleDragEnd}
         >
           <MobileEditor
-            week={week}
+            week={displayWeek}
             dayNames={DAY_NAMES}
             selectedIdSet={selectedIdSet}
             longGap={longGap}
@@ -469,7 +504,7 @@ export default function PlannerPage() {
           onDragEnd={handleDragEnd}
         >
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 auto-rows-fr">
-            {week.map((recipe, index) => (
+            {displayWeek.map((recipe, index) => (
               <WeekSlot
                 key={index}
                 index={index}
