@@ -1,7 +1,7 @@
 "use client";
 export const dynamic = "force-dynamic";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
 import {
   Button,
@@ -29,13 +29,16 @@ import {
 } from "./components/shopping-list-day-view";
 import { FALL_BADGE_PALETTE, formatQuantity } from "./utils";
 import type { ShoppingListItem, ShoppingListOccurrence } from "./types";
+import { WeekSelector } from "../planner/components/WeekSelector";
+import { deriveWeekLabel, startOfWeekISO } from "../../lib/week";
+import type { TimelineWeekEntry } from "../planner/types";
+import type { MockWeekTimelineResult } from "../../lib/mock/store";
 
 const EMPTY_ITEMS: ShoppingListItem[] = [];
 
 export default function ShoppingListPage() {
-  // Lock to current week only; backend can handle includeNextWeek
-  const currentWeekStart = useMemo(() => new Date().toISOString(), []);
-  const activeWeekStart = currentWeekStart;
+  const currentWeekStart = useMemo(() => startOfWeekISO(), []);
+  const [activeWeekStart, setActiveWeekStart] = useState(currentWeekStart);
   const [includeNextWeek, setIncludeNextWeek] = useState(false);
   const [viewMode, setViewMode] = useState<"by-day" | "alphabetical">("by-day");
   const [checkedByOccurrence, setCheckedByOccurrence] = useState<Record<string, boolean>>({});
@@ -51,6 +54,32 @@ export default function ShoppingListPage() {
     weekStart: activeWeekStart,
     includeNextWeek,
   });
+
+  const timelineQuery = trpc.planner.weekTimeline.useQuery({ around: currentWeekStart });
+
+  useEffect(() => {
+    setRemovedKeys(new Set());
+  }, [activeWeekStart]);
+
+  const timelineWeeks = useMemo(() => {
+    const rawWeeks = timelineQuery.data?.weeks ?? [];
+    const weeks = rawWeeks as MockWeekTimelineResult["weeks"];
+    return weeks.map((week) => ({
+      ...week,
+      label: deriveWeekLabel(week.weekStart, currentWeekStart),
+    }));
+  }, [timelineQuery.data, currentWeekStart]);
+
+  const timelineEntries = useMemo<TimelineWeekEntry[]>(
+    () => timelineWeeks.map((week, index) => ({ week, index })),
+    [timelineWeeks]
+  );
+
+  const activeWeekIndex = timelineWeeks.findIndex((week) => week.weekStart === activeWeekStart);
+
+  const handleSelectWeek = useCallback((weekStart: string) => {
+    setActiveWeekStart(weekStart);
+  }, []);
 
   // Suggest extras based on input
   useEffect(() => {
@@ -528,6 +557,13 @@ export default function ShoppingListPage() {
   return (
     <div className="space-y-6">
       <h1 className="hidden text-xl font-bold text-center md:block">Handleliste</h1>
+
+      <WeekSelector
+        weeks={timelineEntries}
+        activeWeekStart={activeWeekStart}
+        activeWeekIndex={activeWeekIndex}
+        onSelectWeek={handleSelectWeek}
+      />
 
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-row sm:items-center sm:justify-between">
