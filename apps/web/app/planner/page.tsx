@@ -25,6 +25,7 @@ import {
   useSensors,
   closestCenter,
 } from "@dnd-kit/core";
+import { arrayMove } from "@dnd-kit/sortable";
 import { createPortal } from "react-dom";
 
 import type { DragPayload, RecipeDTO, WeekPlanResult, WeekState } from "./types";
@@ -231,16 +232,13 @@ export default function PlannerPage() {
 
       if (!activePayload || !overPayload) return;
 
-      // Dragging from week to week (swap)
+      // Dragging from week to week (reorder)
       if (activePayload.source === "week" && overPayload.source === "week") {
         const fromIndex = activePayload.index;
         const toIndex = overPayload.index;
         if (fromIndex === toIndex) return;
 
-        const nextWeek = [...week];
-        const temp = nextWeek[fromIndex];
-        nextWeek[fromIndex] = nextWeek[toIndex];
-        nextWeek[toIndex] = temp;
+        const nextWeek = arrayMove(week, fromIndex, toIndex);
         commitWeekPlan(nextWeek);
       }
 
