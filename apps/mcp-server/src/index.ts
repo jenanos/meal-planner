@@ -182,18 +182,21 @@ const httpServer = app.listen(port, (error?: Error) => {
   console.log(`Using meals API origin: ${mealsApiOrigin}`);
 });
 
-process.on("SIGTERM", () => {
-  console.log("Received SIGTERM, shutting down gracefully...");
+const gracefulShutdown = (signal: string) => {
+  console.log(`Received ${signal}, shutting down gracefully...`);
+  
+  // Force exit after 10 seconds if graceful shutdown hangs
+  const forceExitTimer = setTimeout(() => {
+    console.error("Forcefully shutting down after timeout");
+    process.exit(1);
+  }, 10000);
+  
   httpServer.close(() => {
+    clearTimeout(forceExitTimer);
     console.log("Server closed");
     process.exit(0);
   });
-});
+};
 
-process.on("SIGINT", () => {
-  console.log("Received SIGINT, shutting down gracefully...");
-  httpServer.close(() => {
-    console.log("Server closed");
-    process.exit(0);
-  });
-});
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
