@@ -134,13 +134,13 @@ const buildServer = () => {
   return server;
 };
 
-const server = buildServer();
+const mcpServer = buildServer();
 const app = createMcpExpressApp({ host: "0.0.0.0" });
 
 app.post("/mcp", async (req: Request, res: Response) => {
   try {
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-    await server.connect(transport);
+    await mcpServer.connect(transport);
     await transport.handleRequest(req, res, req.body);
     res.on("close", () => {
       transport.close();
@@ -168,8 +168,12 @@ app.delete("/mcp", async (_req: Request, res: Response) => {
   res.writeHead(405).end(JSON.stringify(methodNotAllowedResponse));
 });
 
+app.get("/health", (_req: Request, res: Response) => {
+  res.json({ ok: true });
+});
+
 const port = Number(process.env.PORT ?? 5050);
-app.listen(port, (error?: Error) => {
+const httpServer = app.listen(port, (error?: Error) => {
   if (error) {
     console.error("Failed to start MCP server:", error);
     process.exit(1);
@@ -177,3 +181,22 @@ app.listen(port, (error?: Error) => {
   console.log(`Meal Planner MCP server listening on port ${port}`);
   console.log(`Using meals API origin: ${mealsApiOrigin}`);
 });
+
+const gracefulShutdown = (signal: string) => {
+  console.log(`Received ${signal}, shutting down gracefully...`);
+  
+  // Force exit after 10 seconds if graceful shutdown hangs
+  const forceExitTimer = setTimeout(() => {
+    console.error("Forcefully shutting down after timeout");
+    process.exit(1);
+  }, 10000);
+  
+  httpServer.close(() => {
+    clearTimeout(forceExitTimer);
+    console.log("Server closed");
+    process.exit(0);
+  });
+};
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
