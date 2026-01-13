@@ -1,8 +1,8 @@
 import { prisma } from "@repo/database";
-import { router, publicProcedure } from "../trpc";
+import { router, publicProcedure } from "../trpc.js";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { RecipeCreate, RecipeListQuery, RecipeUpdate, Category } from "../schemas";
+import { RecipeCreate, RecipeListQuery, RecipeUpdate, Category } from "../schemas.js";
 
 function toDTO(r: any) {
   return {
