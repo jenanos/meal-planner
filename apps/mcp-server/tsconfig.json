@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.json",
+  "references": [{ "path": "../../packages/api" }],
+  "compilerOptions": {
+    "outDir": "dist",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "target": "ES2022",
+    "strict": true,
+    "baseUrl": "../..",
+    "paths": {
+      "@repo/api": ["packages/api"],
+      "@repo/api/*": ["packages/api/*"]
+    }
+  },
+  "include": ["src"]
+}
