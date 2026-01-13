@@ -1,6 +1,6 @@
 import { prisma, Prisma } from "@repo/database";
-import { router, publicProcedure } from "../trpc";
-import { PlannerConstraints, WeekPlanInput, ExtraItemSuggest, ExtraItemUpsert, ExtraShoppingToggle, ExtraShoppingRemove } from "../schemas";
+import { router, publicProcedure } from "../trpc.js";
+import { PlannerConstraints, WeekPlanInput, ExtraItemSuggest, ExtraItemUpsert, ExtraShoppingToggle, ExtraShoppingRemove } from "../schemas.js";
 import { z } from "zod";
 
 /** Day + meta (kan utvides senere) */

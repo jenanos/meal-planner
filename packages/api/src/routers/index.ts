@@ -1,7 +1,7 @@
-import { router } from "../trpc";
-import { recipeRouter } from "./recipe";
-import { plannerRouter } from "./planner";
-import { ingredientRouter } from "./ingredient";
+import { router } from "../trpc.js";
+import { recipeRouter } from "./recipe.js";
+import { plannerRouter } from "./planner.js";
+import { ingredientRouter } from "./ingredient.js";
 
 const routes = {
   recipe: recipeRouter,

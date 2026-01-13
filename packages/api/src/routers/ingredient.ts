@@ -1,6 +1,6 @@
 import { prisma } from "@repo/database";
-import { router, publicProcedure } from "../trpc";
-import { IngredientById, IngredientCreate, IngredientListQuery, IngredientUpdate } from "../schemas";
+import { router, publicProcedure } from "../trpc.js";
+import { IngredientById, IngredientCreate, IngredientListQuery, IngredientUpdate } from "../schemas.js";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
