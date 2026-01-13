@@ -1,24 +1,14 @@
 import type { Request, Response } from "express";
 import { createTRPCProxyClient, httpBatchLink } from "@trpc/client";
-import type { AppRouter } from "@repo/api";
+import { PlannerConstraints, WeekPlanInput, type AppRouter } from "@repo/api";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import * as z from "zod";
 
-const plannerConstraintsSchema = z.object({
-  fish: z.number().int().min(0).default(2),
-  vegetarian: z.number().int().min(0).default(3),
-  chicken: z.number().int().min(0).default(1),
-  beef: z.number().int().min(0).default(1),
-  preferRecentGapDays: z.number().int().min(0).default(21),
-});
-
-const weekPlanInputSchema = z.object({
-  weekStart: z.string().min(1),
-  recipeIdsByDay: z.array(z.string().uuid().nullable()).length(7),
-});
+const weekStartSchema = WeekPlanInput.shape.weekStart;
+const recipeIdsByDaySchema = WeekPlanInput.shape.recipeIdsByDay;
 
 const mealsApiOrigin =
   process.env.MEALS_API_INTERNAL_ORIGIN ??
@@ -35,6 +25,28 @@ const trpcClient = createTRPCProxyClient<AppRouter>({
   ],
 });
 
+const methodNotAllowedResponse = {
+  jsonrpc: "2.0",
+  error: {
+    code: -32000,
+    message: "Method not allowed.",
+  },
+  id: null,
+};
+
+const formatToolError = (error: unknown, context: string): CallToolResult => {
+  const message = error instanceof Error ? error.message : String(error);
+  const payload = {
+    ok: false,
+    error: `${context}: ${message}`,
+  };
+
+  return {
+    content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
+    structuredContent: payload,
+  };
+};
+
 const buildServer = () => {
   const server = new McpServer(
     {
@@ -50,16 +62,20 @@ const buildServer = () => {
     {
       title: "Hent ukesplan",
       description: "Henter ukesplanen for en gitt uke (mandag som start).",
-      inputSchema: {
-        weekStart: z.string().min(1).describe("ISO-dato for uke-start (mandag)."),
-      },
+      inputSchema: z.object({
+        weekStart: weekStartSchema.describe("ISO-dato for uke-start (mandag)."),
+      }),
     },
     async ({ weekStart }): Promise<CallToolResult> => {
-      const data = await trpcClient.planner.getWeekPlan.query({ weekStart });
-      return {
-        content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
-        structuredContent: data,
-      };
+      try {
+        const data = await trpcClient.planner.getWeekPlan.query({ weekStart });
+        return {
+          content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+          structuredContent: data,
+        };
+      } catch (error) {
+        return formatToolError(error, "Kunne ikke hente ukesplan");
+      }
     }
   );
 
@@ -68,18 +84,24 @@ const buildServer = () => {
     {
       title: "Generer ukesplan",
       description: "Genererer en ny ukesplan basert på valgfri startdato og begrensninger.",
-      inputSchema: {
-        weekStart: z.string().min(1).optional().describe("ISO-dato for uke-start (valgfri)."),
-        constraints: plannerConstraintsSchema.optional(),
-      },
+      inputSchema: z.object({
+        weekStart: weekStartSchema
+          .optional()
+          .describe("ISO-dato for uke-start (valgfri)."),
+        constraints: PlannerConstraints.optional(),
+      }),
     },
     async ({ weekStart, constraints }): Promise<CallToolResult> => {
-      const input = weekStart || constraints ? { weekStart, constraints } : undefined;
-      const data = await trpcClient.planner.generateWeekPlan.mutate(input);
-      return {
-        content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
-        structuredContent: data,
-      };
+      try {
+        const input = weekStart || constraints ? { weekStart, constraints } : undefined;
+        const data = await trpcClient.planner.generateWeekPlan.mutate(input);
+        return {
+          content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+          structuredContent: data,
+        };
+      } catch (error) {
+        return formatToolError(error, "Kunne ikke generere ukesplan");
+      }
     }
   );
 
@@ -88,37 +110,40 @@ const buildServer = () => {
     {
       title: "Lagre ukesplan",
       description: "Oppdaterer ukesplanen for en uke med 7 oppføringer.",
-      inputSchema: {
-        weekStart: weekPlanInputSchema.shape.weekStart.describe("ISO-dato for uke-start (mandag)."),
-        recipeIdsByDay: weekPlanInputSchema.shape.recipeIdsByDay,
-      },
+      inputSchema: z.object({
+        weekStart: weekStartSchema.describe("ISO-dato for uke-start (mandag)."),
+        recipeIdsByDay: recipeIdsByDaySchema,
+      }),
     },
     async ({ weekStart, recipeIdsByDay }): Promise<CallToolResult> => {
-      const data = await trpcClient.planner.saveWeekPlan.mutate({
-        weekStart,
-        recipeIdsByDay,
-      });
-      return {
-        content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
-        structuredContent: data,
-      };
+      try {
+        const data = await trpcClient.planner.saveWeekPlan.mutate({
+          weekStart,
+          recipeIdsByDay,
+        });
+        return {
+          content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+          structuredContent: data,
+        };
+      } catch (error) {
+        return formatToolError(error, "Kunne ikke lagre ukesplan");
+      }
     }
   );
 
   return server;
 };
 
+const server = buildServer();
 const app = createMcpExpressApp({ host: "0.0.0.0" });
 
 app.post("/mcp", async (req: Request, res: Response) => {
-  const server = buildServer();
   try {
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     await server.connect(transport);
     await transport.handleRequest(req, res, req.body);
     res.on("close", () => {
       transport.close();
-      server.close();
     });
   } catch (error) {
     console.error("Error handling MCP request:", error);
@@ -136,29 +161,11 @@ app.post("/mcp", async (req: Request, res: Response) => {
 });
 
 app.get("/mcp", async (_req: Request, res: Response) => {
-  res.writeHead(405).end(
-    JSON.stringify({
-      jsonrpc: "2.0",
-      error: {
-        code: -32000,
-        message: "Method not allowed.",
-      },
-      id: null,
-    })
-  );
+  res.writeHead(405).end(JSON.stringify(methodNotAllowedResponse));
 });
 
 app.delete("/mcp", async (_req: Request, res: Response) => {
-  res.writeHead(405).end(
-    JSON.stringify({
-      jsonrpc: "2.0",
-      error: {
-        code: -32000,
-        message: "Method not allowed.",
-      },
-      id: null,
-    })
-  );
+  res.writeHead(405).end(JSON.stringify(methodNotAllowedResponse));
 });
 
 const port = Number(process.env.PORT ?? 5050);
