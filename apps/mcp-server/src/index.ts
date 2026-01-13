@@ -168,6 +168,10 @@ app.delete("/mcp", async (_req: Request, res: Response) => {
   res.writeHead(405).end(JSON.stringify(methodNotAllowedResponse));
 });
 
+app.get("/health", (_req: Request, res: Response) => {
+  res.json({ ok: true });
+});
+
 const port = Number(process.env.PORT ?? 5050);
 app.listen(port, (error?: Error) => {
   if (error) {
@@ -176,4 +180,14 @@ app.listen(port, (error?: Error) => {
   }
   console.log(`Meal Planner MCP server listening on port ${port}`);
   console.log(`Using meals API origin: ${mealsApiOrigin}`);
+});
+
+process.on("SIGTERM", () => {
+  console.log("Received SIGTERM, shutting down...");
+  process.exit(0);
+});
+
+process.on("SIGINT", () => {
+  console.log("Received SIGINT, shutting down...");
+  process.exit(0);
 });
