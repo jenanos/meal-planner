@@ -58,7 +58,6 @@ COPY --from=builder /app/node_modules ./node_modules
 # Include workspace sources (for linked packages) and mcp-server sources
 COPY --from=builder /app/packages ./packages
 COPY --from=builder /app/apps/mcp-server ./apps/mcp-server
-COPY apps/mcp-server/package.json ./apps/mcp-server/package.json
 
 EXPOSE 5050
 

@@ -134,13 +134,13 @@ const buildServer = () => {
   return server;
 };
 
-const server = buildServer();
+const mcpServer = buildServer();
 const app = createMcpExpressApp({ host: "0.0.0.0" });
 
 app.post("/mcp", async (req: Request, res: Response) => {
   try {
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-    await server.connect(transport);
+    await mcpServer.connect(transport);
     await transport.handleRequest(req, res, req.body);
     res.on("close", () => {
       transport.close();
@@ -173,7 +173,7 @@ app.get("/health", (_req: Request, res: Response) => {
 });
 
 const port = Number(process.env.PORT ?? 5050);
-app.listen(port, (error?: Error) => {
+const httpServer = app.listen(port, (error?: Error) => {
   if (error) {
     console.error("Failed to start MCP server:", error);
     process.exit(1);
@@ -183,11 +183,17 @@ app.listen(port, (error?: Error) => {
 });
 
 process.on("SIGTERM", () => {
-  console.log("Received SIGTERM, shutting down...");
-  process.exit(0);
+  console.log("Received SIGTERM, shutting down gracefully...");
+  httpServer.close(() => {
+    console.log("Server closed");
+    process.exit(0);
+  });
 });
 
 process.on("SIGINT", () => {
-  console.log("Received SIGINT, shutting down...");
-  process.exit(0);
+  console.log("Received SIGINT, shutting down gracefully...");
+  httpServer.close(() => {
+    console.log("Server closed");
+    process.exit(0);
+  });
 });
