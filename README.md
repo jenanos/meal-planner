@@ -28,6 +28,7 @@ This workspace is orchestrated by [Turborepo](https://turbo.build/repo), a high-
 | ------- | ---- | ------- |
 | **Frontend** | `apps/web` | Next.js App Router UI with Tailwind, tRPC React Query hooks, and mock mode for standalone deploys. |
 | **API server** | `apps/server` | Fastify host that mounts the tRPC router from `@repo/api` and exposes health/readiness endpoints. |
+| **MCP server** | `apps/mcp-server` | Streamable HTTP MCP server that maps MCP tools to the Meal Planner tRPC API. |
 | **tRPC router** | `packages/api` | Shared types, routers (`planner`, `recipe`, `ingredient`), and Zod schemas used by both server and frontend. |
 | **Database** | `packages/database` | Prisma schema, generated client, build artifacts, and seeding utilities. |
 | **UI kit** | `packages/ui` | Reusable, Tailwind-based components consumed by the web app. |
@@ -93,6 +94,22 @@ Key settings:
 7. Visit [http://localhost:3000](http://localhost:3000) for the UI and [http://localhost:4000/ready](http://localhost:4000/ready) to verify API readiness.
 
 > 💡 Prefer a single command? Run `pnpm dev` at the workspace root to launch both `server` and `web` via Turborepo task orchestration.
+
+---
+
+## 🤖 MCP server (optional)
+
+The MCP server exposes Meal Planner actions (weekly plan fetch/generate/save) through the Model Context Protocol. It runs as a Streamable HTTP MCP endpoint at `/mcp` and talks to the existing `meals-api` tRPC service.
+
+```bash
+cp apps/mcp-server/.env.example apps/mcp-server/.env
+pnpm --filter mcp-server dev
+```
+
+Key settings:
+
+- `MEALS_API_INTERNAL_ORIGIN` – base URL for the Meal Planner API (e.g. `http://localhost:4000` or `http://meals-api:4000` in Docker).
+- `PORT` – port for the MCP server (default: `5050`).
 
 ---
 
