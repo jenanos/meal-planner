@@ -50,6 +50,105 @@ export const ingredientRouter = router({
                 }));
         }),
 
+    listWithoutUnit: publicProcedure
+        .output(z.array(IngredientListItem))
+        .query(async () => {
+            const items = await prisma.ingredient.findMany({
+                where: { unit: null },
+                orderBy: { name: "asc" },
+                include: { _count: { select: { recipes: true } } },
+            });
+            return items.map((i) => ({
+                id: i.id,
+                name: i.name,
+                unit: i.unit ?? undefined,
+                usageCount: i._count.recipes,
+                isPantryItem: i.isPantryItem,
+            }));
+        }),
+
+    listPotentialDuplicates: publicProcedure
+        .output(z.array(z.array(IngredientListItem)))
+        .query(async () => {
+            const allIngredients = await prisma.ingredient.findMany({
+                orderBy: { name: "asc" },
+                include: { _count: { select: { recipes: true } } },
+            });
+
+            // Normalize name for comparison
+            const normalize = (name: string) => 
+                name.toLowerCase().replace(/[^a-zæøå0-9]/g, "");
+
+            // Group ingredients by normalized name prefix
+            const groups = new Map<string, typeof allIngredients>();
+            
+            for (const ing of allIngredients) {
+                const normalized = normalize(ing.name);
+                let foundGroup = false;
+
+                // Check if this ingredient matches any existing group
+                for (const [key, group] of groups.entries()) {
+                    // Check if names are similar (prefix match or edit distance)
+                    if (
+                        normalized.startsWith(key) || 
+                        key.startsWith(normalized) ||
+                        (normalized.length > 3 && key.length > 3 && 
+                         (normalized.includes(key) || key.includes(normalized)))
+                    ) {
+                        group.push(ing);
+                        foundGroup = true;
+                        break;
+                    }
+                }
+
+                if (!foundGroup) {
+                    groups.set(normalized, [ing]);
+                }
+            }
+
+            // Filter to only groups with more than one ingredient
+            const duplicateGroups = Array.from(groups.values())
+                .filter(group => group.length > 1)
+                .map(group => 
+                    group.map(i => ({
+                        id: i.id,
+                        name: i.name,
+                        unit: i.unit ?? undefined,
+                        usageCount: i._count.recipes,
+                        isPantryItem: i.isPantryItem,
+                    }))
+                );
+
+            return duplicateGroups;
+        }),
+
+    bulkUpdateUnits: publicProcedure
+        .input(z.object({
+            updates: z.array(z.object({
+                id: z.string().uuid(),
+                unit: z.string().min(1),
+            })),
+        }))
+        .output(z.object({ count: z.number().int() }))
+        .mutation(async ({ input }) => {
+            let count = 0;
+            
+            for (const update of input.updates) {
+                try {
+                    await prisma.ingredient.update({
+                        where: { id: update.id },
+                        data: { unit: update.unit.trim() },
+                    });
+                    count++;
+                } catch (e: any) {
+                    // Skip ingredients that don't exist or other errors
+                    console.error(`Failed to update ingredient ${update.id}:`, e?.message);
+                }
+            }
+
+            return { count };
+        }),
+
     create: publicProcedure
       .input(IngredientCreate)
       .output(z.object({ id: z.string().uuid(), name: z.string(), unit: z.string().optional(), isPantryItem: z.boolean() }))

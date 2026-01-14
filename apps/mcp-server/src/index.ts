@@ -131,6 +131,69 @@ const buildServer = () => {
     }
   );
 
+  server.registerTool(
+    "get-ingredients-without-unit",
+    {
+      title: "Hent ingredienser uten enhet",
+      description: "Returnerer alle ingredienser som mangler enhet.",
+      inputSchema: z.object({}),
+    },
+    async (): Promise<CallToolResult> => {
+      try {
+        const data = await trpcClient.ingredient.listWithoutUnit.query();
+        return {
+          content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+        };
+      } catch (error) {
+        return formatToolError(error, "Kunne ikke hente ingredienser uten enhet");
+      }
+    }
+  );
+
+  server.registerTool(
+    "get-potential-duplicate-ingredients",
+    {
+      title: "Finn potensielle duplikater",
+      description: "Returnerer grupper av ingredienser som kan være duplikater basert på navnelikhet.",
+      inputSchema: z.object({}),
+    },
+    async (): Promise<CallToolResult> => {
+      try {
+        const data = await trpcClient.ingredient.listPotentialDuplicates.query();
+        return {
+          content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+        };
+      } catch (error) {
+        return formatToolError(error, "Kunne ikke finne potensielle duplikater");
+      }
+    }
+  );
+
+  server.registerTool(
+    "bulk-update-ingredient-units",
+    {
+      title: "Bulk-oppdater ingrediens-enheter",
+      description: "Oppdaterer enheter for flere ingredienser på en gang.",
+      inputSchema: z.object({
+        updates: z.array(z.object({
+          id: z.string().uuid().describe("Ingrediens-ID"),
+          unit: z.string().min(1).describe("Ny enhet"),
+        })).describe("Liste med oppdateringer"),
+      }),
+    },
+    async ({ updates }): Promise<CallToolResult> => {
+      try {
+        const data = await trpcClient.ingredient.bulkUpdateUnits.mutate({ updates });
+        return {
+          content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+          structuredContent: data,
+        };
+      } catch (error) {
+        return formatToolError(error, "Kunne ikke oppdatere ingrediens-enheter");
+      }
+    }
+  );
+
   return server;
 };
 

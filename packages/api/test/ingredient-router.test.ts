@@ -7,6 +7,7 @@ const { ingredientModel } = vi.hoisted(() => {
       findMany: vi.fn(),
       upsert: vi.fn(),
       findUnique: vi.fn(),
+      update: vi.fn(),
     },
   };
 });
@@ -139,5 +140,128 @@ describe("ingredient router", () => {
         id: "00000000-0000-0000-0000-000000000002",
       })
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("lists ingredients without unit", async () => {
+    ingredientModel.findMany.mockResolvedValueOnce([
+      {
+        id: "ing1",
+        name: "Løk",
+        unit: null,
+        isPantryItem: false,
+        _count: { recipes: 2 },
+      },
+      {
+        id: "ing2",
+        name: "Mel",
+        unit: null,
+        isPantryItem: true,
+        _count: { recipes: 5 },
+      },
+    ]);
+
+    const caller = createCaller();
+    const result = await caller.listWithoutUnit();
+
+    expect(ingredientModel.findMany).toHaveBeenCalledWith({
+      where: { unit: null },
+      orderBy: { name: "asc" },
+      include: { _count: { select: { recipes: true } } },
+    });
+
+    expect(result).toEqual([
+      { id: "ing1", name: "Løk", unit: undefined, usageCount: 2, isPantryItem: false },
+      { id: "ing2", name: "Mel", unit: undefined, usageCount: 5, isPantryItem: true },
+    ]);
+  });
+
+  it("finds potential duplicate ingredients", async () => {
+    ingredientModel.findMany.mockResolvedValueOnce([
+      {
+        id: "ing1",
+        name: "Løk",
+        unit: "stk",
+        isPantryItem: false,
+        _count: { recipes: 2 },
+      },
+      {
+        id: "ing2",
+        name: "Løk, rød",
+        unit: "stk",
+        isPantryItem: false,
+        _count: { recipes: 3 },
+      },
+      {
+        id: "ing3",
+        name: "Mel",
+        unit: "g",
+        isPantryItem: true,
+        _count: { recipes: 5 },
+      },
+    ]);
+
+    const caller = createCaller();
+    const result = await caller.listPotentialDuplicates();
+
+    expect(ingredientModel.findMany).toHaveBeenCalledWith({
+      orderBy: { name: "asc" },
+      include: { _count: { select: { recipes: true } } },
+    });
+
+    expect(result.length).toBeGreaterThan(0);
+    // Should have at least one group with "Løk" variants
+    const hasLokGroup = result.some((group) =>
+      group.some((ing) => ing.name.includes("Løk"))
+    );
+    expect(hasLokGroup).toBe(true);
+  });
+
+  it("bulk updates ingredient units", async () => {
+    const updateMock = vi.fn();
+    ingredientModel.update = updateMock;
+
+    updateMock
+      .mockResolvedValueOnce({ id: "ing1", name: "Løk", unit: "stk", isPantryItem: false })
+      .mockResolvedValueOnce({ id: "ing2", name: "Mel", unit: "g", isPantryItem: true });
+
+    const caller = createCaller();
+    const result = await caller.bulkUpdateUnits({
+      updates: [
+        { id: "ing1", unit: "stk" },
+        { id: "ing2", unit: "g" },
+      ],
+    });
+
+    expect(updateMock).toHaveBeenCalledTimes(2);
+    expect(updateMock).toHaveBeenCalledWith({
+      where: { id: "ing1" },
+      data: { unit: "stk" },
+    });
+    expect(updateMock).toHaveBeenCalledWith({
+      where: { id: "ing2" },
+      data: { unit: "g" },
+    });
+
+    expect(result).toEqual({ count: 2 });
+  });
+
+  it("bulk updates handles failures gracefully", async () => {
+    const updateMock = vi.fn();
+    ingredientModel.update = updateMock;
+
+    updateMock
+      .mockResolvedValueOnce({ id: "ing1", name: "Løk", unit: "stk", isPantryItem: false })
+      .mockRejectedValueOnce(new Error("Not found"));
+
+    const caller = createCaller();
+    const result = await caller.bulkUpdateUnits({
+      updates: [
+        { id: "ing1", unit: "stk" },
+        { id: "invalid-id", unit: "g" },
+      ],
+    });
+
+    // Should still return count of 1 (only the successful update)
+    expect(result.count).toBe(1);
   });
 });
