@@ -217,10 +217,7 @@ describe("ingredient router", () => {
   });
 
   it("bulk updates ingredient units", async () => {
-    const updateMock = vi.fn();
-    ingredientModel.update = updateMock;
-
-    updateMock
+    ingredientModel.update
       .mockResolvedValueOnce({ id: "ing1", name: "Løk", unit: "stk", isPantryItem: false })
       .mockResolvedValueOnce({ id: "ing2", name: "Mel", unit: "g", isPantryItem: true });
 
@@ -232,12 +229,12 @@ describe("ingredient router", () => {
       ],
     });
 
-    expect(updateMock).toHaveBeenCalledTimes(2);
-    expect(updateMock).toHaveBeenCalledWith({
+    expect(ingredientModel.update).toHaveBeenCalledTimes(2);
+    expect(ingredientModel.update).toHaveBeenCalledWith({
       where: { id: "ing1" },
       data: { unit: "stk" },
     });
-    expect(updateMock).toHaveBeenCalledWith({
+    expect(ingredientModel.update).toHaveBeenCalledWith({
       where: { id: "ing2" },
       data: { unit: "g" },
     });
@@ -246,10 +243,7 @@ describe("ingredient router", () => {
   });
 
   it("bulk updates handles failures gracefully", async () => {
-    const updateMock = vi.fn();
-    ingredientModel.update = updateMock;
-
-    updateMock
+    ingredientModel.update
       .mockResolvedValueOnce({ id: "ing1", name: "Løk", unit: "stk", isPantryItem: false })
       .mockRejectedValueOnce(new Error("Not found"));
 

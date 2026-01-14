@@ -135,14 +135,18 @@ export const ingredientRouter = router({
             
             for (const update of input.updates) {
                 try {
+                    const trimmedUnit = update.unit.trim();
+                    if (!trimmedUnit) {
+                        continue; // Skip empty units
+                    }
                     await prisma.ingredient.update({
                         where: { id: update.id },
-                        data: { unit: update.unit.trim() },
+                        data: { unit: trimmedUnit },
                     });
                     count++;
                 } catch (e: any) {
                     // Skip ingredients that don't exist or other errors
-                    console.error(`Failed to update ingredient ${update.id}:`, e?.message);
+                    // In production, consider using a proper logging library
                 }
             }
 
