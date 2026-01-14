@@ -76,8 +76,8 @@ export const ingredientRouter = router({
             });
 
             // Normalize name for comparison
-            const normalize = (name: string) => 
-                name.toLowerCase().replace(/[^a-zæøå0-9]/g, "");
+            const normalize = (name?: string) => 
+                name?.toLowerCase().replace(/[^a-zæøå0-9]/g, "") ?? "";
 
             // Group ingredients by normalized name prefix
             const groups = new Map<string, typeof allIngredients>();
@@ -144,7 +144,7 @@ export const ingredientRouter = router({
                         data: { unit: trimmedUnit },
                     });
                     count++;
-                } catch (e: any) {
+                } catch (e: unknown) {
                     // Skip ingredients that don't exist or other errors
                     // In production, consider using a proper logging library
                 }
