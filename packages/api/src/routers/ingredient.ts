@@ -84,6 +84,9 @@ export const ingredientRouter = router({
             
             for (const ing of allIngredients) {
                 const normalized = normalize(ing.name);
+                if (!normalized) {
+                    continue;
+                }
                 let foundGroup = false;
 
                 // Check if this ingredient matches any existing group
@@ -126,7 +129,7 @@ export const ingredientRouter = router({
         .input(z.object({
             updates: z.array(z.object({
                 id: z.string().uuid(),
-                unit: z.string().min(1),
+                unit: z.string().trim().min(1),
             })),
         }))
         .output(z.object({ count: z.number().int() }))
@@ -135,13 +138,9 @@ export const ingredientRouter = router({
             
             for (const update of input.updates) {
                 try {
-                    const trimmedUnit = update.unit.trim();
-                    if (!trimmedUnit) {
-                        continue; // Skip empty units
-                    }
                     await prisma.ingredient.update({
                         where: { id: update.id },
-                        data: { unit: trimmedUnit },
+                        data: { unit: update.unit },
                     });
                     count++;
                 } catch (e: unknown) {
