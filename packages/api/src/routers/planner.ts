@@ -46,6 +46,8 @@ type RecipeDTO = {
   }[];
 };
 
+type WeekEntryType = "RECIPE" | "TAKEAWAY" | "EMPTY";
+
 type WeekPlanSuggestionBuckets = {
   longGap: RecipeDTO[];
   frequent: RecipeDTO[];
@@ -54,9 +56,14 @@ type WeekPlanSuggestionBuckets = {
 type WeekPlanResponse = {
   weekStart: string;
   updatedAt: string | null;
-  days: { dayIndex: DayIndex; recipe: RecipeDTO | null }[];
+  days: { dayIndex: DayIndex; entryType: WeekEntryType; recipe: RecipeDTO | null }[];
   suggestions: WeekPlanSuggestionBuckets;
 };
+
+type WeekPlanDayEntryInput =
+  | { type: "RECIPE"; recipeId: string }
+  | { type: "TAKEAWAY" }
+  | { type: "EMPTY" };
 
 type PlannerConfig = ReturnType<typeof resolveConstraints>;
 
@@ -272,9 +279,9 @@ async function ensureWeekIndexWindow(baseWeek: Date) {
   }
 }
 
-async function writeWeekPlan(weekStart: Date, recipeIds: (string | null)[]) {
-  if (recipeIds.length !== 7) {
-    throw new Error("recipeIds must have length 7");
+async function writeWeekPlan(weekStart: Date, days: WeekPlanDayEntryInput[]) {
+  if (days.length !== 7) {
+    throw new Error("days must have length 7");
   }
 
   return prisma.$transaction(async (tx) => {
@@ -289,17 +296,27 @@ async function writeWeekPlan(weekStart: Date, recipeIds: (string | null)[]) {
     const prevEntries = await tx.weekPlanEntry.findMany({
       where: { weekPlanId: plan.id },
     });
-    const prevCounts = countOccurrences(prevEntries.map((entry) => entry.recipeId));
+    const prevCounts = countOccurrences(
+      prevEntries
+        .filter((entry) => entry.entryType === "RECIPE" && entry.recipeId)
+        .map((entry) => entry.recipeId!)
+    );
 
-    for (let i = 0 as DayIndex; i < recipeIds.length; i = (i + 1) as DayIndex) {
-      const recipeId = recipeIds[i];
+    for (let i = 0 as DayIndex; i < days.length; i = (i + 1) as DayIndex) {
+      const dayEntry = days[i];
       const where = { weekPlanId_dayIndex: { weekPlanId: plan.id, dayIndex: i } };
 
-      if (recipeId) {
+      if (dayEntry.type === "RECIPE") {
         await tx.weekPlanEntry.upsert({
           where,
-          update: { recipeId },
-          create: { weekPlanId: plan.id, dayIndex: i, recipeId },
+          update: { recipeId: dayEntry.recipeId, entryType: "RECIPE" },
+          create: { weekPlanId: plan.id, dayIndex: i, recipeId: dayEntry.recipeId, entryType: "RECIPE" },
+        });
+      } else if (dayEntry.type === "TAKEAWAY") {
+        await tx.weekPlanEntry.upsert({
+          where,
+          update: { recipeId: null, entryType: "TAKEAWAY" },
+          create: { weekPlanId: plan.id, dayIndex: i, recipeId: null, entryType: "TAKEAWAY" },
         });
       } else {
         await tx.weekPlanEntry.deleteMany({
@@ -311,7 +328,11 @@ async function writeWeekPlan(weekStart: Date, recipeIds: (string | null)[]) {
       }
     }
 
-    const newCounts = countOccurrences(recipeIds.filter((id): id is string => Boolean(id)));
+    const newCounts = countOccurrences(
+      days
+        .filter((entry): entry is { type: "RECIPE"; recipeId: string } => entry.type === "RECIPE")
+        .map((entry) => entry.recipeId)
+    );
     for (const [recipeId, newCount] of Array.from(newCounts.entries())) {
       const prevCount = prevCounts.get(recipeId) ?? 0;
       const diff = newCount - prevCount;
@@ -345,16 +366,19 @@ async function writeWeekPlan(weekStart: Date, recipeIds: (string | null)[]) {
 function composeWeekResponse(args: {
   weekStart: Date;
   updatedAt: Date | null;
-  entries: { dayIndex: number; recipe: any | null }[];
+  entries: { dayIndex: number; recipe: any | null; entryType?: WeekEntryType }[];
   suggestions: WeekPlanSuggestionBuckets;
 }): WeekPlanResponse {
   const { weekStart, updatedAt, entries, suggestions } = args;
-  const entryMap = new Map<number, RecipeDTO | null>();
+  const entryMap = new Map<number, { entryType: WeekEntryType; recipe: RecipeDTO | null }>();
 
   entries.forEach((entry) => {
     entryMap.set(
       entry.dayIndex,
-      entry.recipe ? toDTO(entry.recipe) : null
+      {
+        entryType: entry.entryType ?? (entry.recipe ? "RECIPE" : "EMPTY"),
+        recipe: entry.recipe ? toDTO(entry.recipe) : null,
+      }
     );
   });
 
@@ -363,7 +387,8 @@ function composeWeekResponse(args: {
     updatedAt: updatedAt ? updatedAt.toISOString() : null,
     days: DAYS.map((dayIndex) => ({
       dayIndex,
-      recipe: entryMap.get(dayIndex) ?? null,
+      entryType: entryMap.get(dayIndex)?.entryType ?? "EMPTY",
+      recipe: entryMap.get(dayIndex)?.recipe ?? null,
     })),
     suggestions,
   };
@@ -438,11 +463,10 @@ function makeTargetMap(cfg: PlannerConfig): Record<MealCategoryKey, number> {
 function pickWeekRecipes(pool: RecipeDTO[], cfg: PlannerConfig) {
   const usedIngredients = new Set<string>();
   const selected: RecipeDTO[] = [];
-  const selectedIds = new Set<string>();
   const target = makeTargetMap(cfg);
 
   for (const dayIndex of DAYS) {
-    const available = pool.filter((recipe) => !selectedIds.has(recipe.id));
+    const available = pool;
     if (!available.length) {
       throw new Error("No recipes available for planner selection");
     }
@@ -462,7 +486,6 @@ function pickWeekRecipes(pool: RecipeDTO[], cfg: PlannerConfig) {
     }
 
     selected.push(pick);
-    selectedIds.add(pick.id);
     target[pick.category] = Math.max(0, target[pick.category] - 1);
     pick.ingredients.forEach((ingredient) => usedIngredients.add(ingredient.ingredientId));
   }
@@ -537,22 +560,17 @@ async function ensureWeekPlanResponse(weekStart: Date): Promise<WeekPlanResponse
   let updatedAt = planWithEntries?.updatedAt ?? null;
 
   if (!planWithEntries) {
-    const uniqueRecipeCount = new Set(pool.map((recipe) => recipe.id)).size;
-    if (uniqueRecipeCount >= DAYS.length) {
+    if (pool.length) {
       const cfg = resolveConstraints();
       const selected = pickWeekRecipes(pool, cfg);
-      const recipeIds = selected.map((recipe) => recipe.id);
-      const persisted = await writeWeekPlan(weekStart, recipeIds);
+      const days = selected.map((recipe) => ({ type: "RECIPE" as const, recipeId: recipe.id }));
+      const persisted = await writeWeekPlan(weekStart, days);
       entries = persisted.entries;
       updatedAt = persisted.plan.updatedAt;
     }
   }
 
-  const exclude = entries
-    .map((entry) => entry.recipe?.id)
-    .filter((id): id is string => Boolean(id));
-
-  const suggestions = buildSuggestionBuckets(pool, exclude);
+  const suggestions = buildSuggestionBuckets(pool, []);
 
   return composeWeekResponse({
     weekStart,
@@ -579,13 +597,10 @@ export const plannerRouter = router({
 
       const pool = await fetchAllRecipes();
       const selected = pickWeekRecipes(pool, cfg);
-      const recipeIds = selected.map((recipe) => recipe.id);
-      const persisted = await writeWeekPlan(weekStart, recipeIds);
+      const days = selected.map((recipe) => ({ type: "RECIPE" as const, recipeId: recipe.id }));
+      const persisted = await writeWeekPlan(weekStart, days);
 
-      const suggestions = buildSuggestionBuckets(
-        pool,
-        recipeIds.filter((id): id is string => Boolean(id))
-      );
+      const suggestions = buildSuggestionBuckets(pool, []);
 
       return composeWeekResponse({
         weekStart,
@@ -1005,20 +1020,17 @@ export const plannerRouter = router({
   saveWeekPlan: publicProcedure
     .input(WeekPlanInput)
     .mutation(async ({ input }) => {
-      const { weekStart: weekStartString, recipeIdsByDay } = input;
-      if (recipeIdsByDay.length !== 7) {
-        throw new Error("recipeIdsByDay must have length 7");
+      const { weekStart: weekStartString, days } = input;
+      if (days.length !== 7) {
+        throw new Error("days must have length 7");
       }
 
       const weekStart = startOfWeek(weekStartString);
       enforceFutureLimit(weekStart);
-      const persisted = await writeWeekPlan(weekStart, recipeIdsByDay);
+      const persisted = await writeWeekPlan(weekStart, days);
 
       const pool = await fetchAllRecipes();
-      const suggestions = buildSuggestionBuckets(
-        pool,
-        recipeIdsByDay.filter((id): id is string => Boolean(id))
-      );
+      const suggestions = buildSuggestionBuckets(pool, []);
 
       return composeWeekResponse({
         weekStart,

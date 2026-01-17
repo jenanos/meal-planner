@@ -28,7 +28,7 @@ import {
 import { arrayMove } from "@dnd-kit/sortable";
 import { createPortal } from "react-dom";
 
-import type { DragPayload, RecipeDTO, WeekPlanResult, WeekState } from "./types";
+import type { DragPayload, RecipeDTO, WeekEntry, WeekPlanResult, WeekState } from "./types";
 import type { MockWeekTimelineResult } from "../../lib/mock/store";
 import { makeEmptyWeek, parseDragId } from "./utils";
 
@@ -82,16 +82,11 @@ export default function PlannerPage() {
 
   const saveWeek = trpc.planner.saveWeekPlan.useMutation();
 
-  const selectedIds = useMemo(() => {
-    const baseWeek = previewWeek ?? week;
-    return baseWeek.filter((recipe): recipe is RecipeDTO => Boolean(recipe)).map((recipe) => recipe.id);
-  }, [previewWeek, week]);
-  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const recipeDialogItems = useMemo<RecipeListItem[]>(() => {
     const map = new Map<string, RecipeDTO>();
     const baseWeek = previewWeek ?? week;
-    baseWeek.forEach((recipe) => {
-      if (recipe) map.set(recipe.id, recipe);
+    baseWeek.forEach((entry) => {
+      if (entry?.type === "RECIPE") map.set(entry.recipe.id, entry.recipe);
     });
     longGap.forEach((recipe) => {
       map.set(recipe.id, recipe);
@@ -167,15 +162,20 @@ export default function PlannerPage() {
 
   const applyWeekData = useCallback(
     (res: WeekPlanResult) => {
-      const nextWeek = res.days.map((day) => day.recipe ?? null) as WeekState;
-      const currentIds = new Set(
-        nextWeek.filter((recipe): recipe is RecipeDTO => Boolean(recipe)).map((r) => r.id.toLowerCase())
-      );
+      const nextWeek = res.days.map((day) => {
+        if (day.entryType === "TAKEAWAY") {
+          return { type: "TAKEAWAY" } satisfies WeekEntry;
+        }
+        if (day.recipe) {
+          return { type: "RECIPE", recipe: day.recipe } satisfies WeekEntry;
+        }
+        return null;
+      }) as WeekState;
       setWeek(nextWeek);
       setPreviewWeek(null);
       setDraggingWeekIndex(null);
-      setLongGap(res.suggestions.longGap.filter((item) => !currentIds.has(item.id.toLowerCase())));
-      setFrequent(res.suggestions.frequent.filter((item) => !currentIds.has(item.id.toLowerCase())));
+      setLongGap(res.suggestions.longGap);
+      setFrequent(res.suggestions.frequent);
       utils.planner.getWeekPlan.setData({ weekStart: res.weekStart }, res);
     },
     [utils]
@@ -191,12 +191,20 @@ export default function PlannerPage() {
   const commitWeekPlan = useCallback(
     async (nextWeek: WeekState) => {
       setWeek(nextWeek);
-      const ids = nextWeek.map((recipe) => recipe?.id ?? null);
+      const days = nextWeek.map((entry) => {
+        if (entry?.type === "RECIPE") {
+          return { type: "RECIPE" as const, recipeId: entry.recipe.id };
+        }
+        if (entry?.type === "TAKEAWAY") {
+          return { type: "TAKEAWAY" as const };
+        }
+        return { type: "EMPTY" as const };
+      });
 
       try {
         const payload = await saveWeek.mutateAsync({
           weekStart: activeWeekStart,
-          recipeIdsByDay: ids,
+          days,
         });
         applyWeekData(payload);
       } catch (error) {
@@ -288,7 +296,7 @@ export default function PlannerPage() {
 
         if (recipe) {
           const nextWeek = [...week];
-          nextWeek[overPayload.index] = recipe;
+          nextWeek[overPayload.index] = { type: "RECIPE", recipe };
           commitWeekPlan(nextWeek);
         }
       }
@@ -300,9 +308,27 @@ export default function PlannerPage() {
       const emptyIndex = week.findIndex((slot) => slot === null);
       if (emptyIndex !== -1) {
         const nextWeek = [...week];
-        nextWeek[emptyIndex] = recipe;
+        nextWeek[emptyIndex] = { type: "RECIPE", recipe };
         commitWeekPlan(nextWeek);
       }
+    },
+    [week, commitWeekPlan]
+  );
+
+  const handleSetTakeaway = useCallback(
+    (dayIndex: number) => {
+      const nextWeek = [...week];
+      nextWeek[dayIndex] = { type: "TAKEAWAY" };
+      commitWeekPlan(nextWeek);
+    },
+    [week, commitWeekPlan]
+  );
+
+  const handleClearEntry = useCallback(
+    (dayIndex: number) => {
+      const nextWeek = [...week];
+      nextWeek[dayIndex] = null;
+      commitWeekPlan(nextWeek);
     },
     [week, commitWeekPlan]
   );
@@ -356,7 +382,10 @@ export default function PlannerPage() {
 
   const activeDragRecipe = useMemo(() => {
     if (!activeDragPayload) return null;
-    if (activeDragPayload.source === "week") return week[activeDragPayload.index];
+    if (activeDragPayload.source === "week") {
+      const entry = week[activeDragPayload.index];
+      return entry?.type === "RECIPE" ? entry.recipe : null;
+    }
     if (activeDragPayload.source === "longGap") return longGap[activeDragPayload.index];
     if (activeDragPayload.source === "frequent") return frequent[activeDragPayload.index];
     if (activeDragPayload.source === "search") return searchResults[activeDragPayload.index];
@@ -454,7 +483,6 @@ export default function PlannerPage() {
           <MobileEditor
             week={displayWeek}
             dayNames={DAY_NAMES}
-            selectedIdSet={selectedIdSet}
             longGap={longGap}
             frequent={frequent}
             searchTerm={searchTerm}
@@ -468,6 +496,8 @@ export default function PlannerPage() {
             onSearchTermChange={setSearchTerm}
             onPickFromSource={handlePickFromSource}
             onRecipeClick={handleRecipeClick}
+            onSetTakeaway={handleSetTakeaway}
+            onClearEntry={handleClearEntry}
           />
 
           {typeof document !== "undefined" &&
@@ -509,8 +539,10 @@ export default function PlannerPage() {
                 key={index}
                 index={index}
                 dayName={DAY_NAMES[index]}
-                recipe={recipe}
+                entry={recipe}
                 onRecipeClick={handleRecipeClick}
+                onSetTakeaway={handleSetTakeaway}
+                onClearEntry={handleClearEntry}
               />
             ))}
           </div>
@@ -520,7 +552,6 @@ export default function PlannerPage() {
               title="Lenge siden sist"
               recipes={longGap}
               source="longGap"
-              selectedIdSet={selectedIdSet}
               onPick={(recipe) => handlePickFromSource("longGap", recipe)}
             />
 
@@ -528,7 +559,6 @@ export default function PlannerPage() {
               title="Ofte brukt"
               recipes={frequent}
               source="frequent"
-              selectedIdSet={selectedIdSet}
               onPick={(recipe) => handlePickFromSource("frequent", recipe)}
             />
 
@@ -537,7 +567,6 @@ export default function PlannerPage() {
               searchResults={searchResults}
               searchLoading={searchLoading}
               searchError={searchError}
-              selectedIdSet={selectedIdSet}
               onSearchTermChange={setSearchTerm}
               onPick={(recipe) => handlePickFromSource("search", recipe)}
             />

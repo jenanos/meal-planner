@@ -15,6 +15,11 @@ enum MealCategory {
   ANNET
 }
 
+enum WeekPlanEntryType {
+  RECIPE
+  TAKEAWAY
+}
+
 model Recipe {
   id            String         @id @default(uuid()) @db.Uuid
   name          String         @unique @db.Citext
@@ -79,10 +84,11 @@ model WeekPlanEntry {
   id         String @id @default(uuid()) @db.Uuid
   weekPlanId String @db.Uuid
   dayIndex   Int
-  recipeId   String @db.Uuid
+  recipeId   String? @db.Uuid
+  entryType  WeekPlanEntryType @default(RECIPE)
 
   weekPlan WeekPlan @relation(fields: [weekPlanId], references: [id], onDelete: Cascade)
-  recipe   Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  recipe   Recipe?  @relation(fields: [recipeId], references: [id], onDelete: Cascade)
 
   @@unique([weekPlanId, dayIndex])
 }

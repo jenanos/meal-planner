@@ -1,7 +1,7 @@
-import type { DragPayload, DragSource, RecipeDTO, WeekState } from "./types";
+import type { DragPayload, DragSource, RecipeDTO, WeekEntry, WeekState } from "./types";
 
 export function makeEmptyWeek(): WeekState {
-  return Array<RecipeDTO | null>(7).fill(null);
+  return Array<WeekEntry | null>(7).fill(null);
 }
 
 export function lowerIdSet(list: RecipeDTO[]): Set<string> {

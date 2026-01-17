@@ -4,7 +4,10 @@ export type WeekPlanResult = MockWeekPlanResult;
 export type WeekDay = WeekPlanResult["days"][number];
 export type WeekRecipe = WeekDay["recipe"];
 export type RecipeDTO = NonNullable<WeekRecipe>;
-export type WeekState = (RecipeDTO | null)[];
+export type WeekEntry =
+  | { type: "RECIPE"; recipe: RecipeDTO }
+  | { type: "TAKEAWAY" };
+export type WeekState = (WeekEntry | null)[];
 
 export type DragSource = "week" | "longGap" | "frequent" | "search";
 export type DragPayload = { source: DragSource; index: number; recipeId: string };
