@@ -429,11 +429,11 @@ const buildServer = () => {
     {
       title: "List oppskrifter",
       description: "Lister oppskrifter med paginering og valgfritt søk.",
-      inputSchema: RecipeListQuery.optional(),
+      inputSchema: RecipeListQuery,
     },
     async (input): Promise<CallToolResult> => {
       try {
-        const data = await trpcClient.recipe.list.query(input ?? {});
+        const data = await trpcClient.recipe.list.query(input);
         return formatSuccess(data);
       } catch (error) {
         return formatToolError(error, "Kunne ikke hente oppskrifter");
