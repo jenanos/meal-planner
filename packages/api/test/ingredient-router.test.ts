@@ -261,8 +261,18 @@ describe("ingredient router", () => {
 
   it("bulk updates ingredient units", async () => {
     ingredientModel.update
-      .mockResolvedValueOnce({ id: "ing1", name: "Løk", unit: "stk", isPantryItem: false })
-      .mockResolvedValueOnce({ id: "ing2", name: "Mel", unit: "g", isPantryItem: true });
+      .mockResolvedValueOnce({
+        id: "00000000-0000-0000-0000-000000000011",
+        name: "Løk",
+        unit: "stk",
+        isPantryItem: false,
+      })
+      .mockResolvedValueOnce({
+        id: "00000000-0000-0000-0000-000000000012",
+        name: "Mel",
+        unit: "g",
+        isPantryItem: true,
+      });
 
     const caller = createCaller();
     const result = await caller.bulkUpdateUnits({
@@ -291,21 +301,23 @@ describe("ingredient router", () => {
       .mockResolvedValueOnce({ id: "ing2", name: "Mel", unit: "g", isPantryItem: true });
 
     const caller = createCaller();
-    await caller.bulkUpdateUnits({
+    const result = await caller.bulkUpdateUnits({
       updates: [
-        { id: "ing1", unit: " stk " },
-        { id: "ing2", unit: " g " },
+        { id: "00000000-0000-0000-0000-000000000011", unit: " stk " },
+        { id: "00000000-0000-0000-0000-000000000012", unit: " g " },
       ],
     });
 
+    expect(ingredientModel.update).toHaveBeenCalledTimes(2);
     expect(ingredientModel.update).toHaveBeenCalledWith({
-      where: { id: "ing1" },
+      where: { id: "00000000-0000-0000-0000-000000000011" },
       data: { unit: "stk" },
     });
     expect(ingredientModel.update).toHaveBeenCalledWith({
-      where: { id: "ing2" },
+      where: { id: "00000000-0000-0000-0000-000000000012" },
       data: { unit: "g" },
     });
+    expect(result).toEqual({ count: 2 });
   });
 
   it("rejects whitespace-only units during bulk updates", async () => {
@@ -313,9 +325,9 @@ describe("ingredient router", () => {
 
     await expect(
       caller.bulkUpdateUnits({
-        updates: [{ id: "ing1", unit: "   " }],
+        updates: [{ id: "00000000-0000-0000-0000-000000000013", unit: "   " }],
       })
-    ).rejects.toBeInstanceOf(Error);
+    ).rejects.toBeInstanceOf(TRPCError);
   });
 
   it("bulk updates handles failures gracefully", async () => {
