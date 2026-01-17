@@ -373,8 +373,9 @@ function buildSuggestionBuckets(excludeIds: string[]) {
 }
 
 function generateWeekEntries(): WeekPlanEntryRecord[] {
-  const longGap = getSuggestionRecords("longGap", { limit: 14 });
-  const frequent = getSuggestionRecords("frequent", { limit: 14 });
+  const exclude = new Set<string>();
+  const longGap = getSuggestionRecords("longGap", { limit: 14, exclude });
+  const frequent = getSuggestionRecords("frequent", { limit: 14, exclude });
   const all = getAllRecipes();
   const pool = longGap.length ? longGap : frequent.length ? frequent : all;
 
