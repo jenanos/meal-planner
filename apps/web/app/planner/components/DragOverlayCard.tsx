@@ -19,7 +19,10 @@ export function DragOverlayCard({ payload, overIndex, dayNames, week, longGap, f
   if (!payload) return null;
 
   const getRecipe = (): RecipeDTO | null => {
-    if (payload.source === "week") return week[payload.index] ?? null;
+    if (payload.source === "week") {
+      const entry = week[payload.index];
+      return entry?.type === "RECIPE" ? entry.recipe : null;
+    }
     const lists: Record<Exclude<DragPayload["source"], "week">, RecipeDTO[]> = {
       longGap,
       frequent,

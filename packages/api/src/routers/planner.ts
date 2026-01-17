@@ -299,7 +299,7 @@ async function writeWeekPlan(weekStart: Date, days: WeekPlanDayEntryInput[]) {
     const prevCounts = countOccurrences(
       prevEntries
         .filter((entry) => entry.entryType === "RECIPE" && entry.recipeId)
-        .map((entry) => entry.recipeId)
+        .map((entry) => entry.recipeId!)
     );
 
     for (let i = 0 as DayIndex; i < days.length; i = (i + 1) as DayIndex) {
