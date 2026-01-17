@@ -1,7 +1,7 @@
 "use client";
 
 import { useDroppable } from "@dnd-kit/core";
-import type { RecipeDTO, DayName } from "../types";
+import type { DayName, RecipeDTO, WeekEntry } from "../types";
 import { makeDragId } from "../utils";
 import { WeekCard } from "./WeekCard";
 import { DraggableRecipe } from "./DraggableRecipe";
@@ -11,34 +11,48 @@ import { DraggableRecipe } from "./DraggableRecipe";
 type WeekSlotProps = {
   index: number;
   dayName: DayName;
-  recipe: RecipeDTO | null;
+  entry: WeekEntry | null;
   onRecipeClick?: (_recipe: RecipeDTO) => void;
+  onSetTakeaway?: (_index: number) => void;
+  onClearEntry?: (_index: number) => void;
 };
 
-export function WeekSlot({ index, dayName, recipe, onRecipeClick }: WeekSlotProps) {
+export function WeekSlot({ index, dayName, entry, onRecipeClick, onSetTakeaway, onClearEntry }: WeekSlotProps) {
+  const recipe = entry?.type === "RECIPE" ? entry.recipe : null;
+  const entryKey = entry?.type === "TAKEAWAY" ? "takeaway" : recipe?.id || "empty";
   // Use the same format as draggable IDs so parseDragId works
-  const dropId = makeDragId({ source: "week", index, recipeId: recipe?.id || "empty" });
+  const dropId = makeDragId({ source: "week", index, recipeId: entryKey });
   const { isOver, setNodeRef } = useDroppable({ id: dropId });
 
-  if (!recipe) {
+  if (!entry || entry.type === "TAKEAWAY") {
     return (
       <div ref={setNodeRef}>
-        <WeekCard index={index} dayName={dayName} recipe={null} isDraggingTarget={isOver} />
+        <WeekCard
+          index={index}
+          dayName={dayName}
+          recipe={recipe}
+          entryType={entry?.type ?? "EMPTY"}
+          isDraggingTarget={isOver}
+          onSetTakeaway={onSetTakeaway ? () => onSetTakeaway(index) : undefined}
+          onClearEntry={onClearEntry ? () => onClearEntry(index) : undefined}
+        />
       </div>
     );
   }
 
   return (
     <div ref={setNodeRef}>
-      <DraggableRecipe id={makeDragId({ source: "week", index, recipeId: recipe.id })}>
+      <DraggableRecipe id={makeDragId({ source: "week", index, recipeId: entryKey })}>
         {({ setNodeRef: setDragRef, listeners, attributes, style, isDragging }) => (
           <div ref={setDragRef} style={style} {...listeners} {...attributes} data-dragging={isDragging ? "true" : "false"}>
             <WeekCard
               index={index}
               dayName={dayName}
               recipe={recipe}
+              entryType="RECIPE"
               isDraggingTarget={isOver}
               onClick={onRecipeClick ? () => onRecipeClick(recipe) : undefined}
+              onSetTakeaway={onSetTakeaway ? () => onSetTakeaway(index) : undefined}
             />
           </div>
         )}

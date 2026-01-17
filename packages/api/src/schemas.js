@@ -43,7 +43,20 @@ export const PlannerConstraints = z.object({
 });
 export const WeekPlanInput = z.object({
     weekStart: z.string().min(1),
-    recipeIdsByDay: z.array(z.string().uuid().nullable()).length(7),
+    days: z
+        .array(z.union([
+        z.object({
+            type: z.literal("RECIPE"),
+            recipeId: z.string().uuid(),
+        }),
+        z.object({
+            type: z.literal("TAKEAWAY"),
+        }),
+        z.object({
+            type: z.literal("EMPTY"),
+        }),
+    ]))
+        .length(7),
 });
 // Extra shopping items
 export const ExtraItemUpsert = z.object({

@@ -12,7 +12,6 @@ export type SearchSectionProps = {
   searchLoading: boolean;
   searchError: string | null;
   searchResults: RecipeDTO[];
-  selectedIdSet: Set<string>;
   onPick: (_recipe: RecipeDTO) => Promise<void> | void;
   layout?: "grid" | "list";
   title?: string;
@@ -24,7 +23,6 @@ export function SearchSection({
   searchLoading,
   searchError,
   searchResults,
-  selectedIdSet,
   onPick,
   layout = "grid",
   title,
@@ -77,7 +75,6 @@ export function SearchSection({
                     recipe={recipe}
                     source="search"
                     index={index}
-                    isInWeek={selectedIdSet.has(recipe.id)}
                     onPick={() => onPick(recipe)}
                   />
                 </div>

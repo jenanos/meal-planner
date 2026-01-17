@@ -153,9 +153,14 @@ type RecipeRecord = {
 
 type WeekPlanRecord = {
   weekStart: string;
-  recipeIds: (string | null)[];
+  entries: WeekPlanEntryRecord[];
   updatedAt: string | null;
 };
+
+type WeekPlanEntryRecord =
+  | { type: "RECIPE"; recipeId: string }
+  | { type: "TAKEAWAY" }
+  | { type: "EMPTY" };
 
 type ExtraCatalogRecord = { id: string; name: string };
 
@@ -367,27 +372,20 @@ function buildSuggestionBuckets(excludeIds: string[]) {
   };
 }
 
-function generateWeekRecipeIds(): (string | null)[] {
-  const chosen: (string | null)[] = Array(7).fill(null);
-  const exclude = new Set<string>();
-  const pushRecipes = (records: RecipeRecord[]) => {
-    for (const recipe of records) {
-      if (exclude.has(recipe.id)) continue;
-      const idx = chosen.findIndex((slot) => slot == null);
-      if (idx === -1) break;
-      chosen[idx] = recipe.id;
-      exclude.add(recipe.id);
-    }
-  };
+function generateWeekEntries(): WeekPlanEntryRecord[] {
+  const longGap = getSuggestionRecords("longGap", { limit: 14 });
+  const frequent = getSuggestionRecords("frequent", { limit: 14 });
+  const all = getAllRecipes();
+  const pool = longGap.length ? longGap : frequent.length ? frequent : all;
 
-  pushRecipes(getSuggestionRecords("longGap", { limit: 14, exclude }));
-  if (chosen.some((slot) => slot == null)) {
-    pushRecipes(getSuggestionRecords("frequent", { limit: 14, exclude }));
+  if (!pool.length) {
+    return Array.from({ length: 7 }, () => ({ type: "EMPTY" } as WeekPlanEntryRecord));
   }
-  if (chosen.some((slot) => slot == null)) {
-    pushRecipes(getAllRecipes());
-  }
-  return chosen;
+
+  return Array.from({ length: 7 }, (_, idx) => ({
+    type: "RECIPE",
+    recipeId: pool[idx % pool.length].id,
+  }));
 }
 
 function ensureWeekPlan(weekStart: string) {
@@ -396,7 +394,7 @@ function ensureWeekPlan(weekStart: string) {
   if (!plan) {
     plan = {
       weekStart: key,
-      recipeIds: generateWeekRecipeIds(),
+      entries: generateWeekEntries(),
       updatedAt: new Date().toISOString(),
     };
     state.weekPlans.set(key, plan);
@@ -405,16 +403,32 @@ function ensureWeekPlan(weekStart: string) {
 }
 
 function serializeWeekPlan(plan: WeekPlanRecord) {
-  const days = plan.recipeIds.map((id, index) => ({
-    dayIndex: index,
-    recipe: id ? serializeRecipe(state.recipesById.get(id)!) : null,
-  }));
-  const exclude = plan.recipeIds.filter((id): id is string => Boolean(id));
+  const days = plan.entries.map((entry, index) => {
+    if (entry.type === "RECIPE") {
+      return {
+        dayIndex: index,
+        entryType: "RECIPE" as const,
+        recipe: serializeRecipe(state.recipesById.get(entry.recipeId)!),
+      };
+    }
+    if (entry.type === "TAKEAWAY") {
+      return {
+        dayIndex: index,
+        entryType: "TAKEAWAY" as const,
+        recipe: null,
+      };
+    }
+    return {
+      dayIndex: index,
+      entryType: "EMPTY" as const,
+      recipe: null,
+    };
+  });
   return {
     weekStart: plan.weekStart,
     updatedAt: plan.updatedAt,
     days,
-    suggestions: buildSuggestionBuckets(exclude),
+    suggestions: buildSuggestionBuckets([]),
   };
 }
 
@@ -452,9 +466,9 @@ function aggregateShopping(weekStarts: string[]) {
 
   for (const week of weekStarts) {
     const plan = ensureWeekPlan(week);
-    plan.recipeIds.forEach((recipeId, dayIndex) => {
-      if (!recipeId) return;
-      const recipe = state.recipesById.get(recipeId);
+    plan.entries.forEach((entry, dayIndex) => {
+      if (entry.type !== "RECIPE") return;
+      const recipe = state.recipesById.get(entry.recipeId);
       if (!recipe) return;
       recipe.ingredients.forEach((ing) => {
         const unitKey = ing.unit ?? "";
@@ -741,10 +755,9 @@ async function handleWeekPlan(input: any) {
 
 async function handleGenerateWeekPlan(input: any) {
   const weekStart = startOfWeekISO(input?.weekStart);
-  const recipeIds = generateWeekRecipeIds();
   const plan: WeekPlanRecord = {
     weekStart,
-    recipeIds,
+    entries: generateWeekEntries(),
     updatedAt: new Date().toISOString(),
   };
   state.weekPlans.set(weekStart, plan);
@@ -753,15 +766,23 @@ async function handleGenerateWeekPlan(input: any) {
 
 async function handleSaveWeekPlan(input: any) {
   const weekStart = startOfWeekISO(input?.weekStart);
-  const recipeIds: (string | null)[] = Array.isArray(input?.recipeIdsByDay)
-    ? input.recipeIdsByDay.map((id: any) => (typeof id === "string" ? id : null)).slice(0, 7)
+  const entries: WeekPlanEntryRecord[] = Array.isArray(input?.days)
+    ? input.days.slice(0, 7).map((entry: any) => {
+        if (entry?.type === "RECIPE" && typeof entry?.recipeId === "string") {
+          return { type: "RECIPE", recipeId: entry.recipeId };
+        }
+        if (entry?.type === "TAKEAWAY") {
+          return { type: "TAKEAWAY" };
+        }
+        return { type: "EMPTY" };
+      })
     : [];
-  while (recipeIds.length < 7) {
-    recipeIds.push(null);
+  while (entries.length < 7) {
+    entries.push({ type: "EMPTY" });
   }
   const plan: WeekPlanRecord = {
     weekStart,
-    recipeIds,
+    entries,
     updatedAt: new Date().toISOString(),
   };
   state.weekPlans.set(weekStart, plan);
@@ -784,7 +805,7 @@ async function handleWeekTimeline(input: any) {
       weekStart: weekIso,
       weekEnd: addDaysISO(weekIso, 6),
       updatedAt: plan.updatedAt,
-      hasEntries: plan.recipeIds.some((id) => Boolean(id)),
+      hasEntries: plan.entries.some((entry) => entry.type !== "EMPTY"),
     });
   }
 

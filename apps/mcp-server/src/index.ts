@@ -8,7 +8,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import * as z from "zod";
 
 const weekStartSchema = WeekPlanInput.shape.weekStart;
-const recipeIdsByDaySchema = WeekPlanInput.shape.recipeIdsByDay;
+const weekDaysSchema = WeekPlanInput.shape.days;
 
 const mealsApiOrigin =
   process.env.MEALS_API_INTERNAL_ORIGIN ??
@@ -112,14 +112,14 @@ const buildServer = () => {
       description: "Oppdaterer ukesplanen for en uke med 7 oppføringer.",
       inputSchema: z.object({
         weekStart: weekStartSchema.describe("ISO-dato for uke-start (mandag)."),
-        recipeIdsByDay: recipeIdsByDaySchema,
+        days: weekDaysSchema,
       }),
     },
-    async ({ weekStart, recipeIdsByDay }): Promise<CallToolResult> => {
+    async ({ weekStart, days }): Promise<CallToolResult> => {
       try {
         const data = await trpcClient.planner.saveWeekPlan.mutate({
           weekStart,
-          recipeIdsByDay,
+          days,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(data, null, 2) }],

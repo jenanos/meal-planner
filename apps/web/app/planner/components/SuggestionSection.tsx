@@ -9,7 +9,6 @@ export type SuggestionSectionProps = {
   title: string;
   recipes: RecipeDTO[];
   source: "longGap" | "frequent";
-  selectedIdSet: Set<string>;
   onPick: (_recipe: RecipeDTO) => Promise<void> | void;
   emptyText?: string;
   layout?: "grid" | "list";
@@ -19,7 +18,6 @@ export function SuggestionSection({
   title,
   recipes,
   source,
-  selectedIdSet,
   onPick,
   emptyText = "Ingen forslag akkurat nå",
   layout = "grid",
@@ -48,7 +46,6 @@ export function SuggestionSection({
                     recipe={recipe}
                     source={source}
                     index={index}
-                    isInWeek={selectedIdSet.has(recipe.id)}
                     onPick={() => {
                       if (isDragging) return; // don't trigger pick while dragging
                       onPick(recipe);

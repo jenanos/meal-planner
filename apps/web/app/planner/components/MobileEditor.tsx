@@ -11,7 +11,6 @@ import { SearchSection } from "./SearchSection";
 export type MobileEditorProps = {
   week: WeekState;
   dayNames: readonly DayName[];
-  selectedIdSet: Set<string>;
   longGap: RecipeDTO[];
   frequent: RecipeDTO[];
   searchTerm: string;
@@ -28,12 +27,13 @@ export type MobileEditorProps = {
     _recipe: RecipeDTO
   ) => Promise<void> | void;
   onRecipeClick?: (_recipe: RecipeDTO) => void;
+  onSetTakeaway?: (_index: number) => void;
+  onClearEntry?: (_index: number) => void;
 };
 
 export function MobileEditor({
   week,
   dayNames,
-  selectedIdSet,
   longGap,
   frequent,
   searchTerm,
@@ -47,18 +47,22 @@ export function MobileEditor({
   onSearchTermChange,
   onPickFromSource,
   onRecipeClick,
+  onSetTakeaway,
+  onClearEntry,
 }: MobileEditorProps) {
   if (!isMobileEditorOpen) {
     return (
       <div className="space-y-3">
         <div className="flex flex-col gap-2">
-          {week.map((recipe, index) => (
+          {week.map((entry, index) => (
             <WeekSlot
               key={index}
               index={index}
               dayName={dayNames[index]}
-              recipe={recipe}
+              entry={entry}
               onRecipeClick={onRecipeClick}
+              onSetTakeaway={onSetTakeaway}
+              onClearEntry={onClearEntry}
             />
           ))}
         </div>
@@ -82,13 +86,15 @@ export function MobileEditor({
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-2">
-          {week.map((recipe, index) => (
+          {week.map((entry, index) => (
             <WeekSlot
               key={index}
               index={index}
               dayName={dayNames[index]}
-              recipe={recipe}
+              entry={entry}
               onRecipeClick={onRecipeClick}
+              onSetTakeaway={onSetTakeaway}
+              onClearEntry={onClearEntry}
             />
           ))}
         </div>
@@ -118,14 +124,12 @@ export function MobileEditor({
               searchLoading={searchLoading}
               searchError={searchError}
               searchResults={searchResults}
-              selectedIdSet={selectedIdSet}
               onPick={(recipe) => onPickFromSource("search", recipe)}
             />
           ) : (
             <div className="flex flex-col gap-2">
               {suggestions.length ? (
                 suggestions.map((recipe, index) => {
-                  const isInWeek = selectedIdSet.has(recipe.id);
                   return (
                     <DraggableRecipe
                       key={recipe.id}
@@ -137,9 +141,7 @@ export function MobileEditor({
                             recipe={recipe}
                             source={mobileEditorView}
                             index={index}
-                            isInWeek={isInWeek}
                             onPick={() => {
-                              if (isInWeek) return;
                               onPickFromSource(mobileEditorView, recipe);
                             }}
                           />
