@@ -51,7 +51,7 @@ export function WeekSlot({ index, dayName, entry, onRecipeClick, onSetTakeaway, 
               recipe={recipe}
               entryType="RECIPE"
               isDraggingTarget={isOver}
-              onClick={onRecipeClick ? () => onRecipeClick(recipe) : undefined}
+              onClick={recipe && onRecipeClick ? () => onRecipeClick(recipe) : undefined}
               onSetTakeaway={onSetTakeaway ? () => onSetTakeaway(index) : undefined}
             />
           </div>
