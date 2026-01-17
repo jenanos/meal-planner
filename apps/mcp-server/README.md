@@ -7,6 +7,25 @@ This service exposes a Model Context Protocol (MCP) server that maps MCP tools t
 - `get-week-plan` → `planner.getWeekPlan`
 - `generate-week-plan` → `planner.generateWeekPlan`
 - `save-week-plan` → `planner.saveWeekPlan`
+- `get-shopping-list` → `planner.shoppingList`
+- `update-shopping-item` → `planner.updateShoppingItem`
+- `update-shopping-items-by-name` → `planner.shoppingList` + `planner.updateShoppingItem`
+- `suggest-extra-shopping-items` → `planner.extraSuggest`
+- `add-extra-shopping-item` → `planner.extraToggle`
+- `remove-extra-shopping-item` → `planner.extraRemove`
+- `add-extra-item-to-catalog` → `planner.extraAdd`
+- `list-ingredients` → `ingredient.list`
+- `create-ingredient` → `ingredient.create`
+- `update-ingredient` → `ingredient.update`
+- `get-ingredient-with-recipes` → `ingredient.getWithRecipes`
+- `get-ingredients-without-unit` → `ingredient.listWithoutUnit`
+- `get-potential-duplicate-ingredients` → `ingredient.listPotentialDuplicates`
+- `bulk-update-ingredient-units` → `ingredient.bulkUpdateUnits`
+- `list-recipes` → `recipe.list`
+- `get-recipe` → `recipe.getById`
+- `create-recipe` → `recipe.create`
+- `update-recipe` → `recipe.update`
+- `delete-recipe` → `recipe.delete`
 
 ## Configuration
 
