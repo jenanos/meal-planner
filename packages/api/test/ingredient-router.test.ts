@@ -216,10 +216,63 @@ describe("ingredient router", () => {
     expect(hasLokGroup).toBe(true);
   });
 
+  it("skips ingredients that normalize to empty in duplicate grouping", async () => {
+    ingredientModel.findMany.mockResolvedValueOnce([
+      {
+        id: "ing1",
+        name: "!!!",
+        unit: "stk",
+        isPantryItem: false,
+        _count: { recipes: 0 },
+      },
+      {
+        id: "ing2",
+        name: "  ",
+        unit: "g",
+        isPantryItem: false,
+        _count: { recipes: 1 },
+      },
+      {
+        id: "ing3",
+        name: "Løk",
+        unit: "stk",
+        isPantryItem: false,
+        _count: { recipes: 2 },
+      },
+      {
+        id: "ing4",
+        name: "Løk, rød",
+        unit: "stk",
+        isPantryItem: false,
+        _count: { recipes: 3 },
+      },
+    ]);
+
+    const caller = createCaller();
+    const result = await caller.listPotentialDuplicates();
+
+    expect(result.length).toBe(1);
+    const onlyGroup = result[0];
+    expect(onlyGroup).toEqual([
+      { id: "ing3", name: "Løk", unit: "stk", usageCount: 2, isPantryItem: false },
+      { id: "ing4", name: "Løk, rød", unit: "stk", usageCount: 3, isPantryItem: false },
+    ]);
+  });
+
   it("bulk updates ingredient units", async () => {
     ingredientModel.update
-      .mockResolvedValueOnce({ id: "ing1", name: "Løk", unit: "stk", isPantryItem: false })
-      .mockResolvedValueOnce({ id: "ing2", name: "Mel", unit: "g", isPantryItem: true });
+      .mockResolvedValueOnce({
+        id: "00000000-0000-0000-0000-000000000011",
+        name: "Løk",
+        unit: "stk",
+        isPantryItem: false,
+      })
+      .mockResolvedValueOnce({
+        id: "00000000-0000-0000-0000-000000000012",
+        name: "Mel",
+        unit: "g",
+        isPantryItem: true,
+      });
 
     const caller = createCaller();
     const result = await caller.bulkUpdateUnits({
@@ -240,6 +293,41 @@ describe("ingredient router", () => {
     });
 
     expect(result).toEqual({ count: 2 });
+  });
+
+  it("trims units during bulk updates", async () => {
+    ingredientModel.update
+      .mockResolvedValueOnce({ id: "ing1", name: "Løk", unit: "stk", isPantryItem: false })
+      .mockResolvedValueOnce({ id: "ing2", name: "Mel", unit: "g", isPantryItem: true });
+
+    const caller = createCaller();
+    const result = await caller.bulkUpdateUnits({
+      updates: [
+        { id: "00000000-0000-0000-0000-000000000011", unit: " stk " },
+        { id: "00000000-0000-0000-0000-000000000012", unit: " g " },
+      ],
+    });
+
+    expect(ingredientModel.update).toHaveBeenCalledTimes(2);
+    expect(ingredientModel.update).toHaveBeenCalledWith({
+      where: { id: "00000000-0000-0000-0000-000000000011" },
+      data: { unit: "stk" },
+    });
+    expect(ingredientModel.update).toHaveBeenCalledWith({
+      where: { id: "00000000-0000-0000-0000-000000000012" },
+      data: { unit: "g" },
+    });
+    expect(result).toEqual({ count: 2 });
+  });
+
+  it("rejects whitespace-only units during bulk updates", async () => {
+    const caller = createCaller();
+
+    await expect(
+      caller.bulkUpdateUnits({
+        updates: [{ id: "00000000-0000-0000-0000-000000000013", unit: "   " }],
+      })
+    ).rejects.toBeInstanceOf(TRPCError);
   });
 
   it("bulk updates handles failures gracefully", async () => {
