@@ -158,7 +158,7 @@ const buildServer = () => {
           );
         const data = await trpcClient.planner.saveWeekPlan.mutate({
           weekStart,
-          days: normalizedDays,
+          days: normalizedDays!,
         });
         return formatSuccess(data);
       } catch (error) {
