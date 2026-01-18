@@ -142,7 +142,7 @@ const buildServer = () => {
           recipeIdsByDay: recipeIdsByDaySchema
             .optional()
             .describe(
-              "Liste med 7 oppskrift-IDer (eller null) som mappe til ukedager."
+              "Liste med 7 oppskrift-IDer (eller null) som mapper til ukedager."
             ),
         })
         .refine((value) => value.days || value.recipeIdsByDay, {
@@ -156,10 +156,6 @@ const buildServer = () => {
           recipeIdsByDay?.map((recipeId) =>
             recipeId ? { type: "RECIPE", recipeId } : { type: "EMPTY" }
           );
-
-        if (!normalizedDays) {
-          throw new Error("Må sende inn days eller recipeIdsByDay.");
-        }
         const data = await trpcClient.planner.saveWeekPlan.mutate({
           weekStart,
           days: normalizedDays,
