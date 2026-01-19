@@ -19,6 +19,7 @@ This service exposes a Model Context Protocol (MCP) server that maps MCP tools t
 - `update-ingredient` → `ingredient.update`
 - `get-ingredient-with-recipes` → `ingredient.getWithRecipes`
 - `get-ingredients-without-unit` → `ingredient.listWithoutUnit`
+- `bulk-update-missing-ingredient-units` → `ingredient.listWithoutUnit` + `ingredient.bulkUpdateUnits`
 - `get-potential-duplicate-ingredients` → `ingredient.listPotentialDuplicates`
 - `bulk-update-ingredient-units` → `ingredient.bulkUpdateUnits`
 - `list-recipes` → `recipe.list`

@@ -99,7 +99,7 @@ Key settings:
 
 ## 🤖 MCP server (optional)
 
-The MCP server exposes Meal Planner actions (weekly plan fetch/generate/save) through the Model Context Protocol. It runs as a Streamable HTTP MCP endpoint at `/mcp` and talks to the existing `meals-api` tRPC service.
+The MCP server exposes Meal Planner actions (weekly plan, shopping list, ingredients, and recipes) through the Model Context Protocol. It runs as a Streamable HTTP MCP endpoint at `/mcp` and talks to the existing `meals-api` tRPC service. See `apps/mcp-server/README.md` for the full tool list.
 
 ```bash
 cp apps/mcp-server/.env.example apps/mcp-server/.env
