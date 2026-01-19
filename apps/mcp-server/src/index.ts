@@ -345,7 +345,7 @@ const buildServer = () => {
           .array(
             z.object({
               name: z.string().min(1).describe("Ingrediensnavn som mangler enhet"),
-              unit: z.string().min(1).describe("Enhet som skal settes"),
+              unit: z.string().trim().min(1).describe("Enhet som skal settes"),
             })
           )
           .min(1)
@@ -423,7 +423,7 @@ const buildServer = () => {
       inputSchema: z.object({
         updates: z.array(z.object({
           id: z.string().uuid().describe("Ingrediens-ID"),
-          unit: z.string().min(1).describe("Ny enhet"),
+          unit: z.string().trim().min(1).describe("Ny enhet"),
         })).describe("Liste med oppdateringer"),
       }),
     },
