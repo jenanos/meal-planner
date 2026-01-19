@@ -24,6 +24,9 @@ import * as z from "zod";
 
 const weekStartSchema = WeekPlanInput.shape.weekStart;
 const weekDaysSchema = WeekPlanInput.shape.days;
+const recipeIdsByDaySchema = z
+  .array(z.string().uuid().nullable())
+  .length(7);
 
 const mealsApiOrigin =
   process.env.MEALS_API_INTERNAL_ORIGIN ??
@@ -132,16 +135,30 @@ const buildServer = () => {
     {
       title: "Lagre ukesplan",
       description: "Oppdaterer ukesplanen for en uke med 7 oppføringer.",
-      inputSchema: z.object({
-        weekStart: weekStartSchema.describe("ISO-dato for uke-start (mandag)."),
-        days: weekDaysSchema,
-      }),
+      inputSchema: z
+        .object({
+          weekStart: weekStartSchema.describe("ISO-dato for uke-start (mandag)."),
+          days: weekDaysSchema.optional(),
+          recipeIdsByDay: recipeIdsByDaySchema
+            .optional()
+            .describe(
+              "Liste med 7 oppskrift-IDer (eller null) som mapper til ukedager."
+            ),
+        })
+        .refine((value) => value.days || value.recipeIdsByDay, {
+          message: "Må sette enten days eller recipeIdsByDay.",
+        }),
     },
-    async ({ weekStart, days }): Promise<CallToolResult> => {
+    async ({ weekStart, days, recipeIdsByDay }): Promise<CallToolResult> => {
       try {
+        const normalizedDays =
+          days ??
+          recipeIdsByDay?.map((recipeId) =>
+            recipeId ? { type: "RECIPE", recipeId } : { type: "EMPTY" }
+          );
         const data = await trpcClient.planner.saveWeekPlan.mutate({
           weekStart,
-          days,
+          days: normalizedDays!,
         });
         return formatSuccess(data);
       } catch (error) {
