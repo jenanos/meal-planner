@@ -335,6 +335,70 @@ const buildServer = () => {
   );
 
   server.registerTool(
+    "bulk-update-missing-ingredient-units",
+    {
+      title: "Oppdater manglende ingrediens-enheter",
+      description:
+        "Oppdaterer enheter for ingredienser som mangler enhet ved å matche på navn.",
+      inputSchema: z.object({
+        updates: z
+          .array(
+            z.object({
+              name: z.string().min(1).describe("Ingrediensnavn som mangler enhet"),
+              unit: z.string().min(1).describe("Enhet som skal settes"),
+            })
+          )
+          .min(1)
+          .describe("Liste med navn og enheter som skal oppdateres"),
+      }),
+    },
+    async ({ updates }): Promise<CallToolResult> => {
+      try {
+        const missingUnits = await trpcClient.ingredient.listWithoutUnit.query();
+        const byName = new Map<string, typeof missingUnits>();
+        for (const item of missingUnits) {
+          const key = normalizeName(item.name);
+          if (!byName.has(key)) {
+            byName.set(key, []);
+          }
+          byName.get(key)!.push(item);
+        }
+
+        const resolved: Array<{ id: string; name: string; unit: string }> = [];
+        const missing: string[] = [];
+        for (const update of updates) {
+          const key = normalizeName(update.name);
+          const matches = byName.get(key);
+          if (!matches || matches.length === 0) {
+            missing.push(update.name);
+            continue;
+          }
+          for (const match of matches) {
+            resolved.push({ id: match.id, name: match.name, unit: update.unit });
+          }
+        }
+
+        if (resolved.length === 0) {
+          return formatSuccess({ ok: true, updated: [], missing });
+        }
+
+        const data = await trpcClient.ingredient.bulkUpdateUnits.mutate({
+          updates: resolved.map((update) => ({ id: update.id, unit: update.unit })),
+        });
+
+        return formatSuccess({
+          ok: true,
+          updated: resolved,
+          missing,
+          count: data.count,
+        });
+      } catch (error) {
+        return formatToolError(error, "Kunne ikke oppdatere manglende ingrediens-enheter");
+      }
+    }
+  );
+
+  server.registerTool(
     "get-potential-duplicate-ingredients",
     {
       title: "Finn potensielle duplikater",
