@@ -12,6 +12,8 @@ This service exposes a Model Context Protocol (MCP) server that maps MCP tools t
 - `update-shopping-items-by-name` → `planner.shoppingList` + `planner.updateShoppingItem`
 - `suggest-extra-shopping-items` → `planner.extraSuggest`
 - `add-extra-shopping-item` → `planner.extraToggle`
+- `smart-add-extra-shopping-item` → `planner.extraSuggest` + `planner.extraToggle` (med duplikatsjekk)
+- `batch-add-extra-shopping-items` → `planner.extraSuggest` + `planner.extraToggle` (bulk med duplikatsjekk)
 - `remove-extra-shopping-item` → `planner.extraRemove`
 - `add-extra-item-to-catalog` → `planner.extraAdd`
 - `list-ingredients` → `ingredient.list`

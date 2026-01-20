@@ -115,6 +115,9 @@ const buildServer = () => {
           .describe("ISO-dato for uke-start (valgfri)."),
         constraints: PlannerConstraints.optional(),
       }),
+      annotations: {
+        readOnlyHint: false,
+      },
     },
     async ({ weekStart, constraints }): Promise<CallToolResult> => {
       try {
@@ -148,6 +151,9 @@ const buildServer = () => {
         .refine((value) => value.days || value.recipeIdsByDay, {
           message: "Må sette enten days eller recipeIdsByDay.",
         }),
+      annotations: {
+        readOnlyHint: false,
+      },
     },
     async ({ weekStart, days, recipeIdsByDay }): Promise<CallToolResult> => {
       try {
@@ -209,6 +215,9 @@ const buildServer = () => {
           .optional(),
         checked: z.boolean().describe("Om elementet er krysset av"),
       }),
+      annotations: {
+        readOnlyHint: false,
+      },
     },
     async ({ ingredientId, unit, weeks, occurrences, checked }): Promise<CallToolResult> => {
       try {
@@ -241,6 +250,9 @@ const buildServer = () => {
         checked: z.boolean().optional().describe("Sett til false for å fjerne avhuking."),
         includeNextWeek: z.boolean().optional().describe("Se også på neste uke ved matching."),
       }),
+      annotations: {
+        readOnlyHint: false,
+      },
     },
     async ({ weekStart, ingredientNames, checked, includeNextWeek }): Promise<CallToolResult> => {
       try {
@@ -351,6 +363,9 @@ const buildServer = () => {
           .min(1)
           .describe("Liste med navn og enheter som skal oppdateres"),
       }),
+      annotations: {
+        readOnlyHint: false,
+      },
     },
     async ({ updates }): Promise<CallToolResult> => {
       try {
@@ -426,6 +441,9 @@ const buildServer = () => {
           unit: z.string().trim().min(1).describe("Ny enhet"),
         })).describe("Liste med oppdateringer"),
       }),
+      annotations: {
+        readOnlyHint: false,
+      },
     },
     async ({ updates }): Promise<CallToolResult> => {
       try {
@@ -458,8 +476,13 @@ const buildServer = () => {
     "create-ingredient",
     {
       title: "Opprett ingrediens",
-      description: "Oppretter eller oppdaterer en ingrediens basert på navn.",
+      description: 
+        "Oppretter en ny ingrediens i databasen, eller oppdaterer en eksisterende basert på navn. " +
+        "Bruk dette for å legge til nye ingredienser som ikke finnes fra før.",
       inputSchema: IngredientCreate,
+      annotations: {
+        readOnlyHint: false,
+      },
     },
     async (input): Promise<CallToolResult> => {
       try {
@@ -475,8 +498,15 @@ const buildServer = () => {
     "update-ingredient",
     {
       title: "Oppdater ingrediens",
-      description: "Oppdaterer navn, enhet eller pantry-status for en ingrediens.",
+      description: 
+        "Oppdaterer en eksisterende ingrediens i databasen. " +
+        "Du MÅ oppgi ingrediens-ID (uuid). " +
+        "Du kan oppdatere: navn, enhet (f.eks. 'stk', 'dl', 'g'), eller pantry-status. " +
+        "Bruk dette verktøyet etter å ha funnet ingredienser med 'list-ingredients' eller 'get-ingredients-without-unit'.",
       inputSchema: IngredientUpdate,
+      annotations: {
+        readOnlyHint: false,
+      },
     },
     async (input): Promise<CallToolResult> => {
       try {
@@ -543,8 +573,13 @@ const buildServer = () => {
     "create-recipe",
     {
       title: "Opprett oppskrift",
-      description: "Oppretter en ny oppskrift og tilknyttede ingredienser.",
+      description: 
+        "Oppretter en ny oppskrift med tilknyttede ingredienser. " +
+        "Ingredienser som ikke finnes i databasen vil bli opprettet automatisk.",
       inputSchema: RecipeCreate,
+      annotations: {
+        readOnlyHint: false,
+      },
     },
     async (input): Promise<CallToolResult> => {
       try {
@@ -560,8 +595,14 @@ const buildServer = () => {
     "update-recipe",
     {
       title: "Oppdater oppskrift",
-      description: "Oppdaterer en eksisterende oppskrift og ingredienser.",
+      description: 
+        "Oppdaterer en eksisterende oppskrift og dens ingredienser. " +
+        "Du MÅ oppgi oppskrift-ID (uuid). " +
+        "Bruk 'list-recipes' eller 'get-recipe' først for å finne oppskriften.",
       inputSchema: RecipeUpdate,
+      annotations: {
+        readOnlyHint: false,
+      },
     },
     async (input): Promise<CallToolResult> => {
       try {
@@ -579,6 +620,9 @@ const buildServer = () => {
       title: "Slett oppskrift",
       description: "Sletter en oppskrift basert på ID.",
       inputSchema: z.object({ id: z.string().uuid() }),
+      annotations: {
+        readOnlyHint: false,
+      },
     },
     async (input): Promise<CallToolResult> => {
       try {
@@ -614,6 +658,9 @@ const buildServer = () => {
       description:
         "Legger til et ekstra element på handlelisten for en uke (oppretter katalogelement hvis nødvendig).",
       inputSchema: ExtraShoppingToggle,
+      annotations: {
+        readOnlyHint: false,
+      },
     },
     async (input): Promise<CallToolResult> => {
       try {
@@ -626,11 +673,136 @@ const buildServer = () => {
   );
 
   server.registerTool(
+    "smart-add-extra-shopping-item",
+    {
+      title: "Legg til ekstra handleliste-element (smart)",
+      description: 
+        "Legger til et ekstra element på handlelisten for en uke. " +
+        "Søker først etter eksisterende lignende elementer i katalogen og bruker disse om de finnes. " +
+        "Oppretter kun nye elementer hvis det ikke finnes noe lignende fra før.",
+      inputSchema: z.object({
+        weekStart: z.string().min(1).describe("ISO-dato for uke-start (mandag)."),
+        name: z.string().min(1).describe("Navn på elementet som skal legges til."),
+        checked: z.boolean().optional().describe("Om elementet er avkrysset (standard: false)."),
+      }),
+      annotations: {
+        readOnlyHint: false,
+      },
+    },
+    async ({ weekStart, name, checked }): Promise<CallToolResult> => {
+      try {
+        const trimmedName = name.trim();
+        const normalizedInput = normalizeName(trimmedName);
+        
+        // Søk etter lignende elementer i katalogen
+        const suggestions = await trpcClient.planner.extraSuggest.query({ search: trimmedName });
+        
+        // Finn eksakt match (case-insensitive)
+        const exactMatch = suggestions.find(
+          (s) => normalizeName(s.name) === normalizedInput
+        );
+        
+        // Finn delvis match hvis ingen eksakt match
+        const partialMatch = !exactMatch 
+          ? suggestions.find((s) => 
+              normalizeName(s.name).includes(normalizedInput) || 
+              normalizedInput.includes(normalizeName(s.name))
+            )
+          : undefined;
+        
+        const matchedName = exactMatch?.name ?? partialMatch?.name ?? trimmedName;
+        const usedExisting = Boolean(exactMatch || partialMatch);
+        
+        // Legg til på handlelisten
+        const data = await trpcClient.planner.extraToggle.mutate({
+          weekStart,
+          name: matchedName,
+          checked: checked ?? false,
+        });
+        
+        return formatSuccess({
+          ...data,
+          name: matchedName,
+          usedExistingCatalogItem: usedExisting,
+          originalInput: trimmedName,
+          matchType: exactMatch ? "exact" : partialMatch ? "partial" : "new",
+        });
+      } catch (error) {
+        return formatToolError(error, "Kunne ikke legge til ekstra handleliste-element");
+      }
+    }
+  );
+
+  server.registerTool(
+    "batch-add-extra-shopping-items",
+    {
+      title: "Legg til flere ekstra handleliste-elementer",
+      description: 
+        "Legger til flere ekstra elementer på handlelisten for en uke. " +
+        "Søker etter eksisterende lignende elementer og gjenbruker disse for å unngå duplikater.",
+      inputSchema: z.object({
+        weekStart: z.string().min(1).describe("ISO-dato for uke-start (mandag)."),
+        items: z.array(z.string().min(1)).min(1).describe("Liste med elementnavn som skal legges til."),
+      }),
+      annotations: {
+        readOnlyHint: false,
+      },
+    },
+    async ({ weekStart, items }): Promise<CallToolResult> => {
+      try {
+        const results: Array<{ name: string; usedExisting: boolean; matchType: string }> = [];
+        
+        for (const itemName of items) {
+          const trimmedName = itemName.trim();
+          const normalizedInput = normalizeName(trimmedName);
+          
+          const suggestions = await trpcClient.planner.extraSuggest.query({ search: trimmedName });
+          
+          const exactMatch = suggestions.find(
+            (s) => normalizeName(s.name) === normalizedInput
+          );
+          const partialMatch = !exactMatch 
+            ? suggestions.find((s) => 
+                normalizeName(s.name).includes(normalizedInput) || 
+                normalizedInput.includes(normalizeName(s.name))
+              )
+            : undefined;
+          
+          const matchedName = exactMatch?.name ?? partialMatch?.name ?? trimmedName;
+          
+          await trpcClient.planner.extraToggle.mutate({
+            weekStart,
+            name: matchedName,
+            checked: false,
+          });
+          
+          results.push({
+            name: matchedName,
+            usedExisting: Boolean(exactMatch || partialMatch),
+            matchType: exactMatch ? "exact" : partialMatch ? "partial" : "new",
+          });
+        }
+        
+        return formatSuccess({
+          ok: true,
+          added: results,
+          count: results.length,
+        });
+      } catch (error) {
+        return formatToolError(error, "Kunne ikke legge til ekstra handleliste-elementer");
+      }
+    }
+  );
+
+  server.registerTool(
     "remove-extra-shopping-item",
     {
       title: "Fjern ekstra handleliste-element",
       description: "Fjerner et ekstra handleliste-element fra en uke.",
       inputSchema: ExtraShoppingRemove,
+      annotations: {
+        readOnlyHint: false,
+      },
     },
     async (input): Promise<CallToolResult> => {
       try {
@@ -648,6 +820,9 @@ const buildServer = () => {
       title: "Legg til ekstra-element i katalog",
       description: "Legger til et element i ekstra-handlelistekatalogen uten å legge det på en uke.",
       inputSchema: ExtraItemUpsert,
+      annotations: {
+        readOnlyHint: false,
+      },
     },
     async (input): Promise<CallToolResult> => {
       try {
