@@ -21,7 +21,7 @@ import {
   SelectContent,
   SelectItem,
 } from "@repo/ui";
-import { X } from "lucide-react";
+import { ChevronDown, ChevronUp, X } from "lucide-react";
 import { DayFilterDropdown } from "./components/day-filter-dropdown";
 import {
   ShoppingListDayView,
@@ -44,6 +44,7 @@ export default function ShoppingListPage() {
   const [checkedByOccurrence, setCheckedByOccurrence] = useState<Record<string, boolean>>({});
   const [visibleDayKeys, setVisibleDayKeys] = useState<string[]>([]);
   const [removedKeys, setRemovedKeys] = useState<Set<string>>(new Set());
+  const [expandedDetailsKeys, setExpandedDetailsKeys] = useState<Set<string>>(new Set());
   const previousOptionKeysRef = useRef<string[]>([]);
   // Extras UI state
   const [isAddExtraOpen, setIsAddExtraOpen] = useState(false);
@@ -260,6 +261,18 @@ export default function ShoppingListPage() {
       (candidate) =>
         candidate.weekStart === match.weekStart && candidate.dayIndex === match.dayIndex
     ) ?? null;
+  }
+
+  function toggleDetails(key: string) {
+    setExpandedDetailsKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
   }
 
   function toggleAllOccurrences(item: ShoppingListItem) {
@@ -490,6 +503,8 @@ export default function ShoppingListPage() {
       const key = `${item.ingredientId}::${item.unit ?? ""}`;
       if (removedKeys.has(key)) return null;
       const checked = areAllOccurrencesChecked(item);
+      const isExpanded = expandedDetailsKeys.has(key);
+      const showDetailsToggle = item.details.length > 0;
       const quantityLabel =
         item.totalQuantity != null && item.unit !== null
           ? formatQuantity(item.totalQuantity, item.unit)
@@ -516,27 +531,67 @@ export default function ShoppingListPage() {
                 </div>
               </div>
               {item.details.length ? (
-                <div className="flex flex-wrap gap-2 w-full">
-                  {item.details.map((detail, index) => {
-                    const detailLabel =
-                      detail.quantity != null
-                        ? formatQuantity(detail.quantity, detail.unit ?? item.unit)
-                        : undefined;
-                    const hsl = FALL_BADGE_PALETTE[index % FALL_BADGE_PALETTE.length];
-                    return (
-                      <Badge
-                        key={`${detail.recipeId}-${index}`}
-                        className={`border-0 text-[11px] font-medium text-white ${checked ? "opacity-70" : ""}`}
-                        style={{ backgroundColor: `hsl(${hsl})` }}
-                      >
-                        {detail.recipeName}
-                        {detailLabel ? ` – ${detailLabel}` : ""}
-                      </Badge>
-                    );
-                  })}
-                </div>
+                <>
+                  <div className="hidden md:flex flex-wrap gap-2 w-full">
+                    {item.details.map((detail, index) => {
+                      const detailLabel =
+                        detail.quantity != null
+                          ? formatQuantity(detail.quantity, detail.unit ?? item.unit)
+                          : undefined;
+                      const hsl = FALL_BADGE_PALETTE[index % FALL_BADGE_PALETTE.length];
+                      return (
+                        <Badge
+                          key={`${detail.recipeId}-${index}`}
+                          className={`border-0 text-[11px] font-medium text-white ${checked ? "opacity-70" : ""}`}
+                          style={{ backgroundColor: `hsl(${hsl})` }}
+                        >
+                          {detail.recipeName}
+                          {detailLabel ? ` – ${detailLabel}` : ""}
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                  {isExpanded ? (
+                    <div className="flex md:hidden flex-wrap gap-2 w-full">
+                      {item.details.map((detail, index) => {
+                        const detailLabel =
+                          detail.quantity != null
+                            ? formatQuantity(detail.quantity, detail.unit ?? item.unit)
+                            : undefined;
+                        const hsl = FALL_BADGE_PALETTE[index % FALL_BADGE_PALETTE.length];
+                        return (
+                          <Badge
+                            key={`${detail.recipeId}-${index}`}
+                            className={`border-0 text-[11px] font-medium text-white ${checked ? "opacity-70" : ""}`}
+                            style={{ backgroundColor: `hsl(${hsl})` }}
+                          >
+                            {detail.recipeName}
+                            {detailLabel ? ` – ${detailLabel}` : ""}
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </>
               ) : null}
             </div>
+            {showDetailsToggle ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="md:hidden text-gray-500 shrink-0 self-center"
+                aria-label={
+                  isExpanded
+                    ? `Skjul detaljer for ${item.name} i handlelisten`
+                    : `Vis detaljer for ${item.name} i handlelisten`
+                }
+                onClick={() => toggleDetails(key)}
+                title={isExpanded ? "Skjul detaljer" : "Vis detaljer"}
+              >
+                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="ghost"
