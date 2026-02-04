@@ -36,7 +36,7 @@ import { makeEmptyWeek, parseDragId } from "./utils";
 // Custom drop animation for smoother feel
 const dropAnimationConfig: DropAnimation = {
   duration: 200,
-  easing: "cubic-bezier(0.18, 0.67, 0.6, 1.22)",
+  easing: "cubic-bezier(0.25, 0.1, 0.25, 1.0)",
 };
 
 const DAY_NAMES = [
