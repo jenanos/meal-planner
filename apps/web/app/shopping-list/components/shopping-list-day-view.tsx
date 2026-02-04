@@ -120,6 +120,21 @@ export function ShoppingListDayView({
               const occurrenceKey = getOccurrenceKey(item, occurrence);
               const showDetailsToggle = item.details.length > 0;
               const isExpanded = expandedDetailsKeys.has(occurrenceKey);
+              const detailBadges = item.details.map((detail, index) => {
+                const detailLabel =
+                  detail.quantity != null ? formatQuantity(detail.quantity, detail.unit ?? item.unit) : undefined;
+                const hsl = FALL_BADGE_PALETTE[index % FALL_BADGE_PALETTE.length];
+                return (
+                  <Badge
+                    key={`${detail.recipeId}-${index}`}
+                    className={`border-0 text-[11px] font-medium text-white ${checked ? "opacity-70" : ""}`}
+                    style={{ backgroundColor: `hsl(${hsl})` }}
+                  >
+                    {detail.recipeName}
+                    {detailLabel ? ` – ${detailLabel}` : ""}
+                  </Badge>
+                );
+              });
 
               return (
                 <li key={occurrenceKey} className={`border rounded-lg p-3 bg-white ${checked ? "opacity-75" : ""}`}>
@@ -143,45 +158,9 @@ export function ShoppingListDayView({
                       ) : null}
                       {item.details.length ? (
                         <>
-                          <div className="hidden md:flex flex-wrap gap-2 w-full">
-                            {item.details.map((detail, index) => {
-                              const detailLabel =
-                                detail.quantity != null
-                                  ? formatQuantity(detail.quantity, detail.unit ?? item.unit)
-                                  : undefined;
-                              const hsl = FALL_BADGE_PALETTE[index % FALL_BADGE_PALETTE.length];
-                              return (
-                                <Badge
-                                  key={`${detail.recipeId}-${index}`}
-                                  className={`border-0 text-[11px] font-medium text-white ${checked ? "opacity-70" : ""}`}
-                                  style={{ backgroundColor: `hsl(${hsl})` }}
-                                >
-                                  {detail.recipeName}
-                                  {detailLabel ? ` – ${detailLabel}` : ""}
-                                </Badge>
-                              );
-                            })}
-                          </div>
+                          <div className="hidden md:flex flex-wrap gap-2 w-full">{detailBadges}</div>
                           {isExpanded ? (
-                            <div className="flex md:hidden flex-wrap gap-2 w-full">
-                              {item.details.map((detail, index) => {
-                                const detailLabel =
-                                  detail.quantity != null
-                                    ? formatQuantity(detail.quantity, detail.unit ?? item.unit)
-                                    : undefined;
-                                const hsl = FALL_BADGE_PALETTE[index % FALL_BADGE_PALETTE.length];
-                                return (
-                                  <Badge
-                                    key={`${detail.recipeId}-${index}`}
-                                    className={`border-0 text-[11px] font-medium text-white ${checked ? "opacity-70" : ""}`}
-                                    style={{ backgroundColor: `hsl(${hsl})` }}
-                                  >
-                                    {detail.recipeName}
-                                    {detailLabel ? ` – ${detailLabel}` : ""}
-                                  </Badge>
-                                );
-                              })}
-                            </div>
+                            <div className="flex md:hidden flex-wrap gap-2 w-full">{detailBadges}</div>
                           ) : null}
                         </>
                       ) : null}

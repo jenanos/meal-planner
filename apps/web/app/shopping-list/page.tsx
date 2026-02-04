@@ -203,7 +203,7 @@ export default function ShoppingListPage() {
     return `${selected.length} dager`;
   }, [occurrenceOptions, visibleDayKeySet, visibleDayKeys.length]);
 
-  const viewModeLabel = viewMode === "by-day" ? "Etter ukesplan" : "Alfabetisk";
+  const viewModeLabel = viewMode === "by-day" ? "Ukesplan" : "Alfabetisk";
   const settingsLabel = `${viewModeLabel}${
     viewMode === "by-day" ? ` · ${dayFilterLabel}` : ""
   }${includeNextWeek ? " · Neste uke" : ""}`;
@@ -511,6 +511,21 @@ export default function ShoppingListPage() {
       const checked = areAllOccurrencesChecked(item);
       const isExpanded = expandedDetailsKeys.has(key);
       const showDetailsToggle = item.details.length > 0;
+      const detailBadges = item.details.map((detail, index) => {
+        const detailLabel =
+          detail.quantity != null ? formatQuantity(detail.quantity, detail.unit ?? item.unit) : undefined;
+        const hsl = FALL_BADGE_PALETTE[index % FALL_BADGE_PALETTE.length];
+        return (
+          <Badge
+            key={`${detail.recipeId}-${index}`}
+            className={`border-0 text-[11px] font-medium text-white ${checked ? "opacity-70" : ""}`}
+            style={{ backgroundColor: `hsl(${hsl})` }}
+          >
+            {detail.recipeName}
+            {detailLabel ? ` – ${detailLabel}` : ""}
+          </Badge>
+        );
+      });
       const quantityLabel =
         item.totalQuantity != null && item.unit !== null
           ? formatQuantity(item.totalQuantity, item.unit)
@@ -538,45 +553,9 @@ export default function ShoppingListPage() {
               </div>
               {item.details.length ? (
                 <>
-                  <div className="hidden md:flex flex-wrap gap-2 w-full">
-                    {item.details.map((detail, index) => {
-                      const detailLabel =
-                        detail.quantity != null
-                          ? formatQuantity(detail.quantity, detail.unit ?? item.unit)
-                          : undefined;
-                      const hsl = FALL_BADGE_PALETTE[index % FALL_BADGE_PALETTE.length];
-                      return (
-                        <Badge
-                          key={`${detail.recipeId}-${index}`}
-                          className={`border-0 text-[11px] font-medium text-white ${checked ? "opacity-70" : ""}`}
-                          style={{ backgroundColor: `hsl(${hsl})` }}
-                        >
-                          {detail.recipeName}
-                          {detailLabel ? ` – ${detailLabel}` : ""}
-                        </Badge>
-                      );
-                    })}
-                  </div>
+                  <div className="hidden md:flex flex-wrap gap-2 w-full">{detailBadges}</div>
                   {isExpanded ? (
-                    <div className="flex md:hidden flex-wrap gap-2 w-full">
-                      {item.details.map((detail, index) => {
-                        const detailLabel =
-                          detail.quantity != null
-                            ? formatQuantity(detail.quantity, detail.unit ?? item.unit)
-                            : undefined;
-                        const hsl = FALL_BADGE_PALETTE[index % FALL_BADGE_PALETTE.length];
-                        return (
-                          <Badge
-                            key={`${detail.recipeId}-${index}`}
-                            className={`border-0 text-[11px] font-medium text-white ${checked ? "opacity-70" : ""}`}
-                            style={{ backgroundColor: `hsl(${hsl})` }}
-                          >
-                            {detail.recipeName}
-                            {detailLabel ? ` – ${detailLabel}` : ""}
-                          </Badge>
-                        );
-                      })}
-                    </div>
+                    <div className="flex md:hidden flex-wrap gap-2 w-full">{detailBadges}</div>
                   ) : null}
                 </>
               ) : null}
@@ -641,7 +620,7 @@ export default function ShoppingListPage() {
                 value={viewMode}
                 onValueChange={(value) => setViewMode(value as "by-day" | "alphabetical")}
               >
-                <DropdownMenuRadioItem value="by-day">Etter ukesplan</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="by-day">Ukesplan</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="alphabetical">Alfabetisk</DropdownMenuRadioItem>
               </DropdownMenuRadioGroup>
               <DropdownMenuSeparator />
