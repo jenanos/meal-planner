@@ -14,15 +14,16 @@ import {
   DialogTitle,
   DialogDescription,
   DialogTrigger,
-  Separator,
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuCheckboxItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
 } from "@repo/ui";
-import { X } from "lucide-react";
-import { DayFilterDropdown } from "./components/day-filter-dropdown";
+import { ChevronDown, ChevronUp, X } from "lucide-react";
 import {
   ShoppingListDayView,
   type ShoppingListDaySection,
@@ -44,6 +45,7 @@ export default function ShoppingListPage() {
   const [checkedByOccurrence, setCheckedByOccurrence] = useState<Record<string, boolean>>({});
   const [visibleDayKeys, setVisibleDayKeys] = useState<string[]>([]);
   const [removedKeys, setRemovedKeys] = useState<Set<string>>(new Set());
+  const [expandedDetailsKeys, setExpandedDetailsKeys] = useState<Set<string>>(new Set());
   const previousOptionKeysRef = useRef<string[]>([]);
   // Extras UI state
   const [isAddExtraOpen, setIsAddExtraOpen] = useState(false);
@@ -201,6 +203,11 @@ export default function ShoppingListPage() {
     return `${selected.length} dager`;
   }, [occurrenceOptions, visibleDayKeySet, visibleDayKeys.length]);
 
+  const viewModeLabel = viewMode === "by-day" ? "Ukesplan" : "Alfabetisk";
+  const settingsLabel = `${viewModeLabel}${
+    viewMode === "by-day" ? ` · ${dayFilterLabel}` : ""
+  }${includeNextWeek ? " · Neste uke" : ""}`;
+
   const { regularItems, pantryItems } = useMemo(() => {
     const regularUnchecked: ShoppingListItem[] = [];
     const regularChecked: ShoppingListItem[] = [];
@@ -260,6 +267,18 @@ export default function ShoppingListPage() {
       (candidate) =>
         candidate.weekStart === match.weekStart && candidate.dayIndex === match.dayIndex
     ) ?? null;
+  }
+
+  function toggleDetails(key: string) {
+    setExpandedDetailsKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
   }
 
   function toggleAllOccurrences(item: ShoppingListItem) {
@@ -490,6 +509,23 @@ export default function ShoppingListPage() {
       const key = `${item.ingredientId}::${item.unit ?? ""}`;
       if (removedKeys.has(key)) return null;
       const checked = areAllOccurrencesChecked(item);
+      const isExpanded = expandedDetailsKeys.has(key);
+      const showDetailsToggle = item.details.length > 0;
+      const detailBadges = item.details.map((detail, index) => {
+        const detailLabel =
+          detail.quantity != null ? formatQuantity(detail.quantity, detail.unit ?? item.unit) : undefined;
+        const hsl = FALL_BADGE_PALETTE[index % FALL_BADGE_PALETTE.length];
+        return (
+          <Badge
+            key={`${detail.recipeId}-${index}`}
+            className={`border-0 text-[11px] font-medium text-white ${checked ? "opacity-70" : ""}`}
+            style={{ backgroundColor: `hsl(${hsl})` }}
+          >
+            {detail.recipeName}
+            {detailLabel ? ` – ${detailLabel}` : ""}
+          </Badge>
+        );
+      });
       const quantityLabel =
         item.totalQuantity != null && item.unit !== null
           ? formatQuantity(item.totalQuantity, item.unit)
@@ -516,27 +552,31 @@ export default function ShoppingListPage() {
                 </div>
               </div>
               {item.details.length ? (
-                <div className="flex flex-wrap gap-2 w-full">
-                  {item.details.map((detail, index) => {
-                    const detailLabel =
-                      detail.quantity != null
-                        ? formatQuantity(detail.quantity, detail.unit ?? item.unit)
-                        : undefined;
-                    const hsl = FALL_BADGE_PALETTE[index % FALL_BADGE_PALETTE.length];
-                    return (
-                      <Badge
-                        key={`${detail.recipeId}-${index}`}
-                        className={`border-0 text-[11px] font-medium text-white ${checked ? "opacity-70" : ""}`}
-                        style={{ backgroundColor: `hsl(${hsl})` }}
-                      >
-                        {detail.recipeName}
-                        {detailLabel ? ` – ${detailLabel}` : ""}
-                      </Badge>
-                    );
-                  })}
-                </div>
+                <>
+                  <div className="hidden md:flex flex-wrap gap-2 w-full">{detailBadges}</div>
+                  {isExpanded ? (
+                    <div className="flex md:hidden flex-wrap gap-2 w-full">{detailBadges}</div>
+                  ) : null}
+                </>
               ) : null}
             </div>
+            {showDetailsToggle ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="md:hidden text-gray-500 shrink-0 self-center"
+                aria-label={
+                  isExpanded
+                    ? `Skjul detaljer for ${item.name} i handlelisten`
+                    : `Vis detaljer for ${item.name} i handlelisten`
+                }
+                onClick={() => toggleDetails(key)}
+                title={isExpanded ? "Skjul detaljer" : "Vis detaljer"}
+              >
+                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="ghost"
@@ -567,16 +607,56 @@ export default function ShoppingListPage() {
 
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-row sm:items-center sm:justify-between">
-          <Button
-            type="button"
-            variant={includeNextWeek ? "default" : "outline"}
-            size="sm"
-            onClick={() => setIncludeNextWeek((prev) => !prev)}
-            aria-pressed={includeNextWeek}
-            className="w-full sm:w-auto"
-          >
-            {includeNextWeek ? "Fjern neste uke" : "Inkluder neste uke"}
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="outline" size="sm" className="w-full sm:w-auto justify-between gap-2">
+                {settingsLabel}
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-72">
+              <DropdownMenuLabel>Visning</DropdownMenuLabel>
+              <DropdownMenuRadioGroup
+                value={viewMode}
+                onValueChange={(value) => setViewMode(value as "by-day" | "alphabetical")}
+              >
+                <DropdownMenuRadioItem value="by-day">Ukesplan</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="alphabetical">Alfabetisk</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuCheckboxItem
+                checked={includeNextWeek}
+                onCheckedChange={() => setIncludeNextWeek((prev) => !prev)}
+              >
+                Inkluder neste uke
+              </DropdownMenuCheckboxItem>
+              {viewMode === "by-day" && occurrenceOptions.length > 0 ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Vis dager</DropdownMenuLabel>
+                  {occurrenceOptions.map((option) => (
+                    <DropdownMenuCheckboxItem
+                      key={option.key}
+                      checked={visibleDayKeySet.has(option.key)}
+                      onCheckedChange={(checked) => toggleDayKey(option.key, Boolean(checked))}
+                    >
+                      {option.weekdayLabel} ({option.shortLabel})
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuCheckboxItem
+                    checked={visibleDayKeys.length === occurrenceOptions.length}
+                    onCheckedChange={() => setVisibleDayKeys(occurrenceOptions.map((option) => option.key))}
+                  >
+                    Velg alle dager
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem checked={visibleDayKeys.length === 0} onCheckedChange={() => setVisibleDayKeys([])}>
+                    Velg ingen dager
+                  </DropdownMenuCheckboxItem>
+                </>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <div className="w-full justify-self-end sm:w-auto sm:justify-self-end sm:ml-auto">
             <Dialog open={isAddExtraOpen} onOpenChange={setIsAddExtraOpen}>
               <DialogTrigger asChild>
@@ -652,29 +732,8 @@ export default function ShoppingListPage() {
             </Dialog>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-3 justify-between">
-          <Select value={viewMode} onValueChange={(value) => setViewMode(value as "by-day" | "alphabetical")}>
-            <SelectTrigger className="h-9 w-[180px]">
-              <SelectValue placeholder="Velg visning" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="by-day">Etter ukesplan</SelectItem>
-              <SelectItem value="alphabetical">Alfabetisk</SelectItem>
-            </SelectContent>
-          </Select>
-          <div className="flex items-center gap-3">
-            {viewMode === "by-day" && occurrenceOptions.length > 0 ? (
-              <DayFilterDropdown
-                label={dayFilterLabel}
-                options={occurrenceOptions}
-                selectedKeys={visibleDayKeySet}
-                onToggle={toggleDayKey}
-                onSelectAll={() => setVisibleDayKeys(occurrenceOptions.map((option) => option.key))}
-                onSelectNone={() => setVisibleDayKeys([])}
-              />
-            ) : null}
-            {isFetching && <span className="text-xs text-gray-500">Oppdaterer…</span>}
-          </div>
+        <div className="flex items-center gap-3 justify-end">
+          {isFetching && <span className="text-xs text-gray-500">Oppdaterer…</span>}
         </div>
       </div>
 
@@ -687,24 +746,9 @@ export default function ShoppingListPage() {
       ) : !regularItems.length && !pantryItems.length ? (
         <p className="text-sm text-gray-500">Ingen oppskrifter valgt for denne uken ennå.</p>
       ) : (
-        <div className="max-w-2xl mx-auto w-full">
-          {viewMode === "alphabetical" ? (
-            <ul className="space-y-3">{renderAlphabeticalItems(regularItems)}</ul>
-          ) : (
-            <ShoppingListDayView
-              sections={daySections}
-              getOccurrenceKey={getOccurrenceKey}
-              isOccurrenceChecked={isOccurrenceChecked}
-              getFirstCheckedOccurrence={getFirstCheckedOccurrence}
-              onToggleOccurrence={toggleSingleOccurrence}
-              onRemoveItem={removeItem}
-              removedKeys={removedKeys}
-            />
-          )}
-          {/* Extras section */}
-          <div className="my-6">
-            <Separator className="my-4" />
-            <h2 className="text-sm font-semibold mb-2">Andre ting</h2>
+        <div className="max-w-2xl mx-auto w-full space-y-6">
+          <section className="rounded-2xl border border-emerald-200/60 bg-emerald-50/40 p-4">
+            <h2 className="text-sm font-semibold mb-2">Egne elementer</h2>
             {extras.length === 0 ? (
               <p className="text-sm text-muted-foreground">Ingen egne elementer ennå.</p>
             ) : (
@@ -736,16 +780,31 @@ export default function ShoppingListPage() {
                 ))}
               </ul>
             )}
-          </div>
-          <div className="my-6">
-            <Separator className="my-4" />
-            <h2 className="text-sm font-semibold mb-2">Sjekk at du har dette:</h2>
+          </section>
+          <section className="rounded-2xl border border-orange-200/60 bg-orange-50/40 p-4">
+            <h2 className="text-sm font-semibold mb-2">Ukesplan</h2>
+            {viewMode === "alphabetical" ? (
+              <ul className="space-y-3">{renderAlphabeticalItems(regularItems)}</ul>
+            ) : (
+              <ShoppingListDayView
+                sections={daySections}
+                getOccurrenceKey={getOccurrenceKey}
+                isOccurrenceChecked={isOccurrenceChecked}
+                getFirstCheckedOccurrence={getFirstCheckedOccurrence}
+                onToggleOccurrence={toggleSingleOccurrence}
+                onRemoveItem={removeItem}
+                removedKeys={removedKeys}
+              />
+            )}
+          </section>
+          <section className="rounded-2xl border border-slate-200/70 bg-slate-50/50 p-4">
+            <h2 className="text-sm font-semibold mb-2">Basisvarer</h2>
             {pantryItems.length === 0 ? (
               <p className="text-sm text-muted-foreground">Ingen basisvarer i ukesplanen.</p>
             ) : (
               <ul className="space-y-3">{renderAlphabeticalItems(pantryItems)}</ul>
             )}
-          </div>
+          </section>
         </div>
       )}
     </div>
