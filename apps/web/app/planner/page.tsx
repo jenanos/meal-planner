@@ -25,12 +25,19 @@ import {
   useSensors,
   closestCenter,
 } from "@dnd-kit/core";
+import type { DropAnimation } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
 import { createPortal } from "react-dom";
 
 import type { DragPayload, RecipeDTO, WeekEntry, WeekPlanResult, WeekState } from "./types";
 import type { MockWeekTimelineResult } from "../../lib/mock/store";
 import { makeEmptyWeek, parseDragId } from "./utils";
+
+// Custom drop animation for smoother feel
+const dropAnimationConfig: DropAnimation = {
+  duration: 200,
+  easing: "cubic-bezier(0.25, 0.1, 0.25, 1.0)",
+};
 
 const DAY_NAMES = [
   "Mandag",
@@ -61,13 +68,13 @@ export default function PlannerPage() {
   const sensors = useSensors(
     useSensor(MouseSensor, {
       activationConstraint: {
-        distance: 10,
+        distance: 8,
       },
     }),
     useSensor(TouchSensor, {
       activationConstraint: {
-        delay: 250,
-        tolerance: 5,
+        delay: 150,
+        tolerance: 8,
       },
     })
   );
@@ -502,7 +509,7 @@ export default function PlannerPage() {
 
           {typeof document !== "undefined" &&
             createPortal(
-              <DragOverlay>
+              <DragOverlay dropAnimation={dropAnimationConfig}>
                 {activeDragRecipe ? (
                   <div className="p-6 bg-gradient-to-br from-blue-500 to-purple-600 text-white rounded-xl shadow-2xl border-2 border-white/20 min-w-[200px]">
                     <div className="flex flex-col items-center gap-2 text-center">
@@ -574,7 +581,7 @@ export default function PlannerPage() {
 
           {typeof document !== "undefined" &&
             createPortal(
-              <DragOverlay>
+              <DragOverlay dropAnimation={dropAnimationConfig}>
                 {activeDragRecipe ? (
                   <div className="p-6 bg-gradient-to-br from-blue-500 to-purple-600 text-white rounded-xl shadow-2xl border-2 border-white/20 min-w-[200px]">
                     <div className="flex flex-col items-center gap-2 text-center">
