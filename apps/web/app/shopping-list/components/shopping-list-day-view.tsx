@@ -1,7 +1,8 @@
 "use client";
 
 import { Badge, Button } from "@repo/ui";
-import { X } from "lucide-react";
+import { ChevronDown, ChevronUp, X } from "lucide-react";
+import { useState } from "react";
 import { formatQuantity, FALL_BADGE_PALETTE } from "../utils";
 import type { ShoppingListItem, ShoppingListOccurrence } from "../types";
 
@@ -38,6 +39,20 @@ export function ShoppingListDayView({
   onRemoveItem,
   removedKeys,
 }: ShoppingListDayViewProps) {
+  const [expandedDetailsKeys, setExpandedDetailsKeys] = useState<Set<string>>(new Set());
+
+  const toggleDetails = (key: string) => {
+    setExpandedDetailsKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
   if (!sections.length) {
     return <p className="text-sm text-gray-500">Ingen dager valgt.</p>;
   }
@@ -102,12 +117,12 @@ export function ShoppingListDayView({
               const purchasedHint = firstChecked
                 ? `Kjøpt for ${firstChecked.weekdayLabel.toLowerCase()} - sjekk at vi har nok av dette`
                 : null;
+              const occurrenceKey = getOccurrenceKey(item, occurrence);
+              const showDetailsToggle = item.details.length > 0;
+              const isExpanded = expandedDetailsKeys.has(occurrenceKey);
 
               return (
-                <li
-                  key={getOccurrenceKey(item, occurrence)}
-                  className={`border rounded-lg p-3 bg-white ${checked ? "opacity-75" : ""}`}
-                >
+                <li key={occurrenceKey} className={`border rounded-lg p-3 bg-white ${checked ? "opacity-75" : ""}`}>
                   <div className="flex items-start gap-3">
                     <input
                       type="checkbox"
@@ -127,27 +142,67 @@ export function ShoppingListDayView({
                         <div className="text-xs text-emerald-600">{purchasedHint}</div>
                       ) : null}
                       {item.details.length ? (
-                        <div className="flex flex-wrap gap-2 w-full">
-                          {item.details.map((detail, index) => {
-                            const detailLabel =
-                              detail.quantity != null
-                                ? formatQuantity(detail.quantity, detail.unit ?? item.unit)
-                                : undefined;
-                            const hsl = FALL_BADGE_PALETTE[index % FALL_BADGE_PALETTE.length];
-                            return (
-                              <Badge
-                                key={`${detail.recipeId}-${index}`}
-                                className={`border-0 text-[11px] font-medium text-white ${checked ? "opacity-70" : ""}`}
-                                style={{ backgroundColor: `hsl(${hsl})` }}
-                              >
-                                {detail.recipeName}
-                                {detailLabel ? ` – ${detailLabel}` : ""}
-                              </Badge>
-                            );
-                          })}
-                        </div>
+                        <>
+                          <div className="hidden md:flex flex-wrap gap-2 w-full">
+                            {item.details.map((detail, index) => {
+                              const detailLabel =
+                                detail.quantity != null
+                                  ? formatQuantity(detail.quantity, detail.unit ?? item.unit)
+                                  : undefined;
+                              const hsl = FALL_BADGE_PALETTE[index % FALL_BADGE_PALETTE.length];
+                              return (
+                                <Badge
+                                  key={`${detail.recipeId}-${index}`}
+                                  className={`border-0 text-[11px] font-medium text-white ${checked ? "opacity-70" : ""}`}
+                                  style={{ backgroundColor: `hsl(${hsl})` }}
+                                >
+                                  {detail.recipeName}
+                                  {detailLabel ? ` – ${detailLabel}` : ""}
+                                </Badge>
+                              );
+                            })}
+                          </div>
+                          {isExpanded ? (
+                            <div className="flex md:hidden flex-wrap gap-2 w-full">
+                              {item.details.map((detail, index) => {
+                                const detailLabel =
+                                  detail.quantity != null
+                                    ? formatQuantity(detail.quantity, detail.unit ?? item.unit)
+                                    : undefined;
+                                const hsl = FALL_BADGE_PALETTE[index % FALL_BADGE_PALETTE.length];
+                                return (
+                                  <Badge
+                                    key={`${detail.recipeId}-${index}`}
+                                    className={`border-0 text-[11px] font-medium text-white ${checked ? "opacity-70" : ""}`}
+                                    style={{ backgroundColor: `hsl(${hsl})` }}
+                                  >
+                                    {detail.recipeName}
+                                    {detailLabel ? ` – ${detailLabel}` : ""}
+                                  </Badge>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+                        </>
                       ) : null}
                     </div>
+                    {showDetailsToggle ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="md:hidden text-gray-500 shrink-0 self-center"
+                        aria-label={
+                          isExpanded
+                            ? `Skjul detaljer for ${item.name} i handlelisten`
+                            : `Vis detaljer for ${item.name} i handlelisten`
+                        }
+                        onClick={() => toggleDetails(occurrenceKey)}
+                        title={isExpanded ? "Skjul detaljer" : "Vis detaljer"}
+                      >
+                        {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                      </Button>
+                    ) : null}
                     <Button
                       type="button"
                       variant="ghost"
