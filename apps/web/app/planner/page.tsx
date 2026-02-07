@@ -110,6 +110,7 @@ export default function PlannerPage() {
 
   const {
     dialogContentClassName,
+    viewDialogContentClassName,
     isEditDialogOpen,
     onFormOpenChange,
     openCreate,
@@ -165,6 +166,8 @@ export default function PlannerPage() {
   });
 
   const handleRecipeClick = useCallback((recipe: RecipeDTO) => {
+    // Close the picker modal first to prevent overlapping dialogs
+    setEditingDayIndex(null);
     openView(recipe.id);
   }, [openView]);
 
@@ -485,7 +488,7 @@ export default function PlannerPage() {
       <RecipeViewDialog
         open={isViewDialogOpen}
         onOpenChange={onViewOpenChange}
-        dialogContentClassName={dialogContentClassName}
+        dialogContentClassName={viewDialogContentClassName}
         viewRecipe={viewRecipe}
         viewCurrentStep={viewCurrentStep}
         viewCarouselApi={viewCarouselApi}
