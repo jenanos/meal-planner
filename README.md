@@ -6,6 +6,42 @@ Meal Planner is a pnpm-powered Turborepo monorepo for planning dinners, managing
 
 ---
 
+## 🚀 Quick Start (Hybrid Dev)
+
+**Forutsetninger**: Node.js 20+, pnpm 10+, Docker
+
+```bash
+# 1. Installer avhengigheter
+pnpm install
+
+# 2. Opprett miljøkonfigurasjon
+cp .env.example .env.local
+# Rediger .env.local med ønskede verdier
+
+# 3. Start Postgres i Docker (krever POSTGRES_PASSWORD)
+export POSTGRES_PASSWORD=<ditt-passord>
+docker compose up -d
+
+# 4. Kjør migrasjoner og seed
+pnpm db:migrate:dev
+pnpm db:seed
+
+# 5. Start alle tjenester via Turborepo
+turbo dev
+```
+
+**Tilgjengelige URLer:**
+- 🌐 Frontend: [http://localhost:3000](http://localhost:3000)
+- 🔌 API: [http://localhost:4000/ready](http://localhost:4000/ready)
+- 🤖 MCP Server: [http://localhost:5050/mcp](http://localhost:5050/mcp)
+
+**Nyttige kommandoer:**
+- `turbo dev` – Start alle tjenester parallelt med Turborepo
+- `pnpm db:studio` – Åpne Prisma Studio for å se/redigere data
+- `pnpm mcp:inspect` – Start MCP Inspector for å teste MCP-verktøy
+
+---
+
 ## 🏎️ Turborepo at a glance
 
 This workspace is orchestrated by [Turborepo](https://turbo.build/repo), a high-performance build system for JavaScript/TypeScript codebases. Turborepo parallelises your tasks, shares build artifacts through caching, and lets every package keep using familiar `package.json` scripts. You can adopt it incrementally—`turbo.json` declares how commands relate (`dev`, `build`, `lint`, database utilities, etc.), while `pnpm` continues to manage dependencies. Run any workspace task through Turbo with `pnpm <script>` (for example `pnpm dev` or `pnpm lint`) and it automatically schedules the necessary subtasks.
