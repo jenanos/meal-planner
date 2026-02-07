@@ -20,6 +20,7 @@
     "build": "tsc -b",
     "check-types": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
+    "dev": "tsc -b -w",
     "test": "vitest"
   }
 }
