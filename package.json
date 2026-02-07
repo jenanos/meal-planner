@@ -10,10 +10,12 @@
     "db:migrate:dev": "turbo run db:migrate:dev",
     "db:push": "turbo run db:push",
     "db:seed": "turbo run db:seed",
+    "db:studio": "pnpm --filter @repo/database studio",
     "dev": "turbo run dev",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "generate": "turbo run generate",
-    "lint": "turbo run lint"
+    "lint": "turbo run lint",
+    "mcp:inspect": "npx -y @anthropic/mcp-inspector"
   },
   "devDependencies": {
     "prettier": "^3.2.5",
