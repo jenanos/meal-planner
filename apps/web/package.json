@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start -H 0.0.0.0 -p 3000",
     "lint": "eslint . --max-warnings 0",
+    "check-types": "tsc --noEmit",
     "test:e2e": "playwright test"
   },
   "dependencies": {

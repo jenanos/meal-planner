@@ -16,6 +16,8 @@
   },
   "scripts": {
     "build": "tsc -b",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
     "generate": "prisma generate",
     "postinstall": "prisma generate",
     "format": "prisma format",
