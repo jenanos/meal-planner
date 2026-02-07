@@ -15,8 +15,8 @@ Meal Planner is a pnpm-powered Turborepo monorepo for planning dinners, managing
 pnpm install
 
 # 2. Opprett miljøkonfigurasjon
-cp .env.example .env.local
-# Rediger .env.local med ønskede verdier
+cp .env.example .env
+# Rediger .env med ønskede verdier
 
 # 3. Start Postgres i Docker (krever POSTGRES_PASSWORD)
 export POSTGRES_PASSWORD=<ditt-passord>
@@ -27,7 +27,7 @@ pnpm db:migrate:dev
 pnpm db:seed
 
 # 5. Start alle tjenester via Turborepo
-turbo dev
+pnpm dev
 ```
 
 **Tilgjengelige URLer:**
@@ -36,7 +36,7 @@ turbo dev
 - 🤖 MCP Server: [http://localhost:5050/mcp](http://localhost:5050/mcp)
 
 **Nyttige kommandoer:**
-- `turbo dev` – Start alle tjenester parallelt med Turborepo
+- `pnpm dev` – Start alle tjenester parallelt med Turborepo
 - `pnpm db:studio` – Åpne Prisma Studio for å se/redigere data
 - `pnpm mcp:inspect` – Start MCP Inspector for å teste MCP-verktøy
 
@@ -207,15 +207,6 @@ pnpm --filter web test:e2e   # Playwright end-to-end tests (headless)
 
 ---
 
-## 📦 Production & Docker
-
-- `docker-compose.prod.yml` orchestrates Postgres, the API, and the web app with health checks and internal networking.
-- Build arguments ensure the frontend uses the internal proxy (`/api`) while server-side rendering calls the API service directly.
-- Provide a `.env.production` file with Postgres credentials and optional `SEED_ON_START` for the API container.
-
-For a simpler setup, you can also run `docker compose up --build` with custom override files to mimic production locally.
-
----
 
 ## 🆘 Troubleshooting tips
 
@@ -228,3 +219,31 @@ For a simpler setup, you can also run `docker compose up --build` with custom ov
 ## 📄 License
 
 The project inherits the license defined in the repository. Review `LICENSE` (if present) before distribution.
+
+---
+
+## 🤖 AI Assistant Instructions
+
+This repository is optimized for Turborepo. When assisting with code changes, please follow these guidelines:
+
+1.  **Run Tasks via Turbo**: Use `pnpm <script>` or `turbo run <script>` to leverage caching and parallel execution.
+    *   **Full Build**: `pnpm build` (runs `turbo run build`)
+    *   **Type Check**: `pnpm check-types` (runs `turbo run check-types` across all packages without emitting files)
+    *   **Lint**: `pnpm lint` (runs `turbo run lint`)
+    *   **Dev Server**: `pnpm dev` (starts all apps and packages in watch mode)
+
+2.  **Package Scoping**: When working on a specific package or app, use the `--filter` flag.
+    *   Example: `pnpm --filter web add button` (adds dependency to web app)
+    *   Example: `pnpm --filter @repo/ui test` (runs tests for UI package only)
+
+3.  **File Structure**:
+    *   `apps/` contains deployable applications (`web`, `server`, etc.).
+    *   `packages/` contains shared libraries (`ui`, `database`, `api`, etc.).
+    *   Do not edit `pnpm-lock.yaml` manually.
+
+4.  **Database**:
+    *   Interact with the database using scripts in `@repo/database`.
+    *   Migration: `pnpm --filter @repo/database db:migrate:dev`
+    *   Studio: `pnpm --filter @repo/database studio`
+
+5.  **New Packages**: If creating a new package, remember to add it to `pnpm-workspace.yaml` (if not covered by glob) and configure `package.json` with `"name": "@repo/<name>"` and `"private": true`.

@@ -192,21 +192,20 @@ export default function ShoppingListPage() {
   const visibleDayKeySet = useMemo(() => new Set(visibleDayKeys), [visibleDayKeys]);
 
   const dayFilterLabel = useMemo(() => {
-    if (occurrenceOptions.length === 0) return "Alle dager";
-    if (visibleDayKeys.length === 0) return "Ingen dager";
-    if (visibleDayKeys.length === occurrenceOptions.length) return "Alle dager";
+    if (occurrenceOptions.length === 0) return "Alle";
+    if (visibleDayKeys.length === 0) return "Ingen";
+    if (visibleDayKeys.length === occurrenceOptions.length) return "Alle";
     const selected = occurrenceOptions.filter((option) => visibleDayKeySet.has(option.key));
-    if (selected.length === 0) return "Ingen dager";
-    if (selected.length <= 2) {
-      return selected.map((option) => option.weekdayLabel).join(", ");
+    if (selected.length === 0) return "Ingen";
+    if (selected.length <= 3) {
+      return selected.map((option) => option.weekdayLabel.substring(0, 3)).join(", ");
     }
     return `${selected.length} dager`;
   }, [occurrenceOptions, visibleDayKeySet, visibleDayKeys.length]);
 
   const viewModeLabel = viewMode === "by-day" ? "Ukesplan" : "Alfabetisk";
-  const settingsLabel = `${viewModeLabel}${
-    viewMode === "by-day" ? ` · ${dayFilterLabel}` : ""
-  }${includeNextWeek ? " · Neste uke" : ""}`;
+  const settingsLabel = `${viewModeLabel}${viewMode === "by-day" ? ` · ${dayFilterLabel}` : ""
+    }${includeNextWeek ? " · Neste uke" : ""}`;
 
   const { regularItems, pantryItems } = useMemo(() => {
     const regularUnchecked: ShoppingListItem[] = [];
@@ -626,6 +625,7 @@ export default function ShoppingListPage() {
               <DropdownMenuSeparator />
               <DropdownMenuCheckboxItem
                 checked={includeNextWeek}
+                onSelect={(e) => e.preventDefault()}
                 onCheckedChange={() => setIncludeNextWeek((prev) => !prev)}
               >
                 Inkluder neste uke
@@ -638,6 +638,7 @@ export default function ShoppingListPage() {
                     <DropdownMenuCheckboxItem
                       key={option.key}
                       checked={visibleDayKeySet.has(option.key)}
+                      onSelect={(e) => e.preventDefault()}
                       onCheckedChange={(checked) => toggleDayKey(option.key, Boolean(checked))}
                     >
                       {option.weekdayLabel} ({option.shortLabel})
@@ -646,11 +647,16 @@ export default function ShoppingListPage() {
                   <DropdownMenuSeparator />
                   <DropdownMenuCheckboxItem
                     checked={visibleDayKeys.length === occurrenceOptions.length}
+                    onSelect={(e) => e.preventDefault()}
                     onCheckedChange={() => setVisibleDayKeys(occurrenceOptions.map((option) => option.key))}
                   >
                     Velg alle dager
                   </DropdownMenuCheckboxItem>
-                  <DropdownMenuCheckboxItem checked={visibleDayKeys.length === 0} onCheckedChange={() => setVisibleDayKeys([])}>
+                  <DropdownMenuCheckboxItem
+                    checked={visibleDayKeys.length === 0}
+                    onSelect={(e) => e.preventDefault()}
+                    onCheckedChange={() => setVisibleDayKeys([])}
+                  >
                     Velg ingen dager
                   </DropdownMenuCheckboxItem>
                 </>

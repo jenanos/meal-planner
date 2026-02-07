@@ -8,8 +8,8 @@ import { mockLink } from "../lib/mock/trpcLink";
 import { MockModeNotice } from "./components/MockModeNotice";
 
 function getApiUrl() {
-    if (typeof window !== "undefined") return process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
-    return process.env.API_URL ?? "http://localhost:3001";
+    if (typeof window !== "undefined") return process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+    return process.env.API_URL ?? "http://localhost:4000";
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {

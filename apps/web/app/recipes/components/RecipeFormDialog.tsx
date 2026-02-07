@@ -302,31 +302,32 @@ export function RecipeFormDialog({
                       </div>
                     </CarouselItem>
 
-                    <CarouselItem className="space-y-4">
-                      <div className="space-y-3">
-                        <label className="text-sm font-medium">Ingredienser</label>
-                        <Input
-                          className="focus-visible:ring-inset"
-                          value={ingSearch}
-                          onChange={(event) => onIngSearchChange(event.target.value)}
-                          placeholder="Søk etter ingrediens"
-                        />
-                        {trimmedIngSearch.length > 0 ? (
-                          <div className="space-y-2">
-                            {isIngredientQueryFetching ? (
-                              <p className="text-xs text-muted-foreground">Søker…</p>
-                            ) : null}
-                            {(() => {
-                              const normalized = trimmedIngSearch.toLowerCase();
-                              const available = ingredientSuggestions.filter(
-                                (suggestion) =>
-                                  !ingList.some((ingredient) => ingredient.name.toLowerCase() === suggestion.name.toLowerCase())
-                              );
+                    <CarouselItem className="flex flex-col h-full">
+                      <div className="flex flex-col h-full min-h-0 space-y-3">
+                        {/* Fixed search area at top */}
+                        <div className="flex-shrink-0 space-y-3">
+                          <label className="text-sm font-medium">Ingredienser</label>
+                          <Input
+                            className="focus-visible:ring-inset"
+                            value={ingSearch}
+                            onChange={(event) => onIngSearchChange(event.target.value)}
+                            placeholder="Søk etter ingrediens"
+                          />
+                          {trimmedIngSearch.length > 0 ? (
+                            <div className="space-y-2">
+                              {isIngredientQueryFetching ? (
+                                <p className="text-xs text-muted-foreground">Søker…</p>
+                              ) : null}
+                              {(() => {
+                                const normalized = trimmedIngSearch.toLowerCase();
+                                const available = ingredientSuggestions.filter(
+                                  (suggestion) =>
+                                    !ingList.some((ingredient) => ingredient.name.toLowerCase() === suggestion.name.toLowerCase())
+                                );
 
-                              if (available.length > 0) {
-                                return (
-                                  <ScrollArea className="max-h-40 pr-2">
-                                    <div className="flex flex-wrap gap-2 pb-2">
+                                if (available.length > 0) {
+                                  return (
+                                    <div className="flex flex-wrap gap-2">
                                       {available.map((suggestion) => (
                                         <Badge
                                           key={suggestion.id}
@@ -338,68 +339,72 @@ export function RecipeFormDialog({
                                         </Badge>
                                       ))}
                                     </div>
-                                  </ScrollArea>
-                                );
-                              }
+                                  );
+                                }
 
-                              if (
-                                !isIngredientQueryFetching &&
-                                trimmedIngSearch.length > 0 &&
-                                !ingredientSuggestions.some((suggestion) => suggestion.name.toLowerCase() === normalized) &&
-                                !ingList.some((ingredient) => ingredient.name.toLowerCase() === normalized)
-                              ) {
-                                return (
-                                  <Badge className="cursor-pointer" onClick={() => addIngredientByName(trimmedIngSearch)}>
-                                    Legg til "{trimmedIngSearch}"
-                                  </Badge>
-                                );
-                              }
+                                if (
+                                  !isIngredientQueryFetching &&
+                                  trimmedIngSearch.length > 0 &&
+                                  !ingredientSuggestions.some((suggestion) => suggestion.name.toLowerCase() === normalized) &&
+                                  !ingList.some((ingredient) => ingredient.name.toLowerCase() === normalized)
+                                ) {
+                                  return (
+                                    <Badge className="cursor-pointer" onClick={() => addIngredientByName(trimmedIngSearch)}>
+                                      Legg til "{trimmedIngSearch}"
+                                    </Badge>
+                                  );
+                                }
 
-                              return null;
-                            })()}
-                          </div>
-                        ) : null}
+                                return null;
+                              })()}
+                            </div>
+                          ) : ingList.length === 0 ? (
+                            <p className="text-xs text-muted-foreground max-sm:hidden">
+                              Søk etter ingredienser for å legge dem til i oppskriften.
+                            </p>
+                          ) : null}
+                        </div>
+
+                        {/* Scrollable ingredients list */}
                         {ingList.length > 0 ? (
-                          <div className="flex flex-wrap gap-2">
-                            {ingList.map((ingredient) => (
-                              <span
-                                key={ingredient.name}
-                                className="inline-flex items-center gap-2 rounded-sm border bg-background px-2 py-1 text-sm"
-                              >
-                                <span>{ingredient.name}</span>
-                                <Input
-                                  className="h-7 w-20 focus-visible:ring-inset"
-                                  placeholder={ingredient.unit ?? "mengde"}
-                                  value={
-                                    typeof ingredient.quantity === "number"
-                                      ? String(ingredient.quantity)
-                                      : ingredient.quantity ?? ""
-                                  }
-                                  onChange={(event) => upsertQuantity(ingredient.name, event.target.value)}
-                                />
-                                {ingredient.unit &&
-                                  ((typeof ingredient.quantity === "number" && !Number.isNaN(ingredient.quantity)) ||
-                                    (typeof ingredient.quantity === "string" && ingredient.quantity.trim() !== "")) ? (
-                                  <span className="text-xs text-muted-foreground">{ingredient.unit}</span>
-                                ) : null}
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 w-7 p-0 text-red-600"
-                                  onClick={() => removeIngredient(ingredient.name)}
-                                  aria-label={`Fjern ${ingredient.name}`}
-                                  title={`Fjern ${ingredient.name}`}
+                          <ScrollArea className="flex-1 min-h-0">
+                            <div className="flex flex-wrap gap-2 pr-2 pb-2">
+                              {[...ingList].reverse().map((ingredient) => (
+                                <span
+                                  key={ingredient.name}
+                                  className="inline-flex items-center gap-2 rounded-sm border bg-background px-2 py-1 text-sm"
                                 >
-                                  <X className="size-4" />
-                                </Button>
-                              </span>
-                            ))}
-                          </div>
-                        ) : trimmedIngSearch.length === 0 ? (
-                          <p className="text-xs text-muted-foreground max-sm:hidden">
-                            Søk etter ingredienser for å legge dem til i oppskriften.
-                          </p>
+                                  <span>{ingredient.name}</span>
+                                  <Input
+                                    className="h-7 w-20 focus-visible:ring-inset"
+                                    placeholder={ingredient.unit ?? "mengde"}
+                                    value={
+                                      typeof ingredient.quantity === "number"
+                                        ? String(ingredient.quantity)
+                                        : ingredient.quantity ?? ""
+                                    }
+                                    onChange={(event) => upsertQuantity(ingredient.name, event.target.value)}
+                                  />
+                                  {ingredient.unit &&
+                                    ((typeof ingredient.quantity === "number" && !Number.isNaN(ingredient.quantity)) ||
+                                      (typeof ingredient.quantity === "string" && ingredient.quantity.trim() !== "")) ? (
+                                    <span className="text-xs text-muted-foreground">{ingredient.unit}</span>
+                                  ) : null}
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 w-7 p-0 text-red-600"
+                                    onClick={() => removeIngredient(ingredient.name)}
+                                    aria-label={`Fjern ${ingredient.name}`}
+                                    title={`Fjern ${ingredient.name}`}
+                                  >
+                                    <X className="size-4" />
+                                  </Button>
+                                </span>
+                              ))}
+                            </div>
+                          </ScrollArea>
                         ) : null}
                       </div>
                     </CarouselItem>

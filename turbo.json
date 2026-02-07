@@ -1,11 +1,34 @@
 {
   "$schema": "https://turborepo.com/schema.json",
-  "globalEnv": ["API_URL", "NEXT_PUBLIC_API_URL", "NEXT_PUBLIC_MOCK_MODE", "MOCK_MODE", "NODE_ENV", "CI", "MEALS_API_INTERNAL_ORIGIN"],
+  "globalEnv": [
+    "API_URL",
+    "NEXT_PUBLIC_API_URL",
+    "NEXT_PUBLIC_MOCK_MODE",
+    "MOCK_MODE",
+    "NODE_ENV",
+    "CI",
+    "MEALS_API_INTERNAL_ORIGIN"
+  ],
   "tasks": {
     "build": {
-      "dependsOn": ["^build"],
-      "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".env*"
+      ],
+      "outputs": [
+        "dist/**",
+        ".next/**",
+        "!.next/cache/**"
+      ]
+    },
+    "check-types": {
+      "dependsOn": [
+        "^check-types"
+      ],
+      "cache": true
     },
     "db:migrate:dev": {
       "cache": false,
@@ -25,9 +48,13 @@
       "persistent": true
     },
     "generate": {
-      "dependsOn": ["^generate"],
+      "dependsOn": [
+        "^generate"
+      ],
       "cache": false
     },
-    "lint": {}
+    "lint": {
+      "outputs": []
+    }
   }
 }

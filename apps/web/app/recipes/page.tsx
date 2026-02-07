@@ -33,6 +33,7 @@ export default function RecipesPage() {
 
   const {
     dialogContentClassName,
+    viewDialogContentClassName,
     isEditDialogOpen,
     onFormOpenChange,
     openCreate,
@@ -161,7 +162,7 @@ export default function RecipesPage() {
         <RecipeViewDialog
           open={isViewDialogOpen}
           onOpenChange={onViewOpenChange}
-          dialogContentClassName={dialogContentClassName}
+          dialogContentClassName={viewDialogContentClassName}
           viewRecipe={viewRecipe}
           viewCurrentStep={viewCurrentStep}
           viewCarouselApi={viewCarouselApi}

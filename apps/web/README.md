@@ -1,7 +1,7 @@
 ## Utvikling
 
 ```bash
-# Vanlig utvikling (krever API på http://localhost:3001)
+# Vanlig utvikling (krever API på http://localhost:4000)
 pnpm dev
 
 # Kun frontend med mock-data (ingen backend nødvendig)

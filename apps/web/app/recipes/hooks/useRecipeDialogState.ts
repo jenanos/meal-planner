@@ -9,9 +9,16 @@ import { trpc } from "../../../lib/trpcClient";
 import { CATEGORIES } from "../constants";
 import type { FormIngredient, IngredientSuggestion, RecipeListItem } from "../types";
 
+// For edit/create dialog - stays at 50% height on mobile to avoid keyboard overlap
 export const RECIPE_DIALOG_CONTENT_CLASSNAME = cn(
   "isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground sm:h-[min(100vh-4rem,38rem)] sm:max-w-md sm:p-6 sm:shadow-2xl sm:ring-1 sm:ring-border sm:rounded-xl overflow-hidden",
   "max-sm:w-[calc(100vw-2rem)] max-sm:mx-auto max-sm:h-[50dvh] max-sm:max-h-[50dvh] max-sm:p-6 max-sm:bg-background max-sm:rounded-2xl max-sm:border-0 max-sm:shadow-none max-sm:!top-[calc(env(safe-area-inset-top)+1rem)] max-sm:!translate-y-0 max-sm:overflow-hidden max-sm:touch-pan-y"
+);
+
+// For view dialog - uses full height on mobile for better readability
+export const RECIPE_VIEW_DIALOG_CONTENT_CLASSNAME = cn(
+  "isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground sm:h-[min(100vh-4rem,38rem)] sm:max-w-md sm:p-6 sm:shadow-2xl sm:ring-1 sm:ring-border sm:rounded-xl overflow-hidden",
+  "max-sm:w-[calc(100vw-2rem)] max-sm:mx-auto max-sm:h-[calc(100dvh-4rem)] max-sm:max-h-[calc(100dvh-4rem)] max-sm:p-6 max-sm:bg-background max-sm:rounded-2xl max-sm:border-0 max-sm:shadow-none max-sm:!top-[calc(env(safe-area-inset-top)+1rem)] max-sm:!translate-y-0 max-sm:overflow-hidden max-sm:touch-pan-y"
 );
 
 type RecipeIngredient = RecipeListItem["ingredients"] extends Array<infer R> ? R : never;
@@ -389,6 +396,7 @@ export function useRecipeDialogState({
 
   return {
     dialogContentClassName: RECIPE_DIALOG_CONTENT_CLASSNAME,
+    viewDialogContentClassName: RECIPE_VIEW_DIALOG_CONTENT_CLASSNAME,
     hideTrigger,
     isEditDialogOpen,
     onFormOpenChange: handleFormOpenChange,

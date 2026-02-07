@@ -6,23 +6,31 @@ import { makeDragId } from "../utils";
 import { WeekCard } from "./WeekCard";
 import { DraggableRecipe } from "./DraggableRecipe";
 
-// DayName imported from shared types
-
 type WeekSlotProps = {
   index: number;
   dayName: DayName;
   entry: WeekEntry | null;
   onRecipeClick?: (_recipe: RecipeDTO) => void;
+  onRequestChange?: (_index: number) => void;
   onSetTakeaway?: (_index: number) => void;
   onClearEntry?: (_index: number) => void;
 };
 
-export function WeekSlot({ index, dayName, entry, onRecipeClick, onSetTakeaway, onClearEntry }: WeekSlotProps) {
+export function WeekSlot({ index, dayName, entry, onRecipeClick, onRequestChange, onSetTakeaway, onClearEntry }: WeekSlotProps) {
   const recipe = entry?.type === "RECIPE" ? entry.recipe : null;
   const entryKey = entry?.type === "TAKEAWAY" ? "takeaway" : recipe?.id || "empty";
   // Use the same format as draggable IDs so parseDragId works
   const dropId = makeDragId({ source: "week", index, recipeId: entryKey });
   const { isOver, setNodeRef } = useDroppable({ id: dropId });
+
+  // Handler for click - use onRequestChange if available, otherwise onRecipeClick
+  const handleClick = () => {
+    if (onRequestChange) {
+      onRequestChange(index);
+    } else if (recipe && onRecipeClick) {
+      onRecipeClick(recipe);
+    }
+  };
 
   if (!entry || entry.type === "TAKEAWAY") {
     return (
@@ -33,6 +41,7 @@ export function WeekSlot({ index, dayName, entry, onRecipeClick, onSetTakeaway, 
           recipe={recipe}
           entryType={entry?.type ?? "EMPTY"}
           isDraggingTarget={isOver}
+          onClick={onRequestChange ? handleClick : undefined}
           onSetTakeaway={onSetTakeaway ? () => onSetTakeaway(index) : undefined}
           onClearEntry={onClearEntry ? () => onClearEntry(index) : undefined}
         />
@@ -51,7 +60,7 @@ export function WeekSlot({ index, dayName, entry, onRecipeClick, onSetTakeaway, 
               recipe={recipe}
               entryType="RECIPE"
               isDraggingTarget={isOver}
-              onClick={recipe && onRecipeClick ? () => onRecipeClick(recipe) : undefined}
+              onClick={handleClick}
               onSetTakeaway={onSetTakeaway ? () => onSetTakeaway(index) : undefined}
             />
           </div>
@@ -60,3 +69,4 @@ export function WeekSlot({ index, dayName, entry, onRecipeClick, onSetTakeaway, 
     </div>
   );
 }
+
