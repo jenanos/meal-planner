@@ -8,6 +8,7 @@ import { WeekSelector } from "./components/WeekSelector";
 import { SuggestionSection } from "./components/SuggestionSection";
 import { SearchSection } from "./components/SearchSection";
 import { MobileEditor } from "./components/MobileEditor";
+import { RecipePickerModal } from "./components/RecipePickerModal";
 import { CategoryEmoji } from "../components/CategoryEmoji";
 import { startOfWeekISO, deriveWeekLabel } from "../../lib/week";
 import { RecipeViewDialog } from "../recipes/components/RecipeViewDialog";
@@ -62,8 +63,8 @@ export default function PlannerPage() {
   const [searchResults, setSearchResults] = useState<RecipeDTO[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [isMobileEditorOpen, setIsMobileEditorOpen] = useState(false);
-  const [mobileEditorView, setMobileEditorView] = useState<"frequent" | "longGap" | "search">("frequent");
+  // State for mobile recipe picker modal
+  const [editingDayIndex, setEditingDayIndex] = useState<number | null>(null);
 
   const sensors = useSensors(
     useSensor(MouseSensor, {
@@ -340,6 +341,21 @@ export default function PlannerPage() {
     [week, commitWeekPlan]
   );
 
+  // Handler for opening recipe picker modal (mobile)
+  const handleRequestChange = useCallback((dayIndex: number) => {
+    setEditingDayIndex(dayIndex);
+  }, []);
+
+  // Handler for selecting recipe from modal
+  const handleSelectRecipeFromModal = useCallback(
+    (recipe: RecipeDTO, dayIndex: number) => {
+      const nextWeek = [...week];
+      nextWeek[dayIndex] = { type: "RECIPE", recipe };
+      commitWeekPlan(nextWeek);
+    },
+    [week, commitWeekPlan]
+  );
+
   // Search logic with debouncing
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -490,19 +506,23 @@ export default function PlannerPage() {
           <MobileEditor
             week={displayWeek}
             dayNames={DAY_NAMES}
+            onRequestChange={handleRequestChange}
+            onSetTakeaway={handleSetTakeaway}
+            onClearEntry={handleClearEntry}
+          />
+
+          <RecipePickerModal
+            open={editingDayIndex !== null}
+            onOpenChange={(open) => {
+              if (!open) setEditingDayIndex(null);
+            }}
+            currentEntry={editingDayIndex !== null ? displayWeek[editingDayIndex] : null}
+            dayName={editingDayIndex !== null ? DAY_NAMES[editingDayIndex] : "Mandag"}
+            dayIndex={editingDayIndex ?? 0}
             longGap={longGap}
             frequent={frequent}
-            searchTerm={searchTerm}
-            searchResults={searchResults}
-            searchLoading={searchLoading}
-            searchError={searchError}
-            mobileEditorView={mobileEditorView}
-            isMobileEditorOpen={isMobileEditorOpen}
-            onToggleEditor={setIsMobileEditorOpen}
-            onChangeView={setMobileEditorView}
-            onSearchTermChange={setSearchTerm}
-            onPickFromSource={handlePickFromSource}
-            onRecipeClick={handleRecipeClick}
+            onSelectRecipe={handleSelectRecipeFromModal}
+            onViewRecipe={handleRecipeClick}
             onSetTakeaway={handleSetTakeaway}
             onClearEntry={handleClearEntry}
           />
