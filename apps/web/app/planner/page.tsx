@@ -145,6 +145,7 @@ export default function PlannerPage() {
     addIngredientByName,
     removeIngredient,
     upsertQuantity,
+    upsertUnit,
     submitRecipe,
     isViewDialogOpen,
     onViewOpenChange,
@@ -479,6 +480,7 @@ export default function PlannerPage() {
         addIngredientByName={addIngredientByName}
         removeIngredient={removeIngredient}
         upsertQuantity={upsertQuantity}
+        upsertUnit={upsertUnit}
         onSubmit={submitRecipe}
         createIsPending={createIsPending}
         updateIsPending={updateIsPending}

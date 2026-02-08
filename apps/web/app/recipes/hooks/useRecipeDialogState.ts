@@ -106,10 +106,16 @@ export function useRecipeDialogState({
       setIngList((prev) =>
         prev.some((item) => item.name.toLowerCase() === newIng.name.toLowerCase())
           ? prev
-          : [...prev, { name: newIng.name, unit: newIng.unit ?? undefined }]
+          : [...prev, { id: newIng.id, name: newIng.name, unit: newIng.unit ?? undefined }]
       );
       setIngSearch("");
       setDebouncedIngSearch("");
+    },
+  });
+
+  const updateIngredient = trpc.ingredient.update.useMutation({
+    onSuccess: () => {
+      utils.ingredient.list.invalidate().catch(() => undefined);
     },
   });
 
@@ -170,7 +176,7 @@ export function useRecipeDialogState({
   }, [ingredientSuggestionCache, ingredientData]);
 
   const addIngredientByName = useCallback(
-    (rawName: string, unit?: string) => {
+    (rawName: string, unit?: string, id?: string) => {
       const trimmed = rawName.trim();
       if (!trimmed) return;
       setIngList((prev) => {
@@ -179,7 +185,7 @@ export function useRecipeDialogState({
         }
         const existsInDb = knownIngredientNames.has(trimmed.toLowerCase());
         if (existsInDb) {
-          return [...prev, { name: trimmed, unit }];
+          return [...prev, { id, name: trimmed, unit }];
         }
         if (!createIngredient.isPending) {
           createIngredient.mutate({ name: trimmed });
@@ -199,6 +205,25 @@ export function useRecipeDialogState({
   const upsertQuantity = useCallback((nameToUpdate: string, qty: string) => {
     setIngList((prev) => prev.map((item) => (item.name === nameToUpdate ? { ...item, quantity: qty } : item)));
   }, []);
+
+  const upsertUnit = useCallback(
+    (nameToUpdate: string, newUnit: string) => {
+      setIngList((prev) =>
+        prev.map((item) => {
+          if (item.name === nameToUpdate) {
+            const trimmedUnit = newUnit.trim();
+            // Update in database if we have an ID and unit changed
+            if (item.id && trimmedUnit && trimmedUnit !== item.unit) {
+              updateIngredient.mutate({ id: item.id, name: item.name, unit: trimmedUnit, isPantryItem: false });
+            }
+            return { ...item, unit: newUnit };
+          }
+          return item;
+        })
+      );
+    },
+    [updateIngredient]
+  );
 
   const numberFormatter = useMemo(
     () => new Intl.NumberFormat("nb-NO", { maximumFractionDigits: 2 }),
@@ -432,6 +457,7 @@ export function useRecipeDialogState({
     addIngredientByName,
     removeIngredient,
     upsertQuantity,
+    upsertUnit,
     submitRecipe,
     isViewDialogOpen,
     onViewOpenChange: handleViewOpenChange,

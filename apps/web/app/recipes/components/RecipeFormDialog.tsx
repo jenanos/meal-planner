@@ -67,9 +67,10 @@ interface RecipeFormDialogProps {
   ingredientSuggestions: IngredientSuggestion[];
   isIngredientQueryFetching: boolean;
   ingList: FormIngredient[];
-  addIngredientByName: (_name: string, _unit?: string) => void;
+  addIngredientByName: (_name: string, _unit?: string, _id?: string) => void;
   removeIngredient: (_name: string) => void;
   upsertQuantity: (_name: string, _qty: string) => void;
+  upsertUnit: (_name: string, _unit: string) => void;
   onSubmit: (_event: React.FormEvent<HTMLFormElement>) => void;
   createIsPending: boolean;
   updateIsPending: boolean;
@@ -111,6 +112,7 @@ export function RecipeFormDialog({
   addIngredientByName,
   removeIngredient,
   upsertQuantity,
+  upsertUnit,
   onSubmit,
   createIsPending,
   updateIsPending,
@@ -332,7 +334,7 @@ export function RecipeFormDialog({
                                         <Badge
                                           key={suggestion.id}
                                           className="cursor-pointer"
-                                          onClick={() => addIngredientByName(suggestion.name, suggestion.unit)}
+                                          onClick={() => addIngredientByName(suggestion.name, suggestion.unit, suggestion.id)}
                                         >
                                           {suggestion.name}
                                           {suggestion.unit ? <span className="opacity-60">&nbsp;({suggestion.unit})</span> : null}
@@ -368,40 +370,43 @@ export function RecipeFormDialog({
                         {/* Scrollable ingredients list */}
                         {ingList.length > 0 ? (
                           <ScrollArea className="flex-1 min-h-0">
-                            <div className="flex flex-wrap gap-2 pr-2 pb-2">
+                            <div className="flex flex-col pr-2 pb-2">
                               {[...ingList].reverse().map((ingredient) => (
-                                <span
+                                <div
                                   key={ingredient.name}
-                                  className="inline-flex items-center gap-2 rounded-sm border bg-background px-2 py-1 text-sm"
+                                  className="flex items-center h-8 border-b border-border/50 text-xs gap-2"
                                 >
-                                  <span>{ingredient.name}</span>
-                                  <Input
-                                    className="h-7 w-20 focus-visible:ring-inset"
-                                    placeholder={ingredient.unit ?? "mengde"}
-                                    value={
-                                      typeof ingredient.quantity === "number"
-                                        ? String(ingredient.quantity)
-                                        : ingredient.quantity ?? ""
-                                    }
-                                    onChange={(event) => upsertQuantity(ingredient.name, event.target.value)}
-                                  />
-                                  {ingredient.unit &&
-                                    ((typeof ingredient.quantity === "number" && !Number.isNaN(ingredient.quantity)) ||
-                                      (typeof ingredient.quantity === "string" && ingredient.quantity.trim() !== "")) ? (
-                                    <span className="text-xs text-muted-foreground">{ingredient.unit}</span>
-                                  ) : null}
+                                  <span className="flex-1 truncate">{ingredient.name}</span>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <Input
+                                      className="h-6 w-14 px-1.5 text-xs focus-visible:ring-inset"
+                                      placeholder="mengde"
+                                      value={
+                                        typeof ingredient.quantity === "number"
+                                          ? String(ingredient.quantity)
+                                          : ingredient.quantity ?? ""
+                                      }
+                                      onChange={(event) => upsertQuantity(ingredient.name, event.target.value)}
+                                    />
+                                    <Input
+                                      className="h-6 w-10 px-1 text-xs text-muted-foreground focus-visible:ring-inset"
+                                      placeholder="-"
+                                      value={ingredient.unit ?? ""}
+                                      onChange={(event) => upsertUnit(ingredient.name, event.target.value)}
+                                    />
+                                  </div>
                                   <Button
                                     type="button"
                                     variant="ghost"
                                     size="sm"
-                                    className="h-7 w-7 p-0 text-red-600"
+                                    className="h-5 w-5 p-0 text-muted-foreground hover:text-red-600 shrink-0"
                                     onClick={() => removeIngredient(ingredient.name)}
                                     aria-label={`Fjern ${ingredient.name}`}
                                     title={`Fjern ${ingredient.name}`}
                                   >
-                                    <X className="size-4" />
+                                    <X className="size-3" />
                                   </Button>
-                                </span>
+                                </div>
                               ))}
                             </div>
                           </ScrollArea>

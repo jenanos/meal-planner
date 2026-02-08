@@ -5,6 +5,7 @@ export type RecipeListItem = MockRecipeListResult["items"][number];
 export type IngredientSuggestion = MockIngredientListResult[number];
 
 export type FormIngredient = {
+  id?: string;
   name: string;
   unit?: string;
   quantity?: string | number;
