@@ -23,7 +23,7 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
 } from "@repo/ui";
-import { ChevronDown, ChevronUp, X } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronUp, X } from "lucide-react";
 import {
   ShoppingListDayView,
   type ShoppingListDaySection,
@@ -34,6 +34,7 @@ import { WeekSelector } from "../planner/components/WeekSelector";
 import { deriveWeekLabel, startOfWeekISO } from "../../lib/week";
 import type { TimelineWeekEntry } from "../planner/types";
 import type { MockWeekTimelineResult } from "../../lib/mock/store";
+import { ALL_DAY_NAMES } from "../planner/utils";
 
 const EMPTY_ITEMS: ShoppingListItem[] = [];
 
@@ -41,6 +42,7 @@ export default function ShoppingListPage() {
   const currentWeekStart = useMemo(() => startOfWeekISO(), []);
   const [activeWeekStart, setActiveWeekStart] = useState(currentWeekStart);
   const [includeNextWeek, setIncludeNextWeek] = useState(false);
+  const [startDay, setStartDay] = useState(0);
   const [viewMode, setViewMode] = useState<"by-day" | "alphabetical">("by-day");
   const [checkedByOccurrence, setCheckedByOccurrence] = useState<Record<string, boolean>>({});
   const [visibleDayKeys, setVisibleDayKeys] = useState<string[]>([]);
@@ -51,6 +53,7 @@ export default function ShoppingListPage() {
   const [isAddExtraOpen, setIsAddExtraOpen] = useState(false);
   const [extraInput, setExtraInput] = useState("");
   const [debouncedExtra, setDebouncedExtra] = useState("");
+  const [showCompletedExtras, setShowCompletedExtras] = useState(false);
 
   const shoppingQuery = trpc.planner.shoppingList.useQuery({
     weekStart: activeWeekStart,
@@ -113,13 +116,19 @@ export default function ShoppingListPage() {
   }, [includedWeeksSignature, items]);
   const extrasAll = ((shoppingQuery.data as any)?.extras ?? []) as Array<{ id: string; name: string; weekStart: string; checked: boolean }>;
   const extras = useMemo(() => {
-    const relevant = extrasAll.filter(
-      (e: { weekStart: string }) => e.weekStart === (shoppingQuery.data?.weekStart ?? activeWeekStart)
-    );
-    const unchecked = relevant.filter((entry) => !entry.checked);
-    const checked = relevant.filter((entry) => entry.checked);
-    return [...unchecked, ...checked];
-  }, [extrasAll, shoppingQuery.data?.weekStart, activeWeekStart]);
+    // Extras are shared across weeks — deduplicate by name, preferring unchecked
+    const byName = new Map<string, { id: string; name: string; weekStart: string; checked: boolean }>();
+    for (const e of extrasAll) {
+      const existing = byName.get(e.name);
+      if (!existing || (!e.checked && existing.checked)) {
+        byName.set(e.name, e);
+      }
+    }
+    return Array.from(byName.values());
+  }, [extrasAll]);
+
+  const uncheckedExtras = useMemo(() => extras.filter((e) => !e.checked), [extras]);
+  const checkedExtras = useMemo(() => extras.filter((e) => e.checked).slice(-20), [extras]);
   const isLoading = shoppingQuery.isLoading;
   const isFetching = shoppingQuery.isFetching;
 
@@ -203,9 +212,10 @@ export default function ShoppingListPage() {
     return `${selected.length} dager`;
   }, [occurrenceOptions, visibleDayKeySet, visibleDayKeys.length]);
 
+  const startDayLabel = ALL_DAY_NAMES[startDay];
   const viewModeLabel = viewMode === "by-day" ? "Ukesplan" : "Alfabetisk";
   const settingsLabel = `${viewModeLabel}${viewMode === "by-day" ? ` · ${dayFilterLabel}` : ""
-    }${includeNextWeek ? " · Neste uke" : ""}`;
+    }${startDay !== 0 ? ` · Fra ${startDayLabel.toLowerCase()}` : ""}${includeNextWeek ? " · Neste uke" : ""}`;
 
   const { regularItems, pantryItems } = useMemo(() => {
     const regularUnchecked: ShoppingListItem[] = [];
@@ -613,7 +623,7 @@ export default function ShoppingListPage() {
                 <ChevronDown className="h-4 w-4 text-muted-foreground" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-72">
+            <DropdownMenuContent className="w-72 max-h-[70vh] overflow-y-auto">
               <DropdownMenuLabel>Visning</DropdownMenuLabel>
               <DropdownMenuRadioGroup
                 value={viewMode}
@@ -621,6 +631,18 @@ export default function ShoppingListPage() {
               >
                 <DropdownMenuRadioItem value="by-day">Ukesplan</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="alphabetical">Alfabetisk</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Startdag</DropdownMenuLabel>
+              <DropdownMenuRadioGroup
+                value={String(startDay)}
+                onValueChange={(v) => setStartDay(Number(v))}
+              >
+                {ALL_DAY_NAMES.map((name, i) => (
+                  <DropdownMenuRadioItem key={i} value={String(i)}>
+                    {name}
+                  </DropdownMenuRadioItem>
+                ))}
               </DropdownMenuRadioGroup>
               <DropdownMenuSeparator />
               <DropdownMenuCheckboxItem
@@ -755,36 +777,86 @@ export default function ShoppingListPage() {
         <div className="max-w-2xl mx-auto w-full space-y-6">
           <section className="rounded-2xl border border-emerald-200/60 bg-emerald-50/40 p-4">
             <h2 className="text-sm font-semibold mb-2">Egne elementer</h2>
-            {extras.length === 0 ? (
+            {uncheckedExtras.length === 0 && checkedExtras.length === 0 ? (
               <p className="text-sm text-muted-foreground">Ingen egne elementer ennå.</p>
             ) : (
-              <ul className="space-y-3">
-                {extras.map((e: { id: string; name: string; checked: boolean }) => (
-                  <li key={e.id} className="border rounded-lg p-3 bg-white">
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="checkbox"
-                        className="h-5 w-5"
-                        checked={e.checked}
-                        onChange={() => toggleExtra(e.name, e.checked)}
-                        aria-label={`Marker ${e.name} som kjøpt`}
-                      />
-                      <div className={`flex-1 ${e.checked ? "text-gray-400" : "text-gray-900"}`}>{e.name}</div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="text-red-600 shrink-0"
-                        onClick={() => removeExtra(e.name)}
-                        aria-label={`Fjern ${e.name}`}
-                        title={`Fjern ${e.name}`}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+              <div className="space-y-3">
+                {uncheckedExtras.length > 0 && (
+                  <ul className="space-y-3">
+                    {uncheckedExtras.map((e) => (
+                      <li key={e.id} className="border rounded-lg p-3 bg-white">
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            className="h-5 w-5"
+                            checked={false}
+                            onChange={() => toggleExtra(e.name, e.checked)}
+                            aria-label={`Marker ${e.name} som kjøpt`}
+                          />
+                          <div className="flex-1 text-gray-900">{e.name}</div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-600 shrink-0"
+                            onClick={() => removeExtra(e.name)}
+                            aria-label={`Fjern ${e.name}`}
+                            title={`Fjern ${e.name}`}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {checkedExtras.length > 0 && (
+                  <div>
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      onClick={() => setShowCompletedExtras((prev) => !prev)}
+                      aria-label={showCompletedExtras ? "Skjul fullførte elementer" : "Vis fullførte elementer"}
+                    >
+                      {showCompletedExtras ? (
+                        <ChevronDown className="h-3.5 w-3.5" />
+                      ) : (
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      )}
+                      {checkedExtras.length} fullført{checkedExtras.length !== 1 ? "e" : ""}
+                    </button>
+                    {showCompletedExtras && (
+                      <ul className="space-y-3 mt-2">
+                        {checkedExtras.map((e) => (
+                          <li key={e.id} className="border rounded-lg p-3 bg-white opacity-75">
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                className="h-5 w-5"
+                                checked={true}
+                                onChange={() => toggleExtra(e.name, e.checked)}
+                                aria-label={`Marker ${e.name} som ikke kjøpt`}
+                              />
+                              <div className="flex-1 text-gray-400">{e.name}</div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-600 shrink-0"
+                                onClick={() => removeExtra(e.name)}
+                                aria-label={`Fjern ${e.name}`}
+                                title={`Fjern ${e.name}`}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
           </section>
           <section className="rounded-2xl border border-orange-200/60 bg-orange-50/40 p-4">

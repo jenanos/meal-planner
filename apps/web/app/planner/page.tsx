@@ -49,7 +49,7 @@ export default function PlannerPage() {
   const [week, setWeek] = useState<WeekState>(makeEmptyWeek);
   const [previewWeek, setPreviewWeek] = useState<WeekState | null>(null);
   const [draggingWeekIndex, setDraggingWeekIndex] = useState<number | null>(null);
-  const [draggingWeekOffset, setDraggingWeekOffset] = useState<number>(0);
+  const [, setDraggingWeekOffset] = useState<number>(0);
   const [startDay, setStartDay] = useState(0);
   const [showNextWeek, setShowNextWeek] = useState(false);
   const [nextWeek, setNextWeek] = useState<WeekState>(makeEmptyWeek);
