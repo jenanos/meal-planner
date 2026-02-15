@@ -1,11 +1,14 @@
 "use client";
 
-import type { RecipeDTO, WeekState, DayName } from "../types";
+import type { WeekState, DayName } from "../types";
 import { WeekSlot } from "./WeekSlot";
+import { toRealIndex } from "../utils";
 
 export type MobileEditorProps = {
   week: WeekState;
   dayNames: readonly DayName[];
+  startDay?: number;
+  weekOffset?: number;
   onRequestChange: (dayIndex: number) => void;
   onSetTakeaway?: (index: number) => void;
   onClearEntry?: (index: number) => void;
@@ -19,6 +22,8 @@ export type MobileEditorProps = {
 export function MobileEditor({
   week,
   dayNames,
+  startDay = 0,
+  weekOffset = 0,
   onRequestChange,
   onSetTakeaway,
   onClearEntry,
@@ -26,17 +31,21 @@ export function MobileEditor({
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-2">
-        {week.map((entry, index) => (
-          <WeekSlot
-            key={index}
-            index={index}
-            dayName={dayNames[index]}
-            entry={entry}
-            onRequestChange={onRequestChange}
-            onSetTakeaway={onSetTakeaway}
-            onClearEntry={onClearEntry}
-          />
-        ))}
+        {week.map((entry, displayIdx) => {
+          const realIdx = toRealIndex(displayIdx, startDay);
+          return (
+            <WeekSlot
+              key={`${weekOffset}-${realIdx}`}
+              index={realIdx}
+              dayName={dayNames[displayIdx]}
+              entry={entry}
+              weekOffset={weekOffset}
+              onRequestChange={onRequestChange}
+              onSetTakeaway={onSetTakeaway}
+              onClearEntry={onClearEntry}
+            />
+          );
+        })}
       </div>
     </div>
   );

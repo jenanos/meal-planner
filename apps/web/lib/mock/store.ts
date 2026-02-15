@@ -582,10 +582,9 @@ function aggregateShopping(weekStarts: string[]) {
     })
     .sort((a, b) => a.name.localeCompare(b.name, "nb", { sensitivity: "base" }));
 
+  // Return all extras (shared across weeks)
   const extras: { id: string; name: string; weekStart: string; checked: boolean }[] = [];
-  weekStarts.forEach((week) => {
-    const entries = state.extrasByWeek.get(week);
-    if (!entries) return;
+  state.extrasByWeek.forEach((entries, week) => {
     entries.forEach((entry) => {
       extras.push({ id: entry.id, name: entry.name, weekStart: week, checked: entry.checked });
     });

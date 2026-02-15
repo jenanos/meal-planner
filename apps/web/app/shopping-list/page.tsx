@@ -23,7 +23,7 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
 } from "@repo/ui";
-import { ChevronDown, ChevronUp, X } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronUp, X } from "lucide-react";
 import {
   ShoppingListDayView,
   type ShoppingListDaySection,
@@ -34,30 +34,58 @@ import { WeekSelector } from "../planner/components/WeekSelector";
 import { deriveWeekLabel, startOfWeekISO } from "../../lib/week";
 import type { TimelineWeekEntry } from "../planner/types";
 import type { MockWeekTimelineResult } from "../../lib/mock/store";
+import { ALL_DAY_NAMES } from "../planner/utils";
 
 const EMPTY_ITEMS: ShoppingListItem[] = [];
+
+function toDayOffset(
+  weekStartISO: string,
+  dayIndex: number,
+  baseWeekStartISO: string,
+) {
+  const weekStart = new Date(weekStartISO);
+  const baseWeekStart = new Date(baseWeekStartISO);
+  if (
+    Number.isNaN(weekStart.getTime()) ||
+    Number.isNaN(baseWeekStart.getTime())
+  ) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  const weekDiffDays = Math.round(
+    (weekStart.getTime() - baseWeekStart.getTime()) / (24 * 60 * 60 * 1000),
+  );
+  return weekDiffDays + dayIndex;
+}
 
 export default function ShoppingListPage() {
   const currentWeekStart = useMemo(() => startOfWeekISO(), []);
   const [activeWeekStart, setActiveWeekStart] = useState(currentWeekStart);
   const [includeNextWeek, setIncludeNextWeek] = useState(false);
+  const [startDay, setStartDay] = useState(0);
   const [viewMode, setViewMode] = useState<"by-day" | "alphabetical">("by-day");
-  const [checkedByOccurrence, setCheckedByOccurrence] = useState<Record<string, boolean>>({});
+  const [checkedByOccurrence, setCheckedByOccurrence] = useState<
+    Record<string, boolean>
+  >({});
   const [visibleDayKeys, setVisibleDayKeys] = useState<string[]>([]);
   const [removedKeys, setRemovedKeys] = useState<Set<string>>(new Set());
-  const [expandedDetailsKeys, setExpandedDetailsKeys] = useState<Set<string>>(new Set());
+  const [expandedDetailsKeys, setExpandedDetailsKeys] = useState<Set<string>>(
+    new Set(),
+  );
   const previousOptionKeysRef = useRef<string[]>([]);
   // Extras UI state
   const [isAddExtraOpen, setIsAddExtraOpen] = useState(false);
   const [extraInput, setExtraInput] = useState("");
   const [debouncedExtra, setDebouncedExtra] = useState("");
+  const [showCompletedExtras, setShowCompletedExtras] = useState(false);
 
   const shoppingQuery = trpc.planner.shoppingList.useQuery({
     weekStart: activeWeekStart,
     includeNextWeek,
   });
 
-  const timelineQuery = trpc.planner.weekTimeline.useQuery({ around: currentWeekStart });
+  const timelineQuery = trpc.planner.weekTimeline.useQuery({
+    around: currentWeekStart,
+  });
 
   useEffect(() => {
     setRemovedKeys(new Set());
@@ -74,10 +102,12 @@ export default function ShoppingListPage() {
 
   const timelineEntries = useMemo<TimelineWeekEntry[]>(
     () => timelineWeeks.map((week, index) => ({ week, index })),
-    [timelineWeeks]
+    [timelineWeeks],
   );
 
-  const activeWeekIndex = timelineWeeks.findIndex((week) => week.weekStart === activeWeekStart);
+  const activeWeekIndex = timelineWeeks.findIndex(
+    (week) => week.weekStart === activeWeekStart,
+  );
 
   const handleSelectWeek = useCallback((weekStart: string) => {
     setActiveWeekStart(weekStart);
@@ -91,12 +121,16 @@ export default function ShoppingListPage() {
 
   const extraSuggest = trpc.planner.extraSuggest.useQuery(
     { search: debouncedExtra.trim() || undefined } as any,
-    { enabled: debouncedExtra.trim().length > 0, staleTime: 5_000 }
+    { enabled: debouncedExtra.trim().length > 0, staleTime: 5_000 },
   );
 
   const includedWeeksSignature = useMemo(
-    () => (shoppingQuery.data?.includedWeekStarts ?? (shoppingQuery.data?.weekStart ? [shoppingQuery.data.weekStart] : [])).join("|"),
-    [shoppingQuery.data?.includedWeekStarts, shoppingQuery.data?.weekStart]
+    () =>
+      (
+        shoppingQuery.data?.includedWeekStarts ??
+        (shoppingQuery.data?.weekStart ? [shoppingQuery.data.weekStart] : [])
+      ).join("|"),
+    [shoppingQuery.data?.includedWeekStarts, shoppingQuery.data?.weekStart],
   );
 
   const items = shoppingQuery.data?.items ?? EMPTY_ITEMS;
@@ -111,22 +145,48 @@ export default function ShoppingListPage() {
     }
     setCheckedByOccurrence(next);
   }, [includedWeeksSignature, items]);
-  const extrasAll = ((shoppingQuery.data as any)?.extras ?? []) as Array<{ id: string; name: string; weekStart: string; checked: boolean }>;
+  const extrasAll = ((shoppingQuery.data as any)?.extras ?? []) as Array<{
+    id: string;
+    name: string;
+    weekStart: string;
+    checked: boolean;
+  }>;
   const extras = useMemo(() => {
-    const relevant = extrasAll.filter(
-      (e: { weekStart: string }) => e.weekStart === (shoppingQuery.data?.weekStart ?? activeWeekStart)
-    );
-    const unchecked = relevant.filter((entry) => !entry.checked);
-    const checked = relevant.filter((entry) => entry.checked);
-    return [...unchecked, ...checked];
-  }, [extrasAll, shoppingQuery.data?.weekStart, activeWeekStart]);
+    // Extras are shared across weeks — deduplicate by name, preferring unchecked
+    const byName = new Map<
+      string,
+      { id: string; name: string; weekStart: string; checked: boolean }
+    >();
+    for (const e of extrasAll) {
+      const existing = byName.get(e.name);
+      if (!existing || (!e.checked && existing.checked)) {
+        byName.set(e.name, e);
+      }
+    }
+    return Array.from(byName.values());
+  }, [extrasAll]);
+
+  const uncheckedExtras = useMemo(
+    () => extras.filter((e) => !e.checked),
+    [extras],
+  );
+  const checkedExtras = useMemo(
+    () => extras.filter((e) => e.checked).slice(-20),
+    [extras],
+  );
   const isLoading = shoppingQuery.isLoading;
   const isFetching = shoppingQuery.isFetching;
 
   const occurrenceOptions = useMemo(() => {
     const map = new Map<
       string,
-      { key: string; weekdayLabel: string; shortLabel: string; longLabel: string; dateISO: string }
+      {
+        key: string;
+        weekdayLabel: string;
+        shortLabel: string;
+        longLabel: string;
+        dateISO: string;
+      }
     >();
     for (const item of items) {
       if (item.isPantryItem) continue;
@@ -143,8 +203,25 @@ export default function ShoppingListPage() {
         }
       }
     }
-    return Array.from(map.values()).sort((a, b) => a.dateISO.localeCompare(b.dateISO));
-  }, [items]);
+    const totalDays = includeNextWeek ? 14 : 7;
+    return Array.from(map.values()).sort((a, b) => {
+      const aOffset = toDayOffset(
+        a.key.split("::")[0],
+        Number(a.key.split("::")[1]),
+        activeWeekStart,
+      );
+      const bOffset = toDayOffset(
+        b.key.split("::")[0],
+        Number(b.key.split("::")[1]),
+        activeWeekStart,
+      );
+      const aShifted =
+        (((aOffset - startDay) % totalDays) + totalDays) % totalDays;
+      const bShifted =
+        (((bOffset - startDay) % totalDays) + totalDays) % totalDays;
+      return aShifted - bShifted;
+    });
+  }, [items, includeNextWeek, activeWeekStart, startDay]);
 
   useEffect(() => {
     const optionKeys = occurrenceOptions.map((option) => option.key);
@@ -152,25 +229,7 @@ export default function ShoppingListPage() {
       if (optionKeys.length === 0) {
         return [];
       }
-      if (prev.length === 0) {
-        const todayStart = new Date();
-        todayStart.setUTCHours(0, 0, 0, 0);
-        const upcomingKeys = occurrenceOptions
-          .filter((option) => {
-            const optionDate = new Date(option.dateISO);
-            if (Number.isNaN(optionDate.getTime())) {
-              console.warn(
-                `[ShoppingList] Invalid dateISO encountered: "${option.dateISO}" for option key "${option.key}". Excluding from upcomingKeys.`
-              );
-              return false;
-            }
-            optionDate.setUTCHours(0, 0, 0, 0);
-            return optionDate >= todayStart;
-          })
-          .map((option) => option.key);
-
-        return upcomingKeys.length > 0 ? upcomingKeys : optionKeys;
-      }
+      if (prev.length === 0) return optionKeys;
       const prevSet = new Set(prev);
       const filtered = optionKeys.filter((key) => prevSet.has(key));
       if (filtered.length === 0) {
@@ -189,23 +248,32 @@ export default function ShoppingListPage() {
     previousOptionKeysRef.current = optionKeys;
   }, [occurrenceOptions]);
 
-  const visibleDayKeySet = useMemo(() => new Set(visibleDayKeys), [visibleDayKeys]);
+  const visibleDayKeySet = useMemo(
+    () => new Set(visibleDayKeys),
+    [visibleDayKeys],
+  );
 
   const dayFilterLabel = useMemo(() => {
     if (occurrenceOptions.length === 0) return "Alle";
     if (visibleDayKeys.length === 0) return "Ingen";
     if (visibleDayKeys.length === occurrenceOptions.length) return "Alle";
-    const selected = occurrenceOptions.filter((option) => visibleDayKeySet.has(option.key));
+    const selected = occurrenceOptions.filter((option) =>
+      visibleDayKeySet.has(option.key),
+    );
     if (selected.length === 0) return "Ingen";
     if (selected.length <= 3) {
-      return selected.map((option) => option.weekdayLabel.substring(0, 3)).join(", ");
+      return selected
+        .map((option) => option.weekdayLabel.substring(0, 3))
+        .join(", ");
     }
     return `${selected.length} dager`;
   }, [occurrenceOptions, visibleDayKeySet, visibleDayKeys.length]);
 
+  const startDayLabel = ALL_DAY_NAMES[startDay];
   const viewModeLabel = viewMode === "by-day" ? "Ukesplan" : "Alfabetisk";
-  const settingsLabel = `${viewModeLabel}${viewMode === "by-day" ? ` · ${dayFilterLabel}` : ""
-    }${includeNextWeek ? " · Neste uke" : ""}`;
+  const settingsLabel = `${viewModeLabel}${
+    viewMode === "by-day" ? ` · ${dayFilterLabel}` : ""
+  }${startDay !== 0 ? ` · Fra ${startDayLabel.toLowerCase()}` : ""}${includeNextWeek ? " · Neste uke" : ""}`;
 
   const { regularItems, pantryItems } = useMemo(() => {
     const regularUnchecked: ShoppingListItem[] = [];
@@ -217,7 +285,9 @@ export default function ShoppingListPage() {
       const key = `${item.ingredientId}::${item.unit ?? ""}`;
       if (removedKeys.has(key)) continue;
       const isItemChecked = areAllOccurrencesChecked(item);
-      const targetUnchecked = item.isPantryItem ? pantryUnchecked : regularUnchecked;
+      const targetUnchecked = item.isPantryItem
+        ? pantryUnchecked
+        : regularUnchecked;
       const targetChecked = item.isPantryItem ? pantryChecked : regularChecked;
       if (isItemChecked) targetChecked.push(item);
       else targetUnchecked.push(item);
@@ -230,7 +300,9 @@ export default function ShoppingListPage() {
   }, [items, checkedByOccurrence, removedKeys]);
 
   const includedWeekLabels = useMemo(() => {
-    const weeks = shoppingQuery.data?.includedWeekStarts ?? (shoppingQuery.data?.weekStart ? [shoppingQuery.data.weekStart] : []);
+    const weeks =
+      shoppingQuery.data?.includedWeekStarts ??
+      (shoppingQuery.data?.weekStart ? [shoppingQuery.data.weekStart] : []);
     return weeks;
   }, [shoppingQuery.data?.includedWeekStarts, shoppingQuery.data?.weekStart]);
 
@@ -239,11 +311,17 @@ export default function ShoppingListPage() {
   const extraRemove = trpc.planner.extraRemove.useMutation();
   const extraAdd = trpc.planner.extraAdd.useMutation();
 
-  function getOccurrenceKey(item: ShoppingListItem, occurrence: ShoppingListOccurrence) {
+  function getOccurrenceKey(
+    item: ShoppingListItem,
+    occurrence: ShoppingListOccurrence,
+  ) {
     return `${occurrence.weekStart}::${occurrence.dayIndex}::${item.ingredientId}::${item.unit ?? ""}`;
   }
 
-  function isOccurrenceChecked(item: ShoppingListItem, occurrence: ShoppingListOccurrence) {
+  function isOccurrenceChecked(
+    item: ShoppingListItem,
+    occurrence: ShoppingListOccurrence,
+  ) {
     const key = getOccurrenceKey(item, occurrence);
     return checkedByOccurrence[key] ?? occurrence.checked ?? false;
   }
@@ -253,19 +331,29 @@ export default function ShoppingListPage() {
     if (occurrences.length === 0) {
       return item.checked ?? false;
     }
-    return occurrences.every((occurrence) => isOccurrenceChecked(item, occurrence));
+    return occurrences.every((occurrence) =>
+      isOccurrenceChecked(item, occurrence),
+    );
   }
 
-  function getFirstCheckedOccurrence(item: ShoppingListItem, occurrence: ShoppingListOccurrence) {
+  function getFirstCheckedOccurrence(
+    item: ShoppingListItem,
+    occurrence: ShoppingListOccurrence,
+  ) {
     const entries = item.firstCheckedOccurrences ?? [];
-    const match = entries.find((entry) => entry.weekStart === occurrence.weekStart);
+    const match = entries.find(
+      (entry) => entry.weekStart === occurrence.weekStart,
+    );
     if (!match) return null;
     if (match.dayIndex === occurrence.dayIndex) return null;
     if (occurrence.dayIndex <= match.dayIndex) return null;
-    return (item.occurrences ?? []).find(
-      (candidate) =>
-        candidate.weekStart === match.weekStart && candidate.dayIndex === match.dayIndex
-    ) ?? null;
+    return (
+      (item.occurrences ?? []).find(
+        (candidate) =>
+          candidate.weekStart === match.weekStart &&
+          candidate.dayIndex === match.dayIndex,
+      ) ?? null
+    );
   }
 
   function toggleDetails(key: string) {
@@ -282,9 +370,13 @@ export default function ShoppingListPage() {
 
   function toggleAllOccurrences(item: ShoppingListItem) {
     const occurrences = item.occurrences ?? [];
-    const keys = occurrences.map((occurrence) => getOccurrenceKey(item, occurrence));
+    const keys = occurrences.map((occurrence) =>
+      getOccurrenceKey(item, occurrence),
+    );
     const prevValues = keys.map((key) => checkedByOccurrence[key] ?? false);
-    const nextValue = occurrences.some((occurrence) => !isOccurrenceChecked(item, occurrence));
+    const nextValue = occurrences.some(
+      (occurrence) => !isOccurrenceChecked(item, occurrence),
+    );
     setCheckedByOccurrence((prev) => {
       const next = { ...prev };
       keys.forEach((key) => {
@@ -315,13 +407,17 @@ export default function ShoppingListPage() {
         onSuccess: () => {
           shoppingQuery.refetch().catch(() => undefined);
         },
-      }
+      },
     );
   }
 
-  function toggleSingleOccurrence(item: ShoppingListItem, occurrence: ShoppingListOccurrence) {
+  function toggleSingleOccurrence(
+    item: ShoppingListItem,
+    occurrence: ShoppingListOccurrence,
+  ) {
     const key = getOccurrenceKey(item, occurrence);
-    const currentValue = checkedByOccurrence[key] ?? occurrence.checked ?? false;
+    const currentValue =
+      checkedByOccurrence[key] ?? occurrence.checked ?? false;
     const nextValue = !currentValue;
     setCheckedByOccurrence((prev) => ({
       ...prev,
@@ -331,7 +427,9 @@ export default function ShoppingListPage() {
       {
         ingredientId: item.ingredientId,
         unit: item.unit ?? null,
-        occurrences: [{ weekStart: occurrence.weekStart, dayIndex: occurrence.dayIndex }],
+        occurrences: [
+          { weekStart: occurrence.weekStart, dayIndex: occurrence.dayIndex },
+        ],
         checked: nextValue,
       },
       {
@@ -344,7 +442,7 @@ export default function ShoppingListPage() {
         onSuccess: () => {
           shoppingQuery.refetch().catch(() => undefined);
         },
-      }
+      },
     );
   }
 
@@ -392,8 +490,28 @@ export default function ShoppingListPage() {
       }
     }
 
+    const totalDays = includeNextWeek ? 14 : 7;
+
     return Array.from(sections.values())
-      .sort((a, b) => a.dateISO.localeCompare(b.dateISO))
+      .sort((a, b) => {
+        const [aWeekStart, aDayIndex] = a.key.split("::");
+        const [bWeekStart, bDayIndex] = b.key.split("::");
+        const aOffset = toDayOffset(
+          aWeekStart,
+          Number(aDayIndex),
+          activeWeekStart,
+        );
+        const bOffset = toDayOffset(
+          bWeekStart,
+          Number(bDayIndex),
+          activeWeekStart,
+        );
+        const aShifted =
+          (((aOffset - startDay) % totalDays) + totalDays) % totalDays;
+        const bShifted =
+          (((bOffset - startDay) % totalDays) + totalDays) % totalDays;
+        return aShifted - bShifted;
+      })
       .map(({ dateISO: _date, entries, recipeNameSet, ...section }) => ({
         ...section,
         recipeNames: Array.from(recipeNameSet),
@@ -403,10 +521,20 @@ export default function ShoppingListPage() {
           if (aChecked !== bChecked) {
             return aChecked ? 1 : -1;
           }
-          return a.item.name.localeCompare(b.item.name, "nb", { sensitivity: "base" });
+          return a.item.name.localeCompare(b.item.name, "nb", {
+            sensitivity: "base",
+          });
         }),
       }));
-  }, [regularItems, removedKeys, visibleDayKeySet, checkedByOccurrence]);
+  }, [
+    regularItems,
+    removedKeys,
+    visibleDayKeySet,
+    checkedByOccurrence,
+    includeNextWeek,
+    activeWeekStart,
+    startDay,
+  ]);
 
   function toggleDayKey(dayKey: string, checked: boolean) {
     setVisibleDayKeys((prev) => {
@@ -449,7 +577,9 @@ export default function ShoppingListPage() {
         ingredientId: item.ingredientId,
         unit: item.unit ?? null,
         occurrences: occurrencePayload.length ? occurrencePayload : undefined,
-        weeks: occurrencePayload.length ? undefined : item.weekStarts ?? [activeWeekStart],
+        weeks: occurrencePayload.length
+          ? undefined
+          : (item.weekStarts ?? [activeWeekStart]),
         checked: true,
       },
       {
@@ -472,7 +602,7 @@ export default function ShoppingListPage() {
         onSuccess: () => {
           shoppingQuery.refetch().catch(() => undefined);
         },
-      }
+      },
     );
   }
 
@@ -487,14 +617,22 @@ export default function ShoppingListPage() {
     } catch (_) {
       // ignore if already exists
     }
-    await extraToggle.mutateAsync({ weekStart: activeWeekStart, name: clean, checked: false } as any);
+    await extraToggle.mutateAsync({
+      weekStart: activeWeekStart,
+      name: clean,
+      checked: false,
+    } as any);
     setExtraInput("");
     setIsAddExtraOpen(false);
     shoppingQuery.refetch().catch(() => undefined);
   }
 
   async function toggleExtra(name: string, checked: boolean) {
-    await extraToggle.mutateAsync({ weekStart: activeWeekStart, name, checked: !checked } as any);
+    await extraToggle.mutateAsync({
+      weekStart: activeWeekStart,
+      name,
+      checked: !checked,
+    } as any);
     shoppingQuery.refetch().catch(() => undefined);
   }
 
@@ -512,7 +650,9 @@ export default function ShoppingListPage() {
       const showDetailsToggle = item.details.length > 0;
       const detailBadges = item.details.map((detail, index) => {
         const detailLabel =
-          detail.quantity != null ? formatQuantity(detail.quantity, detail.unit ?? item.unit) : undefined;
+          detail.quantity != null
+            ? formatQuantity(detail.quantity, detail.unit ?? item.unit)
+            : undefined;
         const hsl = FALL_BADGE_PALETTE[index % FALL_BADGE_PALETTE.length];
         return (
           <Badge
@@ -533,7 +673,10 @@ export default function ShoppingListPage() {
             : null;
 
       return (
-        <li key={key} className={`border rounded-lg p-3 bg-white ${checked ? "opacity-75" : ""}`}>
+        <li
+          key={key}
+          className={`border rounded-lg p-3 bg-white ${checked ? "opacity-75" : ""}`}
+        >
           <div className="flex items-start gap-3">
             <input
               type="checkbox"
@@ -544,17 +687,29 @@ export default function ShoppingListPage() {
             />
             <div className="flex-1 min-w-0 flex flex-col gap-2">
               <div className="flex items-baseline gap-2 flex-wrap">
-                <div className={`font-medium ${checked ? "text-gray-500" : "text-gray-900"}`}>{item.name}</div>
-                <div className={`text-xs ${checked ? "text-gray-400" : "text-gray-700"}`}>
+                <div
+                  className={`font-medium ${checked ? "text-gray-500" : "text-gray-900"}`}
+                >
+                  {item.name}
+                </div>
+                <div
+                  className={`text-xs ${checked ? "text-gray-400" : "text-gray-700"}`}
+                >
                   {quantityLabel ?? "Mengde ikke spesifisert"}
-                  {item.hasMissingQuantities && quantityLabel ? " • noen mengder mangler" : null}
+                  {item.hasMissingQuantities && quantityLabel
+                    ? " • noen mengder mangler"
+                    : null}
                 </div>
               </div>
               {item.details.length ? (
                 <>
-                  <div className="hidden md:flex flex-wrap gap-2 w-full">{detailBadges}</div>
+                  <div className="hidden md:flex flex-wrap gap-2 w-full">
+                    {detailBadges}
+                  </div>
                   {isExpanded ? (
-                    <div className="flex md:hidden flex-wrap gap-2 w-full">{detailBadges}</div>
+                    <div className="flex md:hidden flex-wrap gap-2 w-full">
+                      {detailBadges}
+                    </div>
                   ) : null}
                 </>
               ) : null}
@@ -573,7 +728,11 @@ export default function ShoppingListPage() {
                 onClick={() => toggleDetails(key)}
                 title={isExpanded ? "Skjul detaljer" : "Vis detaljer"}
               >
-                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                {isExpanded ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
               </Button>
             ) : null}
             <Button
@@ -595,7 +754,9 @@ export default function ShoppingListPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="hidden text-xl font-bold text-center md:block">Handleliste</h1>
+      <h1 className="hidden text-xl font-bold text-center md:block">
+        Handleliste
+      </h1>
 
       <WeekSelector
         weeks={timelineEntries}
@@ -608,19 +769,42 @@ export default function ShoppingListPage() {
         <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-row sm:items-center sm:justify-between">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button type="button" variant="outline" size="sm" className="w-full sm:w-auto justify-between gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full sm:w-auto justify-between gap-2"
+              >
                 {settingsLabel}
                 <ChevronDown className="h-4 w-4 text-muted-foreground" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-72">
+            <DropdownMenuContent className="w-72 max-h-[70vh] overflow-y-auto">
               <DropdownMenuLabel>Visning</DropdownMenuLabel>
               <DropdownMenuRadioGroup
                 value={viewMode}
-                onValueChange={(value) => setViewMode(value as "by-day" | "alphabetical")}
+                onValueChange={(value) =>
+                  setViewMode(value as "by-day" | "alphabetical")
+                }
               >
-                <DropdownMenuRadioItem value="by-day">Ukesplan</DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="alphabetical">Alfabetisk</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="by-day">
+                  Ukesplan
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="alphabetical">
+                  Alfabetisk
+                </DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Startdag</DropdownMenuLabel>
+              <DropdownMenuRadioGroup
+                value={String(startDay)}
+                onValueChange={(v) => setStartDay(Number(v))}
+              >
+                {ALL_DAY_NAMES.map((name, i) => (
+                  <DropdownMenuRadioItem key={i} value={String(i)}>
+                    {name}
+                  </DropdownMenuRadioItem>
+                ))}
               </DropdownMenuRadioGroup>
               <DropdownMenuSeparator />
               <DropdownMenuCheckboxItem
@@ -639,7 +823,9 @@ export default function ShoppingListPage() {
                       key={option.key}
                       checked={visibleDayKeySet.has(option.key)}
                       onSelect={(e) => e.preventDefault()}
-                      onCheckedChange={(checked) => toggleDayKey(option.key, Boolean(checked))}
+                      onCheckedChange={(checked) =>
+                        toggleDayKey(option.key, Boolean(checked))
+                      }
                     >
                       {option.weekdayLabel} ({option.shortLabel})
                     </DropdownMenuCheckboxItem>
@@ -648,7 +834,11 @@ export default function ShoppingListPage() {
                   <DropdownMenuCheckboxItem
                     checked={visibleDayKeys.length === occurrenceOptions.length}
                     onSelect={(e) => e.preventDefault()}
-                    onCheckedChange={() => setVisibleDayKeys(occurrenceOptions.map((option) => option.key))}
+                    onCheckedChange={() =>
+                      setVisibleDayKeys(
+                        occurrenceOptions.map((option) => option.key),
+                      )
+                    }
                   >
                     Velg alle dager
                   </DropdownMenuCheckboxItem>
@@ -687,14 +877,20 @@ export default function ShoppingListPage() {
                         Legg til
                       </Button>
                       <DialogClose asChild>
-                        <Button type="button" variant="ghost" size="icon" aria-label="Lukk">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Lukk"
+                        >
                           <X className="h-4 w-4" />
                         </Button>
                       </DialogClose>
                     </div>
                     <DialogTitle>Legg til i handlelisten</DialogTitle>
                     <DialogDescription className="max-sm:hidden">
-                      Skriv inn et element. Tidligere elementer dukker opp som forslag.
+                      Skriv inn et element. Tidligere elementer dukker opp som
+                      forslag.
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-3 max-sm:flex-1 max-sm:min-h-0 max-sm:overflow-y-auto">
@@ -708,20 +904,36 @@ export default function ShoppingListPage() {
                     {extraInput.trim().length > 0 && (
                       <div className="min-h-6">
                         {extraSuggest.isLoading ? (
-                          <p className="text-xs text-muted-foreground">Søker…</p>
+                          <p className="text-xs text-muted-foreground">
+                            Søker…
+                          </p>
                         ) : (
                           (() => {
-                            const suggestions = (extraSuggest.data ?? []) as Array<{ id: string; name: string }>;
-                            const exists = suggestions.some((s) => s.name.toLowerCase() === extraInput.trim().toLowerCase());
+                            const suggestions = (extraSuggest.data ??
+                              []) as Array<{ id: string; name: string }>;
+                            const exists = suggestions.some(
+                              (s) =>
+                                s.name.toLowerCase() ===
+                                extraInput.trim().toLowerCase(),
+                            );
                             return (
                               <div className="flex flex-wrap gap-2">
                                 {suggestions.map((s) => (
-                                  <Badge key={s.id} className="cursor-pointer" onClick={() => addOrToggleExtra(s.name)}>
+                                  <Badge
+                                    key={s.id}
+                                    className="cursor-pointer"
+                                    onClick={() => addOrToggleExtra(s.name)}
+                                  >
                                     {s.name}
                                   </Badge>
                                 ))}
                                 {!exists && (
-                                  <Badge className="cursor-pointer" onClick={() => addOrToggleExtra(extraInput.trim())}>
+                                  <Badge
+                                    className="cursor-pointer"
+                                    onClick={() =>
+                                      addOrToggleExtra(extraInput.trim())
+                                    }
+                                  >
                                     Legg til "{extraInput.trim()}"
                                   </Badge>
                                 )}
@@ -739,58 +951,128 @@ export default function ShoppingListPage() {
           </div>
         </div>
         <div className="flex items-center gap-3 justify-end">
-          {isFetching && <span className="text-xs text-gray-500">Oppdaterer…</span>}
+          {isFetching && (
+            <span className="text-xs text-gray-500">Oppdaterer…</span>
+          )}
         </div>
       </div>
 
       {includeNextWeek && includedWeekLabels.length ? (
-        <p className="text-xs text-gray-500">Viser varer for {includedWeekLabels.join(" og ")}.</p>
+        <p className="text-xs text-gray-500">
+          Viser varer for {includedWeekLabels.join(" og ")}.
+        </p>
       ) : null}
 
       {isLoading ? (
         <p className="text-sm text-gray-500">Laster handleliste…</p>
       ) : !regularItems.length && !pantryItems.length ? (
-        <p className="text-sm text-gray-500">Ingen oppskrifter valgt for denne uken ennå.</p>
+        <p className="text-sm text-gray-500">
+          Ingen oppskrifter valgt for denne uken ennå.
+        </p>
       ) : (
         <div className="max-w-2xl mx-auto w-full space-y-6">
           <section className="rounded-2xl border border-emerald-200/60 bg-emerald-50/40 p-4">
             <h2 className="text-sm font-semibold mb-2">Egne elementer</h2>
-            {extras.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Ingen egne elementer ennå.</p>
+            {uncheckedExtras.length === 0 && checkedExtras.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Ingen egne elementer ennå.
+              </p>
             ) : (
-              <ul className="space-y-3">
-                {extras.map((e: { id: string; name: string; checked: boolean }) => (
-                  <li key={e.id} className="border rounded-lg p-3 bg-white">
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="checkbox"
-                        className="h-5 w-5"
-                        checked={e.checked}
-                        onChange={() => toggleExtra(e.name, e.checked)}
-                        aria-label={`Marker ${e.name} som kjøpt`}
-                      />
-                      <div className={`flex-1 ${e.checked ? "text-gray-400" : "text-gray-900"}`}>{e.name}</div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="text-red-600 shrink-0"
-                        onClick={() => removeExtra(e.name)}
-                        aria-label={`Fjern ${e.name}`}
-                        title={`Fjern ${e.name}`}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+              <div className="space-y-3">
+                {uncheckedExtras.length > 0 && (
+                  <ul className="space-y-3">
+                    {uncheckedExtras.map((e) => (
+                      <li key={e.id} className="border rounded-lg p-3 bg-white">
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            className="h-5 w-5"
+                            checked={e.checked}
+                            onChange={() => toggleExtra(e.name, e.checked)}
+                            aria-label={`Marker ${e.name} som kjøpt`}
+                          />
+                          <div className="flex-1 text-gray-900">{e.name}</div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-600 shrink-0"
+                            onClick={() => removeExtra(e.name)}
+                            aria-label={`Fjern ${e.name}`}
+                            title={`Fjern ${e.name}`}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {checkedExtras.length > 0 && (
+                  <div>
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      onClick={() => setShowCompletedExtras((prev) => !prev)}
+                      aria-label={
+                        showCompletedExtras
+                          ? "Skjul fullførte elementer"
+                          : "Vis fullførte elementer"
+                      }
+                    >
+                      {showCompletedExtras ? (
+                        <ChevronDown className="h-3.5 w-3.5" />
+                      ) : (
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      )}
+                      {checkedExtras.length} fullført
+                      {checkedExtras.length !== 1 ? "e" : ""}
+                    </button>
+                    {showCompletedExtras && (
+                      <ul className="space-y-3 mt-2">
+                        {checkedExtras.map((e) => (
+                          <li
+                            key={e.id}
+                            className="border rounded-lg p-3 bg-white opacity-75"
+                          >
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                className="h-5 w-5"
+                                checked={e.checked}
+                                onChange={() => toggleExtra(e.name, e.checked)}
+                                aria-label={`Marker ${e.name} som ikke kjøpt`}
+                              />
+                              <div className="flex-1 text-gray-400">
+                                {e.name}
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-600 shrink-0"
+                                onClick={() => removeExtra(e.name)}
+                                aria-label={`Fjern ${e.name}`}
+                                title={`Fjern ${e.name}`}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
           </section>
           <section className="rounded-2xl border border-orange-200/60 bg-orange-50/40 p-4">
             <h2 className="text-sm font-semibold mb-2">Ukesplan</h2>
             {viewMode === "alphabetical" ? (
-              <ul className="space-y-3">{renderAlphabeticalItems(regularItems)}</ul>
+              <ul className="space-y-3">
+                {renderAlphabeticalItems(regularItems)}
+              </ul>
             ) : (
               <ShoppingListDayView
                 sections={daySections}
@@ -806,9 +1088,13 @@ export default function ShoppingListPage() {
           <section className="rounded-2xl border border-slate-200/70 bg-slate-50/50 p-4">
             <h2 className="text-sm font-semibold mb-2">Basisvarer</h2>
             {pantryItems.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Ingen basisvarer i ukesplanen.</p>
+              <p className="text-sm text-muted-foreground">
+                Ingen basisvarer i ukesplanen.
+              </p>
             ) : (
-              <ul className="space-y-3">{renderAlphabeticalItems(pantryItems)}</ul>
+              <ul className="space-y-3">
+                {renderAlphabeticalItems(pantryItems)}
+              </ul>
             )}
           </section>
         </div>
