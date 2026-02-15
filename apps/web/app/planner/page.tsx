@@ -602,8 +602,8 @@ export default function PlannerPage() {
             startDay={startDay}
             weekOffset={0}
             onRequestChange={handleRequestChange}
-            onSetTakeaway={(i) => handleSetTakeaway(toRealIndex(i, startDay), 0)}
-            onClearEntry={(i) => handleClearEntry(toRealIndex(i, startDay), 0)}
+            onSetTakeaway={(i) => handleSetTakeaway(i, 0)}
+            onClearEntry={(i) => handleClearEntry(i, 0)}
           />
 
           {showNextWeek && (
@@ -615,8 +615,8 @@ export default function PlannerPage() {
                 startDay={startDay}
                 weekOffset={1}
                 onRequestChange={handleRequestChange}
-                onSetTakeaway={(i) => handleSetTakeaway(toRealIndex(i, startDay), 1)}
-                onClearEntry={(i) => handleClearEntry(toRealIndex(i, startDay), 1)}
+                onSetTakeaway={(i) => handleSetTakeaway(i, 1)}
+                onClearEntry={(i) => handleClearEntry(i, 1)}
               />
             </>
           )}

@@ -909,9 +909,8 @@ export const plannerRouter = router({
         })
         .sort((a, b) => a.name.localeCompare(b.name, "nb", { sensitivity: "base" }));
 
-      // Include extra shopping items for these weeks
+      // Include all extra shopping items (shared across weeks)
       const extraItems = await prisma.extraShoppingItem.findMany({
-        where: { weekStart: { in: weekStarts } },
         include: { catalogItem: true },
         orderBy: { createdAt: "asc" },
       });
