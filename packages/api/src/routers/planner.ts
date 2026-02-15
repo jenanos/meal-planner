@@ -1183,22 +1183,33 @@ export const plannerRouter = router({
       });
       const checked = input.checked ?? !existing?.checked;
 
-      await prisma.extraShoppingItem.updateMany({
-        where: { catalogItemId: catalog.id },
-        data: { checked },
-      });
-
-      const saved = existing
-        ? await prisma.extraShoppingItem.findUniqueOrThrow({
-            where: { id: existing.id },
-          })
-        : await prisma.extraShoppingItem.create({
-            data: {
+      const saved = await prisma.$transaction(async (tx) => {
+        const globalRow = await tx.extraShoppingItem.upsert({
+          where: {
+            weekStart_catalogItemId: {
               weekStart: GLOBAL_EXTRA_WEEK_START,
               catalogItemId: catalog.id,
-              checked,
             },
-          });
+          },
+          create: {
+            weekStart: GLOBAL_EXTRA_WEEK_START,
+            catalogItemId: catalog.id,
+            checked,
+          },
+          update: { checked },
+        });
+
+        await tx.extraShoppingItem.updateMany({
+          where: {
+            catalogItemId: catalog.id,
+            NOT: { id: globalRow.id },
+          },
+          data: { checked },
+        });
+
+        return globalRow;
+      });
+
       return { id: saved.id, checked: saved.checked };
     }),
 

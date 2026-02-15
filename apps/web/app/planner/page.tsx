@@ -30,9 +30,22 @@ import type { DropAnimation } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
 import { createPortal } from "react-dom";
 
-import type { DragPayload, RecipeDTO, WeekEntry, WeekPlanResult, WeekState } from "./types";
+import type {
+  DragPayload,
+  RecipeDTO,
+  WeekEntry,
+  WeekPlanResult,
+  WeekState,
+} from "./types";
 import type { MockWeekTimelineResult } from "../../lib/mock/store";
-import { makeEmptyWeek, parseDragId, reorderDayNames, reorderWeek, toRealIndex, ALL_DAY_NAMES } from "./utils";
+import {
+  makeEmptyWeek,
+  parseDragId,
+  reorderDayNames,
+  reorderWeek,
+  toRealIndex,
+  ALL_DAY_NAMES,
+} from "./utils";
 import { DisplayOptions } from "./components/DisplayOptions";
 import { addWeeksISO } from "../../lib/week";
 
@@ -48,12 +61,16 @@ export default function PlannerPage() {
   const [activeWeekStart, setActiveWeekStart] = useState(currentWeekStart);
   const [week, setWeek] = useState<WeekState>(makeEmptyWeek);
   const [previewWeek, setPreviewWeek] = useState<WeekState | null>(null);
-  const [draggingWeekIndex, setDraggingWeekIndex] = useState<number | null>(null);
+  const [draggingWeekIndex, setDraggingWeekIndex] = useState<number | null>(
+    null,
+  );
   const [, setDraggingWeekOffset] = useState<number>(0);
   const [startDay, setStartDay] = useState(0);
   const [showNextWeek, setShowNextWeek] = useState(false);
   const [nextWeek, setNextWeek] = useState<WeekState>(makeEmptyWeek);
-  const [previewNextWeek, setPreviewNextWeek] = useState<WeekState | null>(null);
+  const [previewNextWeek, setPreviewNextWeek] = useState<WeekState | null>(
+    null,
+  );
   const [longGap, setLongGap] = useState<RecipeDTO[]>([]);
   const [frequent, setFrequent] = useState<RecipeDTO[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -74,21 +91,26 @@ export default function PlannerPage() {
         delay: 150,
         tolerance: 8,
       },
-    })
+    }),
   );
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
 
   const weekPlanQuery = trpc.planner.getWeekPlan.useQuery(
     { weekStart: activeWeekStart },
-    { enabled: Boolean(activeWeekStart) }
+    { enabled: Boolean(activeWeekStart) },
   );
-  const nextWeekStart = useMemo(() => addWeeksISO(activeWeekStart, 1), [activeWeekStart]);
+  const nextWeekStart = useMemo(
+    () => addWeeksISO(activeWeekStart, 1),
+    [activeWeekStart],
+  );
   const nextWeekPlanQuery = trpc.planner.getWeekPlan.useQuery(
     { weekStart: nextWeekStart },
-    { enabled: Boolean(nextWeekStart) && showNextWeek }
+    { enabled: Boolean(nextWeekStart) && showNextWeek },
   );
-  const timelineQuery = trpc.planner.weekTimeline.useQuery({ around: currentWeekStart });
+  const timelineQuery = trpc.planner.weekTimeline.useQuery({
+    around: currentWeekStart,
+  });
 
   const saveWeek = trpc.planner.saveWeekPlan.useMutation();
 
@@ -112,7 +134,15 @@ export default function PlannerPage() {
       map.set(recipe.id, recipe);
     });
     return Array.from(map.values()) as RecipeListItem[];
-  }, [previewWeek, week, previewNextWeek, nextWeek, longGap, frequent, searchResults]);
+  }, [
+    previewWeek,
+    week,
+    previewNextWeek,
+    nextWeek,
+    longGap,
+    frequent,
+    searchResults,
+  ]);
 
   const {
     dialogContentClassName,
@@ -168,16 +198,21 @@ export default function PlannerPage() {
     hideTrigger: true,
     onUpdateSuccess: async () => {
       await utils.recipe.list.invalidate().catch(() => undefined);
-      await utils.planner.getWeekPlan.invalidate({ weekStart: activeWeekStart }).catch(() => undefined);
+      await utils.planner.getWeekPlan
+        .invalidate({ weekStart: activeWeekStart })
+        .catch(() => undefined);
       await weekPlanQuery.refetch().catch(() => undefined);
     },
   });
 
-  const handleRecipeClick = useCallback((recipe: RecipeDTO) => {
-    // Close the picker modal first to prevent overlapping dialogs
-    setEditingDayIndex(null);
-    openView(recipe.id);
-  }, [openView]);
+  const handleRecipeClick = useCallback(
+    (recipe: RecipeDTO) => {
+      // Close the picker modal first to prevent overlapping dialogs
+      setEditingDayIndex(null);
+      openView(recipe.id);
+    },
+    [openView],
+  );
 
   const applyWeekData = useCallback(
     (res: WeekPlanResult) => {
@@ -197,7 +232,7 @@ export default function PlannerPage() {
       setFrequent(res.suggestions.frequent);
       utils.planner.getWeekPlan.setData({ weekStart: res.weekStart }, res);
     },
-    [utils]
+    [utils],
   );
 
   const applyNextWeekData = useCallback(
@@ -215,7 +250,7 @@ export default function PlannerPage() {
       setPreviewNextWeek(null);
       utils.planner.getWeekPlan.setData({ weekStart: res.weekStart }, res);
     },
-    [utils]
+    [utils],
   );
 
   useEffect(() => {
@@ -229,7 +264,6 @@ export default function PlannerPage() {
       applyNextWeekData(nextWeekPlanQuery.data);
     }
   }, [nextWeekPlanQuery.data, applyNextWeekData]);
-
 
   const commitWeekPlan = useCallback(
     async (newWeek: WeekState, weekStart: string = activeWeekStart) => {
@@ -263,11 +297,18 @@ export default function PlannerPage() {
         console.error("Failed to save week plan:", error);
       }
     },
-    [activeWeekStart, saveWeek, applyWeekData, applyNextWeekData]
+    [activeWeekStart, saveWeek, applyWeekData, applyNextWeekData],
   );
 
-  const getWeekForOffset = useCallback((offset: number): WeekState => offset === 1 ? nextWeek : week, [week, nextWeek]);
-  const getWeekStartForOffset = useCallback((offset: number): string => offset === 1 ? nextWeekStart : activeWeekStart, [activeWeekStart, nextWeekStart]);
+  const getWeekForOffset = useCallback(
+    (offset: number): WeekState => (offset === 1 ? nextWeek : week),
+    [week, nextWeek],
+  );
+  const getWeekStartForOffset = useCallback(
+    (offset: number): string =>
+      offset === 1 ? nextWeekStart : activeWeekStart,
+    [activeWeekStart, nextWeekStart],
+  );
 
   const handleDragStart = useCallback(
     (event: any) => {
@@ -284,7 +325,7 @@ export default function PlannerPage() {
         setDraggingWeekIndex(payload.index);
       }
     },
-    [week, nextWeek]
+    [week, nextWeek],
   );
 
   const handleDragOver = useCallback(
@@ -321,7 +362,7 @@ export default function PlannerPage() {
         setDraggingWeekIndex(overPayload.index);
       }
     },
-    [draggingWeekIndex, week, nextWeek]
+    [draggingWeekIndex, week, nextWeek],
   );
 
   const handleDragEnd = useCallback(
@@ -345,7 +386,11 @@ export default function PlannerPage() {
       const toOffset = overPayload.weekOffset ?? 0;
 
       // Dragging within same week (reorder)
-      if (activePayload.source === "week" && overPayload.source === "week" && fromOffset === toOffset) {
+      if (
+        activePayload.source === "week" &&
+        overPayload.source === "week" &&
+        fromOffset === toOffset
+      ) {
         const fromIndex = activePayload.index;
         const toIndex = overPayload.index;
         if (fromIndex === toIndex) return;
@@ -355,7 +400,11 @@ export default function PlannerPage() {
       }
 
       // Dragging between weeks (swap)
-      if (activePayload.source === "week" && overPayload.source === "week" && fromOffset !== toOffset) {
+      if (
+        activePayload.source === "week" &&
+        overPayload.source === "week" &&
+        fromOffset !== toOffset
+      ) {
         const fromWeek = [...getWeekForOffset(fromOffset)];
         const toWeek = [...getWeekForOffset(toOffset)];
         const fromEntry = fromWeek[activePayload.index];
@@ -384,8 +433,18 @@ export default function PlannerPage() {
         }
       }
     },
-    [week, nextWeek, commitWeekPlan, longGap, frequent, searchResults, getWeekForOffset, getWeekStartForOffset]
-  ); const handlePickFromSource = useCallback(
+    [
+      week,
+      nextWeek,
+      commitWeekPlan,
+      longGap,
+      frequent,
+      searchResults,
+      getWeekForOffset,
+      getWeekStartForOffset,
+    ],
+  );
+  const handlePickFromSource = useCallback(
     (source: "longGap" | "frequent" | "search", recipe: RecipeDTO) => {
       // Find first empty slot
       const emptyIndex = week.findIndex((slot) => slot === null);
@@ -395,7 +454,7 @@ export default function PlannerPage() {
         commitWeekPlan(newWeek);
       }
     },
-    [week, commitWeekPlan]
+    [week, commitWeekPlan],
   );
 
   const handleSetTakeaway = useCallback(
@@ -405,7 +464,7 @@ export default function PlannerPage() {
       newWeek[dayIndex] = { type: "TAKEAWAY" };
       commitWeekPlan(newWeek, getWeekStartForOffset(weekOffset));
     },
-    [getWeekForOffset, getWeekStartForOffset, commitWeekPlan]
+    [getWeekForOffset, getWeekStartForOffset, commitWeekPlan],
   );
 
   const handleClearEntry = useCallback(
@@ -415,7 +474,7 @@ export default function PlannerPage() {
       newWeek[dayIndex] = null;
       commitWeekPlan(newWeek, getWeekStartForOffset(weekOffset));
     },
-    [getWeekForOffset, getWeekStartForOffset, commitWeekPlan]
+    [getWeekForOffset, getWeekStartForOffset, commitWeekPlan],
   );
 
   // Handler for opening recipe picker modal (mobile)
@@ -430,7 +489,7 @@ export default function PlannerPage() {
       newWeek[dayIndex] = { type: "RECIPE", recipe };
       commitWeekPlan(newWeek);
     },
-    [week, commitWeekPlan]
+    [week, commitWeekPlan],
   );
 
   // Search logic with debouncing
@@ -463,7 +522,7 @@ export default function PlannerPage() {
 
   const searchQuery = trpc.recipe.list.useQuery(
     { search: debouncedSearchTerm, pageSize: 10 },
-    { enabled: Boolean(debouncedSearchTerm) }
+    { enabled: Boolean(debouncedSearchTerm) },
   );
 
   useEffect(() => {
@@ -482,19 +541,29 @@ export default function PlannerPage() {
   const displayNextWeek = previewNextWeek ?? nextWeek;
 
   const dayNames = useMemo(() => reorderDayNames(startDay), [startDay]);
-  const reorderedWeek = useMemo(() => reorderWeek(displayWeek, startDay), [displayWeek, startDay]);
-  const reorderedNextWeek = useMemo(() => reorderWeek(displayNextWeek, startDay), [displayNextWeek, startDay]);
+  const reorderedWeek = useMemo(
+    () => reorderWeek(displayWeek, startDay),
+    [displayWeek, startDay],
+  );
+  const reorderedNextWeek = useMemo(
+    () => reorderWeek(displayNextWeek, startDay),
+    [displayNextWeek, startDay],
+  );
 
   const activeDragRecipe = useMemo(() => {
     if (!activeDragPayload) return null;
     if (activeDragPayload.source === "week") {
-      const sourceWeek = (activeDragPayload.weekOffset ?? 0) === 1 ? nextWeek : week;
+      const sourceWeek =
+        (activeDragPayload.weekOffset ?? 0) === 1 ? nextWeek : week;
       const entry = sourceWeek[activeDragPayload.index];
       return entry?.type === "RECIPE" ? entry.recipe : null;
     }
-    if (activeDragPayload.source === "longGap") return longGap[activeDragPayload.index];
-    if (activeDragPayload.source === "frequent") return frequent[activeDragPayload.index];
-    if (activeDragPayload.source === "search") return searchResults[activeDragPayload.index];
+    if (activeDragPayload.source === "longGap")
+      return longGap[activeDragPayload.index];
+    if (activeDragPayload.source === "frequent")
+      return frequent[activeDragPayload.index];
+    if (activeDragPayload.source === "search")
+      return searchResults[activeDragPayload.index];
     return null;
   }, [activeDragPayload, week, nextWeek, longGap, frequent, searchResults]);
 
@@ -507,7 +576,9 @@ export default function PlannerPage() {
     }));
   }, [timelineQuery.data, currentWeekStart]);
 
-  const activeWeekIndex = timelineWeeks.findIndex((w) => w.weekStart === activeWeekStart);
+  const activeWeekIndex = timelineWeeks.findIndex(
+    (w) => w.weekStart === activeWeekStart,
+  );
 
   const handleSelectWeek = useCallback((weekStart: string) => {
     setActiveWeekStart(weekStart);
@@ -515,15 +586,18 @@ export default function PlannerPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="hidden text-xl font-bold text-center md:block">Ukesplan</h1>
+      <h1 className="hidden text-xl font-bold text-center md:block">
+        Ukesplan
+      </h1>
 
-      <div className="flex items-center justify-between gap-3">
-        <WeekSelector
-          weeks={timelineWeeks.map((w, i) => ({ week: w, index: i }))}
-          activeWeekStart={activeWeekStart}
-          activeWeekIndex={activeWeekIndex}
-          onSelectWeek={handleSelectWeek}
-        />
+      <WeekSelector
+        weeks={timelineWeeks.map((w, i) => ({ week: w, index: i }))}
+        activeWeekStart={activeWeekStart}
+        activeWeekIndex={activeWeekIndex}
+        onSelectWeek={handleSelectWeek}
+      />
+
+      <div className="flex justify-end">
         <DisplayOptions
           startDay={startDay}
           onStartDayChange={setStartDay}
@@ -608,7 +682,9 @@ export default function PlannerPage() {
 
           {showNextWeek && (
             <>
-              <div className="mt-4 mb-2 text-xs font-semibold text-muted-foreground text-center">Neste uke</div>
+              <div className="mt-4 mb-2 text-xs font-semibold text-muted-foreground text-center">
+                Neste uke
+              </div>
               <MobileEditor
                 week={reorderedNextWeek}
                 dayNames={dayNames}
@@ -626,8 +702,14 @@ export default function PlannerPage() {
             onOpenChange={(open) => {
               if (!open) setEditingDayIndex(null);
             }}
-            currentEntry={editingDayIndex !== null ? displayWeek[editingDayIndex] : null}
-            dayName={editingDayIndex !== null ? ALL_DAY_NAMES[editingDayIndex] : "Mandag"}
+            currentEntry={
+              editingDayIndex !== null ? displayWeek[editingDayIndex] : null
+            }
+            dayName={
+              editingDayIndex !== null
+                ? ALL_DAY_NAMES[editingDayIndex]
+                : "Mandag"
+            }
             dayIndex={editingDayIndex ?? 0}
             longGap={longGap}
             frequent={frequent}
@@ -643,9 +725,13 @@ export default function PlannerPage() {
                 {activeDragRecipe ? (
                   <div className="p-6 bg-gradient-to-br from-blue-500 to-purple-600 text-white rounded-xl shadow-2xl border-2 border-white/20 min-w-[200px]">
                     <div className="flex flex-col items-center gap-2 text-center">
-                      <div className="font-bold text-lg">{activeDragRecipe.name}</div>
+                      <div className="font-bold text-lg">
+                        {activeDragRecipe.name}
+                      </div>
                       {activeDragRecipe.category && (
-                        <CategoryEmoji category={activeDragRecipe.category as any} />
+                        <CategoryEmoji
+                          category={activeDragRecipe.category as any}
+                        />
                       )}
                       {overIndex !== null && (
                         <div className="mt-2 text-sm opacity-90">
@@ -656,7 +742,7 @@ export default function PlannerPage() {
                   </div>
                 ) : null}
               </DragOverlay>,
-              document.body
+              document.body,
             )}
         </DndContext>
       </div>
@@ -690,7 +776,9 @@ export default function PlannerPage() {
 
           {showNextWeek && (
             <>
-              <div className="mt-4 mb-2 text-xs font-semibold text-muted-foreground text-center">Neste uke</div>
+              <div className="mt-4 mb-2 text-xs font-semibold text-muted-foreground text-center">
+                Neste uke
+              </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 auto-rows-fr">
                 {reorderedNextWeek.map((entry, displayIdx) => {
                   const realIdx = toRealIndex(displayIdx, startDay);
@@ -742,9 +830,13 @@ export default function PlannerPage() {
                 {activeDragRecipe ? (
                   <div className="p-6 bg-gradient-to-br from-blue-500 to-purple-600 text-white rounded-xl shadow-2xl border-2 border-white/20 min-w-[200px]">
                     <div className="flex flex-col items-center gap-2 text-center">
-                      <div className="font-bold text-lg">{activeDragRecipe.name}</div>
+                      <div className="font-bold text-lg">
+                        {activeDragRecipe.name}
+                      </div>
                       {activeDragRecipe.category && (
-                        <CategoryEmoji category={activeDragRecipe.category as any} />
+                        <CategoryEmoji
+                          category={activeDragRecipe.category as any}
+                        />
                       )}
                       {overIndex !== null && (
                         <div className="mt-2 text-sm opacity-90">
@@ -755,13 +847,15 @@ export default function PlannerPage() {
                   </div>
                 ) : null}
               </DragOverlay>,
-              document.body
+              document.body,
             )}
         </DndContext>
       </div>
 
       {weekPlanQuery.isLoading && (
-        <div className="text-center text-muted-foreground">Laster ukesplan...</div>
+        <div className="text-center text-muted-foreground">
+          Laster ukesplan...
+        </div>
       )}
     </div>
   );
