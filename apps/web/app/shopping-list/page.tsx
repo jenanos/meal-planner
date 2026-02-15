@@ -543,11 +543,22 @@ export default function ShoppingListPage() {
   );
 
   const displayedItems = useMemo(
-    () =>
-      showPantryWithIngredients
-        ? [...regularItems, ...pantryItems]
-        : regularItems,
-    [showPantryWithIngredients, regularItems, pantryItems],
+    () => {
+      if (!showPantryWithIngredients) {
+        return regularItems;
+      }
+
+      const mergedItems = [...regularItems, ...pantryItems];
+      const uncheckedItems = mergedItems.filter(
+        (item) => !areAllOccurrencesChecked(item),
+      );
+      const checkedItems = mergedItems.filter((item) =>
+        areAllOccurrencesChecked(item),
+      );
+
+      return [...uncheckedItems, ...checkedItems];
+    },
+    [showPantryWithIngredients, regularItems, pantryItems, checkedByOccurrence],
   );
 
   const daySections = useMemo<ShoppingListDaySection[]>(
