@@ -10,17 +10,18 @@ type WeekSlotProps = {
   index: number;
   dayName: DayName;
   entry: WeekEntry | null;
+  weekOffset?: number;
   onRecipeClick?: (_recipe: RecipeDTO) => void;
   onRequestChange?: (_index: number) => void;
   onSetTakeaway?: (_index: number) => void;
   onClearEntry?: (_index: number) => void;
 };
 
-export function WeekSlot({ index, dayName, entry, onRecipeClick, onRequestChange, onSetTakeaway, onClearEntry }: WeekSlotProps) {
+export function WeekSlot({ index, dayName, entry, weekOffset = 0, onRecipeClick, onRequestChange, onSetTakeaway, onClearEntry }: WeekSlotProps) {
   const recipe = entry?.type === "RECIPE" ? entry.recipe : null;
   const entryKey = entry?.type === "TAKEAWAY" ? "takeaway" : recipe?.id || "empty";
   // Use the same format as draggable IDs so parseDragId works
-  const dropId = makeDragId({ source: "week", index, recipeId: entryKey });
+  const dropId = makeDragId({ source: "week", index, recipeId: entryKey, weekOffset });
   const { isOver, setNodeRef } = useDroppable({ id: dropId });
 
   // Handler for click - use onRequestChange if available, otherwise onRecipeClick
@@ -51,7 +52,7 @@ export function WeekSlot({ index, dayName, entry, onRecipeClick, onRequestChange
 
   return (
     <div ref={setNodeRef}>
-      <DraggableRecipe id={makeDragId({ source: "week", index, recipeId: entryKey })}>
+      <DraggableRecipe id={makeDragId({ source: "week", index, recipeId: entryKey, weekOffset })}>
         {({ setNodeRef: setDragRef, listeners, attributes, style, isDragging }) => (
           <div ref={setDragRef} style={style} {...listeners} {...attributes} data-dragging={isDragging ? "true" : "false"}>
             <WeekCard

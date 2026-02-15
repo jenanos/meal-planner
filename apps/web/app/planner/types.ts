@@ -10,7 +10,7 @@ export type WeekEntry =
 export type WeekState = (WeekEntry | null)[];
 
 export type DragSource = "week" | "longGap" | "frequent" | "search";
-export type DragPayload = { source: DragSource; index: number; recipeId: string };
+export type DragPayload = { source: DragSource; index: number; recipeId: string; weekOffset?: number };
 
 export type TimelineWeek = { weekStart: string; hasEntries: boolean; label: string };
 export type TimelineWeekEntry = { week: TimelineWeek | null; index: number | null };
