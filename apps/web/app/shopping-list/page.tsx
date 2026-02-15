@@ -789,7 +789,7 @@ export default function ShoppingListPage() {
                           <input
                             type="checkbox"
                             className="h-5 w-5"
-                            checked={false}
+                            checked={e.checked}
                             onChange={() => toggleExtra(e.name, e.checked)}
                             aria-label={`Marker ${e.name} som kjøpt`}
                           />
@@ -833,7 +833,7 @@ export default function ShoppingListPage() {
                               <input
                                 type="checkbox"
                                 className="h-5 w-5"
-                                checked={true}
+                                checked={e.checked}
                                 onChange={() => toggleExtra(e.name, e.checked)}
                                 aria-label={`Marker ${e.name} som ikke kjøpt`}
                               />
