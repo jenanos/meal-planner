@@ -106,7 +106,14 @@ export function useRecipeDialogState({
       setIngList((prev) =>
         prev.some((item) => item.name.toLowerCase() === newIng.name.toLowerCase())
           ? prev
-          : [...prev, { id: newIng.id, name: newIng.name, unit: newIng.unit ?? undefined }]
+          : [
+            {
+              id: newIng.id,
+              name: newIng.name,
+              unit: newIng.unit ?? undefined,
+              isPantryItem: newIng.isPantryItem,
+            },
+          ]
       );
       setIngSearch("");
       setDebouncedIngSearch("");
@@ -185,6 +192,8 @@ export function useRecipeDialogState({
         }
         const existsInDb = knownIngredientNames.has(trimmed.toLowerCase());
         if (existsInDb) {
+          // If we have full ingredient data from search, we could populate isPantryItem/id here,
+          // but simplistic addition just by name usually lacks ID until refined or saved.
           return [...prev, { id, name: trimmed, unit }];
         }
         if (!createIngredient.isPending) {
@@ -206,23 +215,37 @@ export function useRecipeDialogState({
     setIngList((prev) => prev.map((item) => (item.name === nameToUpdate ? { ...item, quantity: qty } : item)));
   }, []);
 
-  const upsertUnit = useCallback(
-    (nameToUpdate: string, newUnit: string) => {
-      setIngList((prev) =>
-        prev.map((item) => {
-          if (item.name === nameToUpdate) {
-            const trimmedUnit = newUnit.trim();
-            // Update in database if we have an ID and unit changed
-            if (item.id && trimmedUnit && trimmedUnit !== item.unit) {
-              updateIngredient.mutate({ id: item.id, name: item.name, unit: trimmedUnit, isPantryItem: false });
-            }
-            return { ...item, unit: newUnit };
-          }
-          return item;
-        })
-      );
+  const upsertUnit = useCallback((nameToUpdate: string, newUnit: string) => {
+    setIngList((prev) =>
+      prev.map((item) => {
+        if (item.name === nameToUpdate) {
+          return { ...item, unit: newUnit };
+        }
+        return item;
+      })
+    );
+  }, []);
+
+  const persistUnit = useCallback(
+    (nameToUpdate: string) => {
+      const item = ingList.find((i) => i.name === nameToUpdate);
+      if (!item) return;
+
+      const trimmedUnit = item.unit?.trim() || undefined;
+      // Use explicit ID or fallback to ingredientId (common in some hydrated states)
+      const effectiveId = item.id ?? (item as any).ingredientId;
+
+      if (effectiveId && typeof updateIngredient.mutate === "function") {
+        updateIngredient.mutate({
+          id: effectiveId,
+          name: item.name,
+          unit: trimmedUnit,
+          // Preserve pantry status if known, otherwise backend defaults (which we patched to be safe)
+          ...(item.isPantryItem !== undefined ? { isPantryItem: item.isPantryItem } : {}),
+        });
+      }
     },
-    [updateIngredient]
+    [ingList, updateIngredient]
   );
 
   const numberFormatter = useMemo(
@@ -318,10 +341,13 @@ export function useRecipeDialogState({
       const ingredients = (recipe.ingredients ?? []) as RecipeIngredient[];
       setIngList(
         ingredients.map((ingredient) => ({
+          // Store both id and ingredientId to ensure we have a reference for updates
+          id: (ingredient as any).ingredientId ?? (ingredient as any).id,
           name: ingredient.name,
           unit: ingredient.unit ?? undefined,
           quantity: ingredient.quantity ?? undefined,
           notes: ingredient.notes ?? undefined,
+          isPantryItem: (ingredient as any).isPantryItem,
         }))
       );
       setIngSearch("");
@@ -458,6 +484,7 @@ export function useRecipeDialogState({
     removeIngredient,
     upsertQuantity,
     upsertUnit,
+    persistUnit,
     submitRecipe,
     isViewDialogOpen,
     onViewOpenChange: handleViewOpenChange,

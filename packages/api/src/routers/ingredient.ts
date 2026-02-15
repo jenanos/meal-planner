@@ -29,25 +29,25 @@ const IngredientWithRecipes = z.object({
 });
 
 export const ingredientRouter = router({
-        list: publicProcedure
-            .input(IngredientListQuery.optional())
-            .output(z.array(IngredientListItem))
-            .query(async ({ input }) => {
-        const where = input?.search
-            ? { name: { contains: input.search.trim(), mode: "insensitive" as const } }
-            : {};
-        const items = await prisma.ingredient.findMany({
-            where,
-            orderBy: { name: "asc" },
-            include: { _count: { select: { recipes: true } } },
-        });
-                return items.map((i) => ({
-            id: i.id,
-            name: i.name,
-            unit: i.unit ?? undefined,
-            usageCount: i._count.recipes,
-            isPantryItem: i.isPantryItem,
-                }));
+    list: publicProcedure
+        .input(IngredientListQuery.optional())
+        .output(z.array(IngredientListItem))
+        .query(async ({ input }) => {
+            const where = input?.search
+                ? { name: { contains: input.search.trim(), mode: "insensitive" as const } }
+                : {};
+            const items = await prisma.ingredient.findMany({
+                where,
+                orderBy: { name: "asc" },
+                include: { _count: { select: { recipes: true } } },
+            });
+            return items.map((i) => ({
+                id: i.id,
+                name: i.name,
+                unit: i.unit ?? undefined,
+                usageCount: i._count.recipes,
+                isPantryItem: i.isPantryItem,
+            }));
         }),
 
     listWithoutUnit: publicProcedure
@@ -76,12 +76,12 @@ export const ingredientRouter = router({
             });
 
             // Normalize name for comparison
-            const normalize = (name?: string) => 
+            const normalize = (name?: string) =>
                 name?.toLowerCase().replace(/[^a-zæøå0-9]/g, "") ?? "";
 
             // Group ingredients by normalized name prefix
             const groups = new Map<string, typeof allIngredients>();
-            
+
             for (const ing of allIngredients) {
                 const normalized = normalize(ing.name);
                 if (!normalized) {
@@ -93,10 +93,10 @@ export const ingredientRouter = router({
                 for (const [key, group] of groups.entries()) {
                     // Check if names are similar (prefix match or edit distance)
                     if (
-                        normalized.startsWith(key) || 
+                        normalized.startsWith(key) ||
                         key.startsWith(normalized) ||
-                        (normalized.length > 3 && key.length > 3 && 
-                         (normalized.includes(key) || key.includes(normalized)))
+                        (normalized.length > 3 && key.length > 3 &&
+                            (normalized.includes(key) || key.includes(normalized)))
                     ) {
                         group.push(ing);
                         foundGroup = true;
@@ -112,7 +112,7 @@ export const ingredientRouter = router({
             // Filter to only groups with more than one ingredient
             const duplicateGroups = Array.from(groups.values())
                 .filter(group => group.length > 1)
-                .map(group => 
+                .map(group =>
                     group.map(i => ({
                         id: i.id,
                         name: i.name,
@@ -135,7 +135,7 @@ export const ingredientRouter = router({
         .output(z.object({ count: z.number().int() }))
         .mutation(async ({ input }) => {
             let count = 0;
-            
+
             for (const update of input.updates) {
                 try {
                     await prisma.ingredient.update({
@@ -153,79 +153,79 @@ export const ingredientRouter = router({
         }),
 
     create: publicProcedure
-      .input(IngredientCreate)
-      .output(z.object({ id: z.string().uuid(), name: z.string(), unit: z.string().optional(), isPantryItem: z.boolean() }))
-      .mutation(async ({ input }) => {
-        try {
-            const trimmedName = input.name.trim();
-            const up = await prisma.ingredient.upsert({
-                where: { name: trimmedName },
-                update: {
-                    unit: input.unit?.trim() ?? null,
-                    isPantryItem: Boolean(input.isPantryItem),
-                },
-                create: {
-                    name: trimmedName,
-                    unit: input.unit?.trim() ?? null,
-                    isPantryItem: Boolean(input.isPantryItem),
-                },
-            });
-            return { id: up.id, name: up.name, unit: up.unit ?? undefined, isPantryItem: up.isPantryItem };
-        } catch (e: any) {
-            throw new TRPCError({ code: "BAD_REQUEST", message: e?.message ?? "Failed to create ingredient" });
-        }
-    }),
+        .input(IngredientCreate)
+        .output(z.object({ id: z.string().uuid(), name: z.string(), unit: z.string().optional(), isPantryItem: z.boolean() }))
+        .mutation(async ({ input }) => {
+            try {
+                const trimmedName = input.name.trim();
+                const up = await prisma.ingredient.upsert({
+                    where: { name: trimmedName },
+                    update: {
+                        unit: input.unit?.trim() ?? null,
+                        isPantryItem: Boolean(input.isPantryItem),
+                    },
+                    create: {
+                        name: trimmedName,
+                        unit: input.unit?.trim() ?? null,
+                        isPantryItem: Boolean(input.isPantryItem),
+                    },
+                });
+                return { id: up.id, name: up.name, unit: up.unit ?? undefined, isPantryItem: up.isPantryItem };
+            } catch (e: any) {
+                throw new TRPCError({ code: "BAD_REQUEST", message: e?.message ?? "Failed to create ingredient" });
+            }
+        }),
 
     update: publicProcedure
-      .input(IngredientUpdate)
-      .output(z.object({ id: z.string().uuid(), name: z.string(), unit: z.string().optional(), isPantryItem: z.boolean() }))
-      .mutation(async ({ input }) => {
-        try {
-            const trimmedName = input.name.trim();
-            const updated = await prisma.ingredient.update({
-                where: { id: input.id },
-                data: {
-                    name: trimmedName,
-                    unit: input.unit?.trim() ?? null,
-                    isPantryItem: Boolean(input.isPantryItem),
-                },
-            });
-            return { id: updated.id, name: updated.name, unit: updated.unit ?? undefined, isPantryItem: updated.isPantryItem };
-        } catch (e: any) {
-            if (e?.code === "P2025") {
-                throw new TRPCError({ code: "NOT_FOUND", message: "Ingredient not found" });
+        .input(IngredientUpdate)
+        .output(z.object({ id: z.string().uuid(), name: z.string(), unit: z.string().optional(), isPantryItem: z.boolean() }))
+        .mutation(async ({ input }) => {
+            try {
+                const trimmedName = input.name.trim();
+                const updated = await prisma.ingredient.update({
+                    where: { id: input.id },
+                    data: {
+                        name: trimmedName,
+                        unit: input.unit?.trim() ?? null,
+                        ...(typeof input.isPantryItem === "boolean" ? { isPantryItem: input.isPantryItem } : {}),
+                    },
+                });
+                return { id: updated.id, name: updated.name, unit: updated.unit ?? undefined, isPantryItem: updated.isPantryItem };
+            } catch (e: any) {
+                if (e?.code === "P2025") {
+                    throw new TRPCError({ code: "NOT_FOUND", message: "Ingredient not found" });
+                }
+                throw new TRPCError({ code: "BAD_REQUEST", message: e?.message ?? "Failed to update ingredient" });
             }
-            throw new TRPCError({ code: "BAD_REQUEST", message: e?.message ?? "Failed to update ingredient" });
-        }
-    }),
+        }),
 
     getWithRecipes: publicProcedure
-      .input(IngredientById)
-      .output(IngredientWithRecipes)
-      .query(async ({ input }) => {
-        const ing = await prisma.ingredient.findUnique({
-            where: { id: input.id },
-            include: {
-                recipes: {
-                    include: { recipe: true },
-                    orderBy: { recipe: { name: "asc" } },
+        .input(IngredientById)
+        .output(IngredientWithRecipes)
+        .query(async ({ input }) => {
+            const ing = await prisma.ingredient.findUnique({
+                where: { id: input.id },
+                include: {
+                    recipes: {
+                        include: { recipe: true },
+                        orderBy: { recipe: { name: "asc" } },
+                    },
                 },
-            },
-        });
-        if (!ing) throw new TRPCError({ code: "NOT_FOUND", message: "Ingredient not found" });
+            });
+            if (!ing) throw new TRPCError({ code: "NOT_FOUND", message: "Ingredient not found" });
 
-        return {
-            id: ing.id,
-            name: ing.name,
-            unit: ing.unit ?? undefined,
-            isPantryItem: ing.isPantryItem,
-            recipes: ing.recipes.map((ri) => ({
-                id: ri.recipe.id,
-                name: ri.recipe.name,
-                category: ri.recipe.category,
-                everydayScore: ri.recipe.everydayScore,
-                healthScore: ri.recipe.healthScore,
-            })),
-        };
-    }),
+            return {
+                id: ing.id,
+                name: ing.name,
+                unit: ing.unit ?? undefined,
+                isPantryItem: ing.isPantryItem,
+                recipes: ing.recipes.map((ri) => ({
+                    id: ri.recipe.id,
+                    name: ri.recipe.name,
+                    category: ri.recipe.category,
+                    everydayScore: ri.recipe.everydayScore,
+                    healthScore: ri.recipe.healthScore,
+                })),
+            };
+        }),
 });

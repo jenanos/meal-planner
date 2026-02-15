@@ -71,6 +71,7 @@ interface RecipeFormDialogProps {
   removeIngredient: (_name: string) => void;
   upsertQuantity: (_name: string, _qty: string) => void;
   upsertUnit: (_name: string, _unit: string) => void;
+  persistUnit: (_name: string) => void;
   onSubmit: (_event: React.FormEvent<HTMLFormElement>) => void;
   createIsPending: boolean;
   updateIsPending: boolean;
@@ -113,6 +114,7 @@ export function RecipeFormDialog({
   removeIngredient,
   upsertQuantity,
   upsertUnit,
+  persistUnit,
   onSubmit,
   createIsPending,
   updateIsPending,
@@ -393,6 +395,15 @@ export function RecipeFormDialog({
                                       placeholder="-"
                                       value={ingredient.unit ?? ""}
                                       onChange={(event) => upsertUnit(ingredient.name, event.target.value)}
+                                      onBlur={() => persistUnit(ingredient.name)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") {
+                                          e.preventDefault();
+                                          persistUnit(ingredient.name);
+                                          // Optional: remove focus or move to next input
+                                          (e.target as HTMLInputElement).blur();
+                                        }
+                                      }}
                                     />
                                   </div>
                                   <Button

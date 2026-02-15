@@ -13,6 +13,7 @@ export type IngredientCreate = z.infer<typeof IngredientCreate>;
 
 export const IngredientUpdate = IngredientCreate.extend({
   id: z.string().uuid(),
+  isPantryItem: z.boolean().optional(),
 });
 export type IngredientUpdate = z.infer<typeof IngredientUpdate>;
 

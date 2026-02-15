@@ -8,6 +8,7 @@ export type FormIngredient = {
   id?: string;
   name: string;
   unit?: string;
+  isPantryItem?: boolean;
   quantity?: string | number;
   notes?: string;
 };
