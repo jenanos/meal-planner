@@ -63,6 +63,8 @@ export default function ShoppingListPage() {
   const [includeNextWeek, setIncludeNextWeek] = useState(false);
   const [startDay, setStartDay] = useState(0);
   const [viewMode, setViewMode] = useState<"by-day" | "alphabetical">("by-day");
+  const [showPantryWithIngredients, setShowPantryWithIngredients] =
+    useState(false);
   const [checkedByOccurrence, setCheckedByOccurrence] = useState<
     Record<string, boolean>
   >({});
@@ -189,7 +191,6 @@ export default function ShoppingListPage() {
       }
     >();
     for (const item of items) {
-      if (item.isPantryItem) continue;
       for (const occurrence of item.occurrences ?? []) {
         const key = `${occurrence.weekStart}::${occurrence.dayIndex}`;
         if (!map.has(key)) {
@@ -271,9 +272,12 @@ export default function ShoppingListPage() {
 
   const startDayLabel = ALL_DAY_NAMES[startDay];
   const viewModeLabel = viewMode === "by-day" ? "Ukesplan" : "Alfabetisk";
+  const pantryVisibilityLabel = showPantryWithIngredients
+    ? "Basisvarer i ingredienser"
+    : "Basisvarer separat";
   const settingsLabel = `${viewModeLabel}${
     viewMode === "by-day" ? ` · ${dayFilterLabel}` : ""
-  }${startDay !== 0 ? ` · Fra ${startDayLabel.toLowerCase()}` : ""}${includeNextWeek ? " · Neste uke" : ""}`;
+  } · ${pantryVisibilityLabel}${startDay !== 0 ? ` · Fra ${startDayLabel.toLowerCase()}` : ""}${includeNextWeek ? " · Neste uke" : ""}`;
 
   const { regularItems, pantryItems } = useMemo(() => {
     const regularUnchecked: ShoppingListItem[] = [];
@@ -446,13 +450,14 @@ export default function ShoppingListPage() {
     );
   }
 
-  const daySections = useMemo<ShoppingListDaySection[]>(() => {
+  const buildDaySections = useCallback(
+    (sourceItems: ShoppingListItem[]): ShoppingListDaySection[] => {
     const sections = new Map<
       string,
       ShoppingListDaySection & { dateISO: string; recipeNameSet: Set<string> }
     >();
 
-    for (const item of regularItems) {
+    for (const item of sourceItems) {
       const removalKey = `${item.ingredientId}::${item.unit ?? ""}`;
       if (removedKeys.has(removalKey)) continue;
 
@@ -526,15 +531,34 @@ export default function ShoppingListPage() {
           });
         }),
       }));
-  }, [
-    regularItems,
-    removedKeys,
-    visibleDayKeySet,
-    checkedByOccurrence,
-    includeNextWeek,
-    activeWeekStart,
-    startDay,
-  ]);
+    },
+    [
+      removedKeys,
+      visibleDayKeySet,
+      checkedByOccurrence,
+      includeNextWeek,
+      activeWeekStart,
+      startDay,
+    ],
+  );
+
+  const displayedItems = useMemo(
+    () =>
+      showPantryWithIngredients
+        ? [...regularItems, ...pantryItems]
+        : regularItems,
+    [showPantryWithIngredients, regularItems, pantryItems],
+  );
+
+  const daySections = useMemo<ShoppingListDaySection[]>(
+    () => buildDaySections(displayedItems),
+    [buildDaySections, displayedItems],
+  );
+
+  const pantryDaySections = useMemo<ShoppingListDaySection[]>(
+    () => buildDaySections(pantryItems),
+    [buildDaySections, pantryItems],
+  );
 
   function toggleDayKey(dayKey: string, checked: boolean) {
     setVisibleDayKeys((prev) => {
@@ -814,6 +838,15 @@ export default function ShoppingListPage() {
               >
                 Inkluder neste uke
               </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={showPantryWithIngredients}
+                onSelect={(e) => e.preventDefault()}
+                onCheckedChange={() =>
+                  setShowPantryWithIngredients((prev) => !prev)
+                }
+              >
+                Vis basisvarer i ingredienslisten
+              </DropdownMenuCheckboxItem>
               {viewMode === "by-day" && occurrenceOptions.length > 0 ? (
                 <>
                   <DropdownMenuSeparator />
@@ -1071,7 +1104,7 @@ export default function ShoppingListPage() {
             <h2 className="text-sm font-semibold mb-2">Ukesplan</h2>
             {viewMode === "alphabetical" ? (
               <ul className="space-y-3">
-                {renderAlphabeticalItems(regularItems)}
+                {renderAlphabeticalItems(displayedItems)}
               </ul>
             ) : (
               <ShoppingListDayView
@@ -1085,18 +1118,28 @@ export default function ShoppingListPage() {
               />
             )}
           </section>
-          <section className="rounded-2xl border border-slate-200/70 bg-slate-50/50 p-4">
-            <h2 className="text-sm font-semibold mb-2">Basisvarer</h2>
-            {pantryItems.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Ingen basisvarer i ukesplanen.
-              </p>
-            ) : (
-              <ul className="space-y-3">
-                {renderAlphabeticalItems(pantryItems)}
-              </ul>
-            )}
-          </section>
+          {!showPantryWithIngredients ? (
+            <section className="rounded-2xl border border-slate-200/70 bg-slate-50/50 p-4">
+              <h2 className="text-sm font-semibold mb-2">Basisvarer</h2>
+              {pantryItems.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Ingen basisvarer i ukesplanen.
+                </p>
+              ) : viewMode === "alphabetical" ? (
+                <ul className="space-y-3">{renderAlphabeticalItems(pantryItems)}</ul>
+              ) : (
+                <ShoppingListDayView
+                  sections={pantryDaySections}
+                  getOccurrenceKey={getOccurrenceKey}
+                  isOccurrenceChecked={isOccurrenceChecked}
+                  getFirstCheckedOccurrence={getFirstCheckedOccurrence}
+                  onToggleOccurrence={toggleSingleOccurrence}
+                  onRemoveItem={removeItem}
+                  removedKeys={removedKeys}
+                />
+              )}
+            </section>
+          ) : null}
         </div>
       )}
     </div>
