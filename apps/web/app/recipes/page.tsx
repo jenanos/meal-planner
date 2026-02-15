@@ -68,6 +68,8 @@ export default function RecipesPage() {
     addIngredientByName,
     removeIngredient,
     upsertQuantity,
+    upsertUnit,
+    persistUnit,
     submitRecipe,
     isViewDialogOpen,
     onViewOpenChange,
@@ -154,6 +156,8 @@ export default function RecipesPage() {
           addIngredientByName={addIngredientByName}
           removeIngredient={removeIngredient}
           upsertQuantity={upsertQuantity}
+          upsertUnit={upsertUnit}
+          persistUnit={persistUnit}
           onSubmit={submitRecipe}
           createIsPending={createIsPending}
           updateIsPending={updateIsPending}

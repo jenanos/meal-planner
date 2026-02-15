@@ -9,7 +9,7 @@ import { appRouter } from "@repo/api";     // <-- bruk pakkens rot, ikke /src/ro
 const app = Fastify({ logger: true });
 
 await app.register(cors, {
-  origin: ["http://localhost:3000", "http://127.0.0.1:3000"], // mer eksplisitt i dev
+  origin: [/^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/], // Allow any localhost port
   credentials: true
 });
 
