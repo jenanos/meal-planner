@@ -138,6 +138,7 @@ const weekTimelineInputSchema = z.object({
 const shoppingListInputSchema = z.object({
   weekStart: z.string().optional(),
   includeNextWeek: z.boolean().optional(),
+  lookaheadWeeks: z.number().int().min(0).max(4).optional(),
 });
 
 const GLOBAL_EXTRA_WEEK_START = new Date("1970-01-05T00:00:00.000Z");
@@ -773,13 +774,16 @@ export const plannerRouter = router({
       const targetWeek = startOfWeek(args.weekStart);
       const weekStart = clampToFutureLimit(targetWeek);
       const includeNextWeek = Boolean(args.includeNextWeek);
+      const lookaheadWeeks = args.lookaheadWeeks ?? (includeNextWeek ? 1 : 0);
 
       const weekStarts: Date[] = [weekStart];
-      if (includeNextWeek) {
-        const nextWeek = addWeeks(weekStart, 1);
+      if (lookaheadWeeks > 0) {
         const maxFuture = maxAllowedFutureWeek();
-        if (nextWeek.getTime() <= maxFuture.getTime()) {
-          weekStarts.push(nextWeek);
+        for (let i = 1; i <= lookaheadWeeks; i++) {
+          const nextWeek = addWeeks(weekStart, i);
+          if (nextWeek.getTime() <= maxFuture.getTime()) {
+            weekStarts.push(nextWeek);
+          }
         }
       }
 
@@ -964,18 +968,18 @@ export const plannerRouter = router({
           const isItemChecked =
             occurrenceArray.length > 0
               ? occurrenceArray.every((occurrence) => {
-                  const statusKeyByDay = `${occurrence.weekStartISO}::${occurrence.dayIndex}::${item.ingredientId}::${item.unit ?? ""}`;
-                  const statusKeyByWeek = `${occurrence.weekStartISO}::${item.ingredientId}::${item.unit ?? ""}`;
-                  const statusByDay = statusMap.get(statusKeyByDay);
-                  const statusByWeek = statusMap.get(statusKeyByWeek);
-                  return statusByDay?.checked ?? statusByWeek?.checked ?? false;
-                })
+                const statusKeyByDay = `${occurrence.weekStartISO}::${occurrence.dayIndex}::${item.ingredientId}::${item.unit ?? ""}`;
+                const statusKeyByWeek = `${occurrence.weekStartISO}::${item.ingredientId}::${item.unit ?? ""}`;
+                const statusByDay = statusMap.get(statusKeyByDay);
+                const statusByWeek = statusMap.get(statusKeyByWeek);
+                return statusByDay?.checked ?? statusByWeek?.checked ?? false;
+              })
               : Array.from(item.weeks.values()).every(
-                  (weekIso) =>
-                    statusMap.get(
-                      `${weekIso}::${item.ingredientId}::${item.unit ?? ""}`,
-                    )?.checked ?? false,
-                );
+                (weekIso) =>
+                  statusMap.get(
+                    `${weekIso}::${item.ingredientId}::${item.unit ?? ""}`,
+                  )?.checked ?? false,
+              );
 
           const firstCheckedOccurrences = Array.from(
             firstCheckedByWeek.entries(),

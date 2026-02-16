@@ -17,7 +17,7 @@ type WeekSlotProps = {
   onClearEntry?: (_index: number) => void;
 };
 
-export function WeekSlot({ index, dayName, entry, weekOffset = 0, onRecipeClick, onRequestChange, onSetTakeaway, onClearEntry }: WeekSlotProps) {
+export function WeekSlot({ index, dayName, dateLabel, entry, weekOffset = 0, onRecipeClick, onRequestChange, onSetTakeaway, onClearEntry }: WeekSlotProps & { dateLabel?: string }) {
   const recipe = entry?.type === "RECIPE" ? entry.recipe : null;
   const entryKey = entry?.type === "TAKEAWAY" ? "takeaway" : recipe?.id || "empty";
   // Use the same format as draggable IDs so parseDragId works
@@ -39,6 +39,7 @@ export function WeekSlot({ index, dayName, entry, weekOffset = 0, onRecipeClick,
         <WeekCard
           index={index}
           dayName={dayName}
+          dateLabel={dateLabel}
           recipe={recipe}
           entryType={entry?.type ?? "EMPTY"}
           isDraggingTarget={isOver}
@@ -58,6 +59,7 @@ export function WeekSlot({ index, dayName, entry, weekOffset = 0, onRecipeClick,
             <WeekCard
               index={index}
               dayName={dayName}
+              dateLabel={dateLabel}
               recipe={recipe}
               entryType="RECIPE"
               isDraggingTarget={isOver}

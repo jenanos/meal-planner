@@ -1,17 +1,22 @@
 "use client";
 
-import type { WeekState, DayName } from "../types";
 import { WeekSlot } from "./WeekSlot";
 import { toRealIndex } from "../utils";
+import type { WeekEntry, DayName } from "../types";
+
+export type MobileEditorItem = {
+  entry: WeekEntry | null;
+  dayName: DayName;
+  dateLabel?: string;
+  realIdx: number;
+  weekOffset: number;
+};
 
 export type MobileEditorProps = {
-  week: WeekState;
-  dayNames: readonly DayName[];
-  startDay?: number;
-  weekOffset?: number;
-  onRequestChange: (dayIndex: number) => void;
-  onSetTakeaway?: (index: number) => void;
-  onClearEntry?: (index: number) => void;
+  items: MobileEditorItem[];
+  onRequestChange: (dayIndex: number, weekOffset: number) => void;
+  onSetTakeaway: (index: number, weekOffset: number) => void;
+  onClearEntry: (index: number, weekOffset: number) => void;
 };
 
 /**
@@ -20,10 +25,7 @@ export type MobileEditorProps = {
  * Drag-drop is handled by DndContext in page.tsx for reordering.
  */
 export function MobileEditor({
-  week,
-  dayNames,
-  startDay = 0,
-  weekOffset = 0,
+  items,
   onRequestChange,
   onSetTakeaway,
   onClearEntry,
@@ -31,21 +33,19 @@ export function MobileEditor({
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-2">
-        {week.map((entry, displayIdx) => {
-          const realIdx = toRealIndex(displayIdx, startDay);
-          return (
-            <WeekSlot
-              key={`${weekOffset}-${realIdx}`}
-              index={realIdx}
-              dayName={dayNames[displayIdx]}
-              entry={entry}
-              weekOffset={weekOffset}
-              onRequestChange={onRequestChange}
-              onSetTakeaway={onSetTakeaway}
-              onClearEntry={onClearEntry}
-            />
-          );
-        })}
+        {items.map((item) => (
+          <WeekSlot
+            key={`${item.weekOffset}-${item.realIdx}`}
+            index={item.realIdx}
+            dayName={item.dayName}
+            dateLabel={item.dateLabel}
+            entry={item.entry}
+            weekOffset={item.weekOffset}
+            onRequestChange={(idx) => onRequestChange(idx, item.weekOffset)}
+            onSetTakeaway={() => onSetTakeaway(item.realIdx, item.weekOffset)}
+            onClearEntry={() => onClearEntry(item.realIdx, item.weekOffset)}
+          />
+        ))}
       </div>
     </div>
   );
