@@ -28,6 +28,7 @@ import {
   ShoppingListDayView,
   type ShoppingListDaySection,
 } from "./components/shopping-list-day-view";
+import { ShoppingListDisplayModal } from "./components/ShoppingListDisplayModal";
 import { FALL_BADGE_PALETTE, formatQuantity } from "./utils";
 import type { ShoppingListItem, ShoppingListOccurrence } from "./types";
 import { WeekSelector } from "../planner/components/WeekSelector";
@@ -62,6 +63,7 @@ export default function ShoppingListPage() {
   const [activeWeekStart, setActiveWeekStart] = useState(currentWeekStart);
   const [includeNextWeek, setIncludeNextWeek] = useState(false);
   const [startDay, setStartDay] = useState(0);
+  const [isDisplayModalOpen, setIsDisplayModalOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"by-day" | "alphabetical">("by-day");
   const [showPantryWithIngredients, setShowPantryWithIngredients] =
     useState(false);
@@ -80,10 +82,13 @@ export default function ShoppingListPage() {
   const [debouncedExtra, setDebouncedExtra] = useState("");
   const [showCompletedExtras, setShowCompletedExtras] = useState(false);
 
+  const lookaheadWeeks = includeNextWeek ? (startDay > 0 ? 2 : 1) : 0;
+
   const shoppingQuery = trpc.planner.shoppingList.useQuery({
     weekStart: activeWeekStart,
     includeNextWeek,
-  });
+    lookaheadWeeks,
+  } as any);
 
   const timelineQuery = trpc.planner.weekTimeline.useQuery({
     around: currentWeekStart,
@@ -205,23 +210,24 @@ export default function ShoppingListPage() {
       }
     }
     const totalDays = includeNextWeek ? 14 : 7;
-    return Array.from(map.values()).sort((a, b) => {
-      const aOffset = toDayOffset(
-        a.key.split("::")[0],
-        Number(a.key.split("::")[1]),
-        activeWeekStart,
-      );
-      const bOffset = toDayOffset(
-        b.key.split("::")[0],
-        Number(b.key.split("::")[1]),
-        activeWeekStart,
-      );
-      const aShifted =
-        (((aOffset - startDay) % totalDays) + totalDays) % totalDays;
-      const bShifted =
-        (((bOffset - startDay) % totalDays) + totalDays) % totalDays;
-      return aShifted - bShifted;
-    });
+    return Array.from(map.values())
+      .filter((option) => {
+        const offset = toDayOffset(
+          option.key.split("::")[0],
+          Number(option.key.split("::")[1]),
+          activeWeekStart,
+        );
+        const limit = includeNextWeek ? 14 : 7;
+
+        // Filter out days before the selected start day in the current week
+        if (offset < startDay) return false;
+
+        // Filter out days beyond the desired range (next week or current week)
+        if (offset >= limit) return false;
+
+        return true;
+      })
+      .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
   }, [items, includeNextWeek, activeWeekStart, startDay]);
 
   useEffect(() => {
@@ -275,9 +281,8 @@ export default function ShoppingListPage() {
   const pantryVisibilityLabel = showPantryWithIngredients
     ? "Basisvarer i ingredienser"
     : "Basisvarer separat";
-  const settingsLabel = `${viewModeLabel}${
-    viewMode === "by-day" ? ` · ${dayFilterLabel}` : ""
-  } · ${pantryVisibilityLabel}${startDay !== 0 ? ` · Fra ${startDayLabel.toLowerCase()}` : ""}${includeNextWeek ? " · Neste uke" : ""}`;
+  const settingsLabel = `${viewModeLabel}${viewMode === "by-day" ? ` · ${dayFilterLabel}` : ""
+    } · ${pantryVisibilityLabel}${startDay !== 0 ? ` · Fra ${startDayLabel.toLowerCase()}` : ""}${includeNextWeek ? " · Neste uke" : ""}`;
 
   const { regularItems, pantryItems } = useMemo(() => {
     const regularUnchecked: ShoppingListItem[] = [];
@@ -452,85 +457,85 @@ export default function ShoppingListPage() {
 
   const buildDaySections = useCallback(
     (sourceItems: ShoppingListItem[]): ShoppingListDaySection[] => {
-    const sections = new Map<
-      string,
-      ShoppingListDaySection & { dateISO: string; recipeNameSet: Set<string> }
-    >();
+      const sections = new Map<
+        string,
+        ShoppingListDaySection & { dateISO: string; recipeNameSet: Set<string> }
+      >();
 
-    for (const item of sourceItems) {
-      const removalKey = `${item.ingredientId}::${item.unit ?? ""}`;
-      if (removedKeys.has(removalKey)) continue;
+      for (const item of sourceItems) {
+        const removalKey = `${item.ingredientId}::${item.unit ?? ""}`;
+        if (removedKeys.has(removalKey)) continue;
 
-      const recipeNamesByOccurrence = new Map<string, string[]>();
-      for (const detail of item.details ?? []) {
-        const occurrenceKey = `${detail.weekStart}::${detail.dayIndex}`;
-        if (!recipeNamesByOccurrence.has(occurrenceKey)) {
-          recipeNamesByOccurrence.set(occurrenceKey, []);
+        const recipeNamesByOccurrence = new Map<string, string[]>();
+        for (const detail of item.details ?? []) {
+          const occurrenceKey = `${detail.weekStart}::${detail.dayIndex}`;
+          if (!recipeNamesByOccurrence.has(occurrenceKey)) {
+            recipeNamesByOccurrence.set(occurrenceKey, []);
+          }
+          recipeNamesByOccurrence.get(occurrenceKey)!.push(detail.recipeName);
         }
-        recipeNamesByOccurrence.get(occurrenceKey)!.push(detail.recipeName);
-      }
 
-      for (const occurrence of item.occurrences ?? []) {
-        const sectionKey = `${occurrence.weekStart}::${occurrence.dayIndex}`;
-        if (!visibleDayKeySet.has(sectionKey)) continue;
-        if (!sections.has(sectionKey)) {
-          sections.set(sectionKey, {
-            key: sectionKey,
-            weekdayLabel: occurrence.weekdayLabel,
-            longLabel: occurrence.longLabel,
-            entries: [],
-            dateISO: occurrence.dateISO,
-            recipeNames: [],
-            recipeNameSet: new Set<string>(),
-          });
-        }
-        const section = sections.get(sectionKey)!;
-        section.entries.push({ item, occurrence });
-        const matchingRecipeNames = recipeNamesByOccurrence.get(sectionKey);
-        if (matchingRecipeNames) {
-          for (const recipeName of matchingRecipeNames) {
-            section.recipeNameSet.add(recipeName);
+        for (const occurrence of item.occurrences ?? []) {
+          const sectionKey = `${occurrence.weekStart}::${occurrence.dayIndex}`;
+          if (!visibleDayKeySet.has(sectionKey)) continue;
+          if (!sections.has(sectionKey)) {
+            sections.set(sectionKey, {
+              key: sectionKey,
+              weekdayLabel: occurrence.weekdayLabel,
+              longLabel: occurrence.longLabel,
+              entries: [],
+              dateISO: occurrence.dateISO,
+              recipeNames: [],
+              recipeNameSet: new Set<string>(),
+            });
+          }
+          const section = sections.get(sectionKey)!;
+          section.entries.push({ item, occurrence });
+          const matchingRecipeNames = recipeNamesByOccurrence.get(sectionKey);
+          if (matchingRecipeNames) {
+            for (const recipeName of matchingRecipeNames) {
+              section.recipeNameSet.add(recipeName);
+            }
           }
         }
       }
-    }
 
-    const totalDays = includeNextWeek ? 14 : 7;
+      const totalDays = includeNextWeek ? 14 : 7;
 
-    return Array.from(sections.values())
-      .sort((a, b) => {
-        const [aWeekStart, aDayIndex] = a.key.split("::");
-        const [bWeekStart, bDayIndex] = b.key.split("::");
-        const aOffset = toDayOffset(
-          aWeekStart,
-          Number(aDayIndex),
-          activeWeekStart,
-        );
-        const bOffset = toDayOffset(
-          bWeekStart,
-          Number(bDayIndex),
-          activeWeekStart,
-        );
-        const aShifted =
-          (((aOffset - startDay) % totalDays) + totalDays) % totalDays;
-        const bShifted =
-          (((bOffset - startDay) % totalDays) + totalDays) % totalDays;
-        return aShifted - bShifted;
-      })
-      .map(({ dateISO: _date, entries, recipeNameSet, ...section }) => ({
-        ...section,
-        recipeNames: Array.from(recipeNameSet),
-        entries: [...entries].sort((a, b) => {
-          const aChecked = isOccurrenceChecked(a.item, a.occurrence);
-          const bChecked = isOccurrenceChecked(b.item, b.occurrence);
-          if (aChecked !== bChecked) {
-            return aChecked ? 1 : -1;
-          }
-          return a.item.name.localeCompare(b.item.name, "nb", {
-            sensitivity: "base",
-          });
-        }),
-      }));
+      return Array.from(sections.values())
+        .sort((a, b) => {
+          const [aWeekStart, aDayIndex] = a.key.split("::");
+          const [bWeekStart, bDayIndex] = b.key.split("::");
+          const aOffset = toDayOffset(
+            aWeekStart,
+            Number(aDayIndex),
+            activeWeekStart,
+          );
+          const bOffset = toDayOffset(
+            bWeekStart,
+            Number(bDayIndex),
+            activeWeekStart,
+          );
+          const aShifted =
+            (((aOffset - startDay) % totalDays) + totalDays) % totalDays;
+          const bShifted =
+            (((bOffset - startDay) % totalDays) + totalDays) % totalDays;
+          return aShifted - bShifted;
+        })
+        .map(({ dateISO: _date, entries, recipeNameSet, ...section }) => ({
+          ...section,
+          recipeNames: Array.from(recipeNameSet),
+          entries: [...entries].sort((a, b) => {
+            const aChecked = isOccurrenceChecked(a.item, a.occurrence);
+            const bChecked = isOccurrenceChecked(b.item, b.occurrence);
+            if (aChecked !== bChecked) {
+              return aChecked ? 1 : -1;
+            }
+            return a.item.name.localeCompare(b.item.name, "nb", {
+              sensitivity: "base",
+            });
+          }),
+        }));
     },
     [
       removedKeys,
@@ -802,101 +807,33 @@ export default function ShoppingListPage() {
 
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-row sm:items-center sm:justify-between">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="w-full sm:w-auto justify-between gap-2"
-              >
-                {settingsLabel}
-                <ChevronDown className="h-4 w-4 text-muted-foreground" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-72 max-h-[70vh] overflow-y-auto">
-              <DropdownMenuLabel>Visning</DropdownMenuLabel>
-              <DropdownMenuRadioGroup
-                value={viewMode}
-                onValueChange={(value) =>
-                  setViewMode(value as "by-day" | "alphabetical")
-                }
-              >
-                <DropdownMenuRadioItem value="by-day">
-                  Ukesplan
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="alphabetical">
-                  Alfabetisk
-                </DropdownMenuRadioItem>
-              </DropdownMenuRadioGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>Startdag</DropdownMenuLabel>
-              <DropdownMenuRadioGroup
-                value={String(startDay)}
-                onValueChange={(v) => setStartDay(Number(v))}
-              >
-                {ALL_DAY_NAMES.map((name, i) => (
-                  <DropdownMenuRadioItem key={i} value={String(i)}>
-                    {name}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuCheckboxItem
-                checked={includeNextWeek}
-                onSelect={(e) => e.preventDefault()}
-                onCheckedChange={() => setIncludeNextWeek((prev) => !prev)}
-              >
-                Inkluder neste uke
-              </DropdownMenuCheckboxItem>
-              <DropdownMenuCheckboxItem
-                checked={showPantryWithIngredients}
-                onSelect={(e) => e.preventDefault()}
-                onCheckedChange={() =>
-                  setShowPantryWithIngredients((prev) => !prev)
-                }
-              >
-                Vis basisvarer i ingredienslisten
-              </DropdownMenuCheckboxItem>
-              {viewMode === "by-day" && occurrenceOptions.length > 0 ? (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel>Vis dager</DropdownMenuLabel>
-                  {occurrenceOptions.map((option) => (
-                    <DropdownMenuCheckboxItem
-                      key={option.key}
-                      checked={visibleDayKeySet.has(option.key)}
-                      onSelect={(e) => e.preventDefault()}
-                      onCheckedChange={(checked) =>
-                        toggleDayKey(option.key, Boolean(checked))
-                      }
-                    >
-                      {option.weekdayLabel} ({option.shortLabel})
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuCheckboxItem
-                    checked={visibleDayKeys.length === occurrenceOptions.length}
-                    onSelect={(e) => e.preventDefault()}
-                    onCheckedChange={() =>
-                      setVisibleDayKeys(
-                        occurrenceOptions.map((option) => option.key),
-                      )
-                    }
-                  >
-                    Velg alle dager
-                  </DropdownMenuCheckboxItem>
-                  <DropdownMenuCheckboxItem
-                    checked={visibleDayKeys.length === 0}
-                    onSelect={(e) => e.preventDefault()}
-                    onCheckedChange={() => setVisibleDayKeys([])}
-                  >
-                    Velg ingen dager
-                  </DropdownMenuCheckboxItem>
-                </>
-              ) : null}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full sm:w-auto justify-between gap-2"
+            onClick={() => setIsDisplayModalOpen(true)}
+          >
+            Visningsvalg
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          </Button>
+
+          <ShoppingListDisplayModal
+            open={isDisplayModalOpen}
+            onOpenChange={setIsDisplayModalOpen}
+            viewMode={viewMode}
+            setViewMode={setViewMode}
+            startDay={startDay}
+            setStartDay={setStartDay}
+            includeNextWeek={includeNextWeek}
+            setIncludeNextWeek={setIncludeNextWeek}
+            showPantryWithIngredients={showPantryWithIngredients}
+            setShowPantryWithIngredients={setShowPantryWithIngredients}
+            occurrenceOptions={occurrenceOptions}
+            visibleDayKeys={visibleDayKeys}
+            setVisibleDayKeys={setVisibleDayKeys}
+            toggleDayKey={toggleDayKey}
+          />
           <div className="w-full justify-self-end sm:w-auto sm:justify-self-end sm:ml-auto">
             <Dialog open={isAddExtraOpen} onOpenChange={setIsAddExtraOpen}>
               <DialogTrigger asChild>

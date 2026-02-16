@@ -19,6 +19,7 @@ export type RecipePickerModalProps = {
     onOpenChange: (open: boolean) => void;
     currentEntry: WeekEntry | null;
     dayName: DayName;
+    dateLabel?: string;
     dayIndex: number;
     longGap: RecipeDTO[];
     frequent: RecipeDTO[];
@@ -35,6 +36,7 @@ export function RecipePickerModal({
     onOpenChange,
     currentEntry,
     dayName,
+    dateLabel,
     dayIndex,
     longGap,
     frequent,
@@ -122,7 +124,7 @@ export function RecipePickerModal({
             <DialogContent className="h-[90vh] max-h-[90vh] flex flex-col p-0 gap-0">
                 <DialogHeader className="p-4 pb-2 border-b shrink-0">
                     <DialogTitle className="text-center">
-                        {dayName}
+                        {dayName} {dateLabel && <span className="font-normal opacity-75">{dateLabel}</span>}
                         {currentRecipe && (
                             <span className="block text-sm font-normal text-muted-foreground mt-1">
                                 Nåværende: {currentRecipe.name}

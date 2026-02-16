@@ -47,7 +47,7 @@ import {
   ALL_DAY_NAMES,
 } from "./utils";
 import { DisplayOptions } from "./components/DisplayOptions";
-import { addWeeksISO } from "../../lib/week";
+import { addWeeksISO, addDays } from "../../lib/week";
 
 // Custom drop animation for smoother feel
 const dropAnimationConfig: DropAnimation = {
@@ -59,6 +59,9 @@ export default function PlannerPage() {
   const utils = trpc.useUtils();
   const currentWeekStart = useMemo(() => startOfWeekISO(), []);
   const [activeWeekStart, setActiveWeekStart] = useState(currentWeekStart);
+
+  // Date formatter for "16.02" format
+  const dateFormatter = useMemo(() => new Intl.DateTimeFormat("nb-NO", { day: "2-digit", month: "2-digit" }), []);
   const [week, setWeek] = useState<WeekState>(makeEmptyWeek);
   const [previewWeek, setPreviewWeek] = useState<WeekState | null>(null);
   const [draggingWeekIndex, setDraggingWeekIndex] = useState<number | null>(
@@ -79,6 +82,7 @@ export default function PlannerPage() {
   const [searchError, setSearchError] = useState<string | null>(null);
   // State for mobile recipe picker modal
   const [editingDayIndex, setEditingDayIndex] = useState<number | null>(null);
+  const [editingWeekOffset, setEditingWeekOffset] = useState<number>(0);
 
   const sensors = useSensors(
     useSensor(MouseSensor, {
@@ -106,7 +110,7 @@ export default function PlannerPage() {
   );
   const nextWeekPlanQuery = trpc.planner.getWeekPlan.useQuery(
     { weekStart: nextWeekStart },
-    { enabled: Boolean(nextWeekStart) && showNextWeek },
+    { enabled: Boolean(nextWeekStart) && (showNextWeek || startDay > 0) },
   );
   const timelineQuery = trpc.planner.weekTimeline.useQuery({
     around: currentWeekStart,
@@ -209,6 +213,7 @@ export default function PlannerPage() {
     (recipe: RecipeDTO) => {
       // Close the picker modal first to prevent overlapping dialogs
       setEditingDayIndex(null);
+      setEditingWeekOffset(0);
       openView(recipe.id);
     },
     [openView],
@@ -478,8 +483,9 @@ export default function PlannerPage() {
   );
 
   // Handler for opening recipe picker modal (mobile)
-  const handleRequestChange = useCallback((dayIndex: number) => {
+  const handleRequestChange = useCallback((dayIndex: number, weekOffset: number) => {
     setEditingDayIndex(dayIndex);
+    setEditingWeekOffset(weekOffset);
   }, []);
 
   // Handler for selecting recipe from modal
@@ -541,14 +547,28 @@ export default function PlannerPage() {
   const displayNextWeek = previewNextWeek ?? nextWeek;
 
   const dayNames = useMemo(() => reorderDayNames(startDay), [startDay]);
-  const reorderedWeek = useMemo(
-    () => reorderWeek(displayWeek, startDay),
-    [displayWeek, startDay],
-  );
-  const reorderedNextWeek = useMemo(
-    () => reorderWeek(displayNextWeek, startDay),
-    [displayNextWeek, startDay],
-  );
+
+  const rollingWeekItems = useMemo(() => {
+    const baseDate = new Date(activeWeekStart);
+    return Array.from({ length: 7 }, (_, i) => {
+      const realIdx = (startDay + i) % 7;
+      const isNextWeek = startDay + i >= 7;
+      const entry = isNextWeek ? displayNextWeek[realIdx] : displayWeek[realIdx];
+
+      // Calculate date: start of active week + (next week offset * 7) + day index
+      const dateOffset = (isNextWeek ? 7 : 0) + realIdx;
+      const date = new Date(baseDate);
+      date.setDate(date.getDate() + dateOffset);
+
+      return {
+        entry,
+        realIdx,
+        weekOffset: isNextWeek ? 1 : 0,
+        dayName: dayNames[i],
+        dateLabel: dateFormatter.format(date),
+      };
+    });
+  }, [displayWeek, displayNextWeek, startDay, dayNames, activeWeekStart, dateFormatter]);
 
   const activeDragRecipe = useMemo(() => {
     if (!activeDragPayload) return null;
@@ -671,28 +691,29 @@ export default function PlannerPage() {
           onDragEnd={handleDragEnd}
         >
           <MobileEditor
-            week={reorderedWeek}
-            dayNames={dayNames}
-            startDay={startDay}
-            weekOffset={0}
+            items={rollingWeekItems}
             onRequestChange={handleRequestChange}
-            onSetTakeaway={(i) => handleSetTakeaway(i, 0)}
-            onClearEntry={(i) => handleClearEntry(i, 0)}
+            onSetTakeaway={handleSetTakeaway}
+            onClearEntry={handleClearEntry}
           />
 
-          {showNextWeek && (
+          {showNextWeek && startDay === 0 && (
             <>
               <div className="mt-4 mb-2 text-xs font-semibold text-muted-foreground text-center">
                 Neste uke
               </div>
               <MobileEditor
-                week={reorderedNextWeek}
-                dayNames={dayNames}
-                startDay={startDay}
-                weekOffset={1}
+                items={displayNextWeek.map((entry, i) => ({
+                  entry,
+                  realIdx: i,
+                  weekOffset: 1,
+                  dayName: ALL_DAY_NAMES[i],
+                  // Calculate date for next week items (static view for next week only)
+                  dateLabel: dateFormatter.format(addDays(new Date(nextWeekStart), i))
+                }))}
                 onRequestChange={handleRequestChange}
-                onSetTakeaway={(i) => handleSetTakeaway(i, 1)}
-                onClearEntry={(i) => handleClearEntry(i, 1)}
+                onSetTakeaway={handleSetTakeaway}
+                onClearEntry={handleClearEntry}
               />
             </>
           )}
@@ -700,23 +721,38 @@ export default function PlannerPage() {
           <RecipePickerModal
             open={editingDayIndex !== null}
             onOpenChange={(open) => {
-              if (!open) setEditingDayIndex(null);
+              if (!open) {
+                setEditingDayIndex(null);
+                setEditingWeekOffset(0);
+              }
             }}
             currentEntry={
-              editingDayIndex !== null ? displayWeek[editingDayIndex] : null
+              editingDayIndex !== null
+                ? (editingWeekOffset === 1 ? displayNextWeek[editingDayIndex] : displayWeek[editingDayIndex])
+                : null
             }
             dayName={
               editingDayIndex !== null
                 ? ALL_DAY_NAMES[editingDayIndex]
                 : "Mandag"
             }
+            dateLabel={
+              editingDayIndex !== null
+                ? dateFormatter.format(
+                  addDays(
+                    new Date(editingWeekOffset === 1 ? nextWeekStart : activeWeekStart),
+                    editingDayIndex
+                  )
+                )
+                : undefined
+            }
             dayIndex={editingDayIndex ?? 0}
             longGap={longGap}
             frequent={frequent}
             onSelectRecipe={handleSelectRecipeFromModal}
             onViewRecipe={handleRecipeClick}
-            onSetTakeaway={handleSetTakeaway}
-            onClearEntry={handleClearEntry}
+            onSetTakeaway={(i) => handleSetTakeaway(i, editingWeekOffset)}
+            onClearEntry={(i) => handleClearEntry(i, editingWeekOffset)}
           />
 
           {typeof document !== "undefined" &&
@@ -757,44 +793,40 @@ export default function PlannerPage() {
           onDragEnd={handleDragEnd}
         >
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 auto-rows-fr">
-            {reorderedWeek.map((entry, displayIdx) => {
-              const realIdx = toRealIndex(displayIdx, startDay);
-              return (
-                <WeekSlot
-                  key={`w0-${realIdx}`}
-                  index={realIdx}
-                  dayName={dayNames[displayIdx]}
-                  entry={entry}
-                  weekOffset={0}
-                  onRecipeClick={handleRecipeClick}
-                  onSetTakeaway={() => handleSetTakeaway(realIdx, 0)}
-                  onClearEntry={() => handleClearEntry(realIdx, 0)}
-                />
-              );
-            })}
+            {rollingWeekItems.map((item) => (
+              <WeekSlot
+                key={`rolling-${item.weekOffset}-${item.realIdx}`}
+                index={item.realIdx}
+                dayName={item.dayName}
+                dateLabel={item.dateLabel}
+                entry={item.entry}
+                weekOffset={item.weekOffset}
+                onRecipeClick={handleRecipeClick}
+                onSetTakeaway={() => handleSetTakeaway(item.realIdx, item.weekOffset)}
+                onClearEntry={() => handleClearEntry(item.realIdx, item.weekOffset)}
+              />
+            ))}
           </div>
 
-          {showNextWeek && (
+          {showNextWeek && startDay === 0 && (
             <>
               <div className="mt-4 mb-2 text-xs font-semibold text-muted-foreground text-center">
                 Neste uke
               </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 auto-rows-fr">
-                {reorderedNextWeek.map((entry, displayIdx) => {
-                  const realIdx = toRealIndex(displayIdx, startDay);
-                  return (
-                    <WeekSlot
-                      key={`w1-${realIdx}`}
-                      index={realIdx}
-                      dayName={dayNames[displayIdx]}
-                      entry={entry}
-                      weekOffset={1}
-                      onRecipeClick={handleRecipeClick}
-                      onSetTakeaway={() => handleSetTakeaway(realIdx, 1)}
-                      onClearEntry={() => handleClearEntry(realIdx, 1)}
-                    />
-                  );
-                })}
+                {displayNextWeek.map((entry, i) => (
+                  <WeekSlot
+                    key={`w1-${i}`}
+                    index={i}
+                    dayName={ALL_DAY_NAMES[i]}
+                    dateLabel={dateFormatter.format(addDays(new Date(nextWeekStart), i))}
+                    entry={entry}
+                    weekOffset={1}
+                    onRecipeClick={handleRecipeClick}
+                    onSetTakeaway={() => handleSetTakeaway(i, 1)}
+                    onClearEntry={() => handleClearEntry(i, 1)}
+                  />
+                ))}
               </div>
             </>
           )}

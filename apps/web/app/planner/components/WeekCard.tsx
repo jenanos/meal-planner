@@ -7,6 +7,7 @@ import { CategoryEmoji } from "../../components/CategoryEmoji";
 export type Props = {
     index: number;
     dayName: DayName;
+    dateLabel?: string;
     recipe: {
         id: string;
         name: string;
@@ -32,6 +33,7 @@ export type Props = {
 
 export function WeekCard({
     dayName,
+    dateLabel,
     recipe,
     entryType = recipe ? "RECIPE" : "EMPTY",
     isDraggingTarget,
@@ -78,7 +80,9 @@ export function WeekCard({
             }
         >
             <div className="flex h-full min-h-[128px] flex-col items-center justify-center gap-1 p-2.5 text-center sm:min-h-[160px] sm:p-4 sm:gap-2">
-                <div className="text-[11px] text-muted-foreground sm:text-xs">{dayName}</div>
+                <div className="text-[11px] text-muted-foreground sm:text-xs">
+                    {dayName} {dateLabel && <span className="opacity-75 font-normal ml-0.5">{dateLabel}</span>}
+                </div>
                 {recipe ? (
                     <div className="flex flex-col items-center justify-center space-y-0.5 sm:space-y-1.5">
                         <div className="break-words text-sm font-medium leading-tight">{recipe.name}</div>
