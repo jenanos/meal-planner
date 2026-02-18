@@ -927,6 +927,38 @@ export const plannerRouter = router({
         }
       }
 
+      // Build a list of all planned days (recipe or takeaway) so the client
+      // can show them even when a recipe has zero ingredients.
+      const plannedDays: {
+        weekStart: string;
+        dayIndex: number;
+        recipeName: string | null;
+        entryType: string;
+        dateISO: string;
+        weekdayLabel: string;
+        longLabel: string;
+        shortLabel: string;
+      }[] = [];
+      for (const week of weekStarts) {
+        const plan = planMap.get(week.getTime());
+        for (const entry of plan?.entries ?? []) {
+          const weekIso = week.toISOString();
+          const dayIndex = entry.dayIndex ?? 0;
+          const entryType = entry.entryType ?? (entry.recipe ? "RECIPE" : "EMPTY");
+          if (entryType === "RECIPE" || entryType === "TAKEAWAY") {
+            const recipeName = entry.recipe ? toDTO(entry.recipe).name : null;
+            const labels = describeOccurrence(weekIso, dayIndex);
+            plannedDays.push({
+              weekStart: weekIso,
+              dayIndex,
+              recipeName,
+              entryType,
+              ...labels,
+            });
+          }
+        }
+      }
+
       const items = Array.from(map.values())
         .map((item) => {
           const occurrenceArray = Array.from(item.occurrences.values());
@@ -1033,6 +1065,7 @@ export const plannerRouter = router({
         includedWeekStarts: weekStarts.map((week) => week.toISOString()),
         items,
         extras,
+        plannedDays,
       };
     }),
 

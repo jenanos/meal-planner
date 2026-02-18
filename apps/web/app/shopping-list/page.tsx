@@ -141,6 +141,18 @@ export default function ShoppingListPage() {
   );
 
   const items = shoppingQuery.data?.items ?? EMPTY_ITEMS;
+  const plannedDays = (shoppingQuery.data as any)?.plannedDays as
+    | {
+        weekStart: string;
+        dayIndex: number;
+        recipeName: string | null;
+        entryType: string;
+        dateISO: string;
+        weekdayLabel: string;
+        longLabel: string;
+        shortLabel: string;
+      }[]
+    | undefined;
 
   useEffect(() => {
     const next: Record<string, boolean> = {};
@@ -209,6 +221,21 @@ export default function ShoppingListPage() {
         }
       }
     }
+    // Include planned days so days with recipes but no ingredients still appear
+    if (plannedDays) {
+      for (const pd of plannedDays) {
+        const key = `${pd.weekStart}::${pd.dayIndex}`;
+        if (!map.has(key)) {
+          map.set(key, {
+            key,
+            weekdayLabel: pd.weekdayLabel,
+            shortLabel: pd.shortLabel,
+            longLabel: pd.longLabel,
+            dateISO: pd.dateISO,
+          });
+        }
+      }
+    }
     const totalDays = includeNextWeek ? 14 : 7;
     return Array.from(map.values())
       .filter((option) => {
@@ -228,7 +255,7 @@ export default function ShoppingListPage() {
         return true;
       })
       .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
-  }, [items, includeNextWeek, activeWeekStart, startDay]);
+  }, [items, plannedDays, includeNextWeek, activeWeekStart, startDay]);
 
   useEffect(() => {
     const optionKeys = occurrenceOptions.map((option) => option.key);
@@ -456,11 +483,35 @@ export default function ShoppingListPage() {
   }
 
   const buildDaySections = useCallback(
-    (sourceItems: ShoppingListItem[]): ShoppingListDaySection[] => {
+    (sourceItems: ShoppingListItem[], seedPlannedDays = false): ShoppingListDaySection[] => {
       const sections = new Map<
         string,
         ShoppingListDaySection & { dateISO: string; recipeNameSet: Set<string> }
       >();
+
+      // Seed sections from plannedDays so days with recipes but no ingredients
+      // still appear in the shopping list.
+      if (seedPlannedDays && plannedDays) {
+        for (const pd of plannedDays) {
+          const sectionKey = `${pd.weekStart}::${pd.dayIndex}`;
+          if (!visibleDayKeySet.has(sectionKey)) continue;
+          if (!sections.has(sectionKey)) {
+            sections.set(sectionKey, {
+              key: sectionKey,
+              weekdayLabel: pd.weekdayLabel,
+              longLabel: pd.longLabel,
+              entries: [],
+              dateISO: pd.dateISO,
+              recipeNames: [],
+              recipeNameSet: new Set<string>(),
+            });
+          }
+          const section = sections.get(sectionKey)!;
+          if (pd.recipeName) {
+            section.recipeNameSet.add(pd.recipeName);
+          }
+        }
+      }
 
       for (const item of sourceItems) {
         const removalKey = `${item.ingredientId}::${item.unit ?? ""}`;
@@ -538,6 +589,7 @@ export default function ShoppingListPage() {
         }));
     },
     [
+      plannedDays,
       removedKeys,
       visibleDayKeySet,
       checkedByOccurrence,
@@ -567,7 +619,7 @@ export default function ShoppingListPage() {
   );
 
   const daySections = useMemo<ShoppingListDaySection[]>(
-    () => buildDaySections(displayedItems),
+    () => buildDaySections(displayedItems, true),
     [buildDaySections, displayedItems],
   );
 
