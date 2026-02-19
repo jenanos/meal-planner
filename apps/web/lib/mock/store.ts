@@ -590,7 +590,45 @@ function aggregateShopping(weekStarts: string[]) {
     });
   });
 
-  return { items, extras };
+  // Build planned-days list so the client can show days even when a recipe
+  // has no ingredients.
+  const plannedDays: {
+    weekStart: string;
+    dayIndex: number;
+    recipeName: string | null;
+    entryType: string;
+    dateISO: string;
+    weekdayLabel: string;
+    longLabel: string;
+    shortLabel: string;
+  }[] = [];
+  for (const week of weekStarts) {
+    const plan = ensureWeekPlan(week);
+    plan.entries.forEach((entry, dayIndex) => {
+      if (entry.type === "RECIPE") {
+        const recipe = state.recipesById.get(entry.recipeId);
+        const labels = describeDay(week, dayIndex);
+        plannedDays.push({
+          weekStart: week,
+          dayIndex,
+          recipeName: recipe?.name ?? null,
+          entryType: "RECIPE",
+          ...labels,
+        });
+      } else if (entry.type === "TAKEAWAY") {
+        const labels = describeDay(week, dayIndex);
+        plannedDays.push({
+          weekStart: week,
+          dayIndex,
+          recipeName: null,
+          entryType: "TAKEAWAY",
+          ...labels,
+        });
+      }
+    });
+  }
+
+  return { items, extras, plannedDays };
 }
 
 async function handleRecipeList(input: any) {
@@ -840,12 +878,13 @@ async function handleShoppingList(input: any) {
     weekStarts.push(addWeeksISO(base, 1));
   }
 
-  const { items, extras } = aggregateShopping(weekStarts);
+  const { items, extras, plannedDays } = aggregateShopping(weekStarts);
   return {
     weekStart: base,
     includedWeekStarts: weekStarts,
     items,
     extras,
+    plannedDays,
   };
 }
 
