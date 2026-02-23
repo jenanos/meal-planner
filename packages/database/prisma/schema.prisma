@@ -15,6 +15,19 @@ enum MealCategory {
   ANNET
 }
 
+enum IngredientCategory {
+  FRUKT
+  GRONNSAKER
+  KJOTT
+  OST
+  MEIERI_OG_EGG
+  BROD
+  BAKEVARER
+  HERMETIKK
+  TORRVARER
+  UKATEGORISERT
+}
+
 enum WeekPlanEntryType {
   RECIPE
   TAKEAWAY
@@ -44,8 +57,11 @@ model Ingredient {
   name String  @unique @db.Citext
   unit String? @db.VarChar(32)
   isPantryItem Boolean @default(false)
+  category IngredientCategory @default(UKATEGORISERT)
 
   recipes RecipeIngredient[]
+
+  @@index([category])
 }
 
 model RecipeIngredient {
