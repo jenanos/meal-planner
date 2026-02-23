@@ -398,7 +398,7 @@ const buildServer = () => {
           byName.get(key)!.push(item);
         }
 
-        const resolved: Array<{ id: string; name: string; category: string }> = [];
+        const resolved: Array<{ id: string; name: string; category: z.infer<typeof IngredientCategory> }> = [];
         const missing: string[] = [];
         for (const update of updates) {
           const key = normalizeName(update.name);
@@ -417,7 +417,7 @@ const buildServer = () => {
         }
 
         const data = await trpcClient.ingredient.bulkUpdateCategories.mutate({
-          updates: resolved.map((u) => ({ id: u.id, category: u.category as any })),
+          updates: resolved.map((u) => ({ id: u.id, category: u.category })),
         });
 
         return formatSuccess({
