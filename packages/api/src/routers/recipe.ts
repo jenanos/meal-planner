@@ -144,4 +144,29 @@ export const recipeRouter = router({
       });
       return { id: r.id, usageCount: r.usageCount, lastUsed: r.lastUsed };
     }),
+
+  patchField: publicProcedure
+    .input(z.object({
+      id: z.string().uuid(),
+      category: Category.optional(),
+      healthScore: z.number().int().min(1).max(5).optional(),
+      everydayScore: z.number().int().min(1).max(5).optional(),
+    }).refine(
+      (v) => v.category !== undefined || v.healthScore !== undefined || v.everydayScore !== undefined,
+      { message: "At least one field must be provided" },
+    ))
+    .mutation(async ({ input }) => {
+      const { id, ...fields } = input;
+      const data: Record<string, unknown> = {};
+      if (fields.category !== undefined) data.category = fields.category;
+      if (fields.healthScore !== undefined) data.healthScore = fields.healthScore;
+      if (fields.everydayScore !== undefined) data.everydayScore = fields.everydayScore;
+      try {
+        const r = await prisma.recipe.update({ where: { id }, data });
+        return { id: r.id, category: r.category, healthScore: r.healthScore, everydayScore: r.everydayScore };
+      } catch (e: any) {
+        if (e?.code === "P2025") throw new TRPCError({ code: "NOT_FOUND", message: "Recipe not found" });
+        throw new TRPCError({ code: "BAD_REQUEST", message: e?.message ?? "Patch failed" });
+      }
+    }),
 });
