@@ -315,13 +315,98 @@ describe("recipe router", () => {
       caller.update({
         id: "00000000-0000-0000-0000-000000000055",
         name: "gryte",
-        description: undefined,
         category: "ANNET",
         everydayScore: 3,
         healthScore: 3,
         ingredients: [],
       })
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("partial update: only updates description, preserves ingredients", async () => {
+    recipeModel.findUnique.mockResolvedValueOnce({ id: "rec-partial" });
+    recipeModel.update.mockResolvedValueOnce({
+      id: "rec-partial",
+      name: "Laksesuppe",
+      description: "En god suppe",
+      category: "FISK",
+      everydayScore: 4,
+      healthScore: 3,
+      lastUsed: null,
+      usageCount: 0,
+      ingredients: [
+        {
+          ingredientId: "ing1",
+          quantity: "1",
+          notes: null,
+          ingredient: { name: "Laks", unit: "stk" },
+        },
+      ],
+    });
+
+    const caller = createCaller();
+    await caller.update({
+      id: "00000000-0000-0000-0000-000000000088",
+      description: "En god suppe",
+    });
+
+    expect(recipeModel.update).toHaveBeenCalledWith({
+      where: { id: "00000000-0000-0000-0000-000000000088" },
+      data: {
+        description: "En god suppe",
+      },
+      include: { ingredients: { include: { ingredient: true } } },
+    });
+  });
+
+  it("partial update: only updates ingredients, preserves other fields", async () => {
+    recipeModel.findUnique.mockResolvedValueOnce({ id: "rec-partial2" });
+    recipeModel.update.mockResolvedValueOnce({
+      id: "rec-partial2",
+      name: "Laksesuppe",
+      description: "Beskrivelse",
+      category: "FISK",
+      everydayScore: 4,
+      healthScore: 3,
+      lastUsed: null,
+      usageCount: 0,
+      ingredients: [
+        {
+          ingredientId: "ingX",
+          quantity: "2",
+          notes: null,
+          ingredient: { name: "Tomat", unit: "stk" },
+        },
+      ],
+    });
+
+    const caller = createCaller();
+    await caller.update({
+      id: "00000000-0000-0000-0000-000000000099",
+      ingredients: [{ name: "Tomat", quantity: 2, unit: "stk" }],
+    });
+
+    expect(recipeModel.update).toHaveBeenCalledWith({
+      where: { id: "00000000-0000-0000-0000-000000000099" },
+      data: {
+        ingredients: {
+          deleteMany: {},
+          create: [
+            {
+              notes: null,
+              quantity: new Prisma.Decimal("2"),
+              ingredient: {
+                connectOrCreate: {
+                  where: { name: "Tomat" },
+                  create: { name: "Tomat", unit: "stk" },
+                },
+              },
+            },
+          ],
+        },
+      },
+      include: { ingredients: { include: { ingredient: true } } },
+    });
   });
 
   it("deletes recipes and converts failures to TRPCError", async () => {
