@@ -143,15 +143,15 @@ export default function ShoppingListPage() {
   const items = shoppingQuery.data?.items ?? EMPTY_ITEMS;
   const plannedDays = (shoppingQuery.data as any)?.plannedDays as
     | {
-        weekStart: string;
-        dayIndex: number;
-        recipeName: string | null;
-        entryType: string;
-        dateISO: string;
-        weekdayLabel: string;
-        longLabel: string;
-        shortLabel: string;
-      }[]
+      weekStart: string;
+      dayIndex: number;
+      recipeName: string | null;
+      entryType: string;
+      dateISO: string;
+      weekdayLabel: string;
+      longLabel: string;
+      shortLabel: string;
+    }[]
     | undefined;
 
   useEffect(() => {
@@ -1058,7 +1058,7 @@ export default function ShoppingListPage() {
                       ) : (
                         <ChevronRight className="h-3.5 w-3.5" />
                       )}
-                      {checkedExtras.length} fullført
+                      {checkedExtras.length} siste fullført
                       {checkedExtras.length !== 1 ? "e" : ""}
                     </button>
                     {showCompletedExtras && (

@@ -351,7 +351,7 @@ const buildServer = () => {
     "get-ingredients-without-category",
     {
       title: "Hent ingredienser uten kategori",
-      description: "Returnerer alle ingredienser som er ukategorisert (har kategori UKATEGORISERT).",
+      description: "Returnerer alle ingredienser i oppsamlingskategorien ANNET.",
       inputSchema: z.object({}),
     },
     async (): Promise<CallToolResult> => {
@@ -369,8 +369,8 @@ const buildServer = () => {
     {
       title: "Oppdater manglende ingrediens-kategorier",
       description:
-        "Oppdaterer kategorier for ingredienser som er ukategorisert ved å matche på navn. " +
-        "Gyldige kategorier: FRUKT, GRONNSAKER, KJOTT, OST, MEIERI_OG_EGG, BROD, BAKEVARER, HERMETIKK, TORRVARER, UKATEGORISERT.",
+        "Oppdaterer kategorier for ingredienser i oppsamlingskategorien ved å matche på navn. " +
+        "Gyldige kategorier: FRUKT, GRONNSAKER, KJOTT, OST, MEIERI_OG_EGG, BROD, BAKEVARER, HERMETIKK, TORRVARER, ANNET.",
       inputSchema: z.object({
         updates: z
           .array(
@@ -438,7 +438,7 @@ const buildServer = () => {
       title: "Bulk-oppdater ingrediens-kategorier",
       description:
         "Oppdaterer kategorier for flere ingredienser på en gang ved å bruke ingrediens-ID. " +
-        "Gyldige kategorier: FRUKT, GRONNSAKER, KJOTT, OST, MEIERI_OG_EGG, BROD, BAKEVARER, HERMETIKK, TORRVARER, UKATEGORISERT.",
+        "Gyldige kategorier: FRUKT, GRONNSAKER, KJOTT, OST, MEIERI_OG_EGG, BROD, BAKEVARER, HERMETIKK, TORRVARER, ANNET.",
       inputSchema: z.object({
         updates: z.array(z.object({
           id: z.string().uuid().describe("Ingrediens-ID"),

@@ -25,7 +25,7 @@ const INGREDIENT_CATEGORIES = [
   "BAKEVARER",
   "HERMETIKK",
   "TORRVARER",
-  "UKATEGORISERT",
+  "ANNET",
 ] as const;
 
 type Ingredient = {
@@ -55,7 +55,7 @@ export function IngredientsCategoryBoard() {
     const map = new Map<string, Ingredient[]>();
     for (const cat of INGREDIENT_CATEGORIES) map.set(cat, []);
     for (const ing of ingredients) {
-      const key = ing.category || "UKATEGORISERT";
+      const key = ing.category || "ANNET";
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(ing);
     }

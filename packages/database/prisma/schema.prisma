@@ -25,7 +25,7 @@ enum IngredientCategory {
   BAKEVARER
   HERMETIKK
   TORRVARER
-  UKATEGORISERT
+  ANNET
 }
 
 enum WeekPlanEntryType {
@@ -57,7 +57,7 @@ model Ingredient {
   name String  @unique @db.Citext
   unit String? @db.VarChar(32)
   isPantryItem Boolean @default(false)
-  category IngredientCategory @default(UKATEGORISERT)
+  category IngredientCategory @default(ANNET)
 
   recipes RecipeIngredient[]
 

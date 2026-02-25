@@ -14,7 +14,7 @@ export const IngredientCategory = z.enum([
   "BAKEVARER",
   "HERMETIKK",
   "TORRVARER",
-  "UKATEGORISERT",
+  "ANNET",
 ]);
 export type IngredientCategory = z.infer<typeof IngredientCategory>;
 
