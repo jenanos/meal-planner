@@ -1,6 +1,6 @@
 import { prisma } from "@repo/database";
 import { router, publicProcedure } from "../trpc.js";
-import { IngredientById, IngredientCreate, IngredientListQuery, IngredientUpdate } from "../schemas.js";
+import { IngredientById, IngredientCreate, IngredientCategory, IngredientListQuery, IngredientUpdate } from "../schemas.js";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
@@ -10,6 +10,7 @@ const IngredientListItem = z.object({
     unit: z.string().optional(),
     usageCount: z.number().int(),
     isPantryItem: z.boolean(),
+    category: IngredientCategory,
 });
 
 const IngredientWithRecipes = z.object({
@@ -17,6 +18,7 @@ const IngredientWithRecipes = z.object({
     name: z.string(),
     unit: z.string().optional(),
     isPantryItem: z.boolean(),
+    category: IngredientCategory,
     recipes: z.array(
         z.object({
             id: z.string().uuid(),
@@ -47,6 +49,7 @@ export const ingredientRouter = router({
                 unit: i.unit ?? undefined,
                 usageCount: i._count.recipes,
                 isPantryItem: i.isPantryItem,
+                category: i.category,
             }));
         }),
 
@@ -64,6 +67,7 @@ export const ingredientRouter = router({
                 unit: i.unit ?? undefined,
                 usageCount: i._count.recipes,
                 isPantryItem: i.isPantryItem,
+                category: i.category,
             }));
         }),
 
@@ -119,6 +123,7 @@ export const ingredientRouter = router({
                         unit: i.unit ?? undefined,
                         usageCount: i._count.recipes,
                         isPantryItem: i.isPantryItem,
+                        category: i.category,
                     }))
                 );
 
@@ -152,9 +157,53 @@ export const ingredientRouter = router({
             return { count };
         }),
 
+    listWithoutCategory: publicProcedure
+        .output(z.array(IngredientListItem))
+        .query(async () => {
+            const items = await prisma.ingredient.findMany({
+                where: { category: "UKATEGORISERT" },
+                orderBy: { name: "asc" },
+                include: { _count: { select: { recipes: true } } },
+            });
+            return items.map((i) => ({
+                id: i.id,
+                name: i.name,
+                unit: i.unit ?? undefined,
+                usageCount: i._count.recipes,
+                isPantryItem: i.isPantryItem,
+                category: i.category,
+            }));
+        }),
+
+    bulkUpdateCategories: publicProcedure
+        .input(z.object({
+            updates: z.array(z.object({
+                id: z.string().uuid(),
+                category: IngredientCategory,
+            })),
+        }))
+        .output(z.object({ count: z.number().int() }))
+        .mutation(async ({ input }) => {
+            let count = 0;
+
+            for (const update of input.updates) {
+                try {
+                    await prisma.ingredient.update({
+                        where: { id: update.id },
+                        data: { category: update.category },
+                    });
+                    count++;
+                } catch (e: unknown) {
+                    // Skip ingredients that don't exist or other errors
+                }
+            }
+
+            return { count };
+        }),
+
     create: publicProcedure
         .input(IngredientCreate)
-        .output(z.object({ id: z.string().uuid(), name: z.string(), unit: z.string().optional(), isPantryItem: z.boolean() }))
+        .output(z.object({ id: z.string().uuid(), name: z.string(), unit: z.string().optional(), isPantryItem: z.boolean(), category: IngredientCategory }))
         .mutation(async ({ input }) => {
             try {
                 const trimmedName = input.name.trim();
@@ -163,14 +212,16 @@ export const ingredientRouter = router({
                     update: {
                         unit: input.unit?.trim() ?? null,
                         isPantryItem: Boolean(input.isPantryItem),
+                        ...(input.category ? { category: input.category } : {}),
                     },
                     create: {
                         name: trimmedName,
                         unit: input.unit?.trim() ?? null,
                         isPantryItem: Boolean(input.isPantryItem),
+                        ...(input.category ? { category: input.category } : {}),
                     },
                 });
-                return { id: up.id, name: up.name, unit: up.unit ?? undefined, isPantryItem: up.isPantryItem };
+                return { id: up.id, name: up.name, unit: up.unit ?? undefined, isPantryItem: up.isPantryItem, category: up.category };
             } catch (e: any) {
                 throw new TRPCError({ code: "BAD_REQUEST", message: e?.message ?? "Failed to create ingredient" });
             }
@@ -178,7 +229,7 @@ export const ingredientRouter = router({
 
     update: publicProcedure
         .input(IngredientUpdate)
-        .output(z.object({ id: z.string().uuid(), name: z.string(), unit: z.string().optional(), isPantryItem: z.boolean() }))
+        .output(z.object({ id: z.string().uuid(), name: z.string(), unit: z.string().optional(), isPantryItem: z.boolean(), category: IngredientCategory }))
         .mutation(async ({ input }) => {
             try {
                 const trimmedName = input.name.trim();
@@ -188,9 +239,10 @@ export const ingredientRouter = router({
                         name: trimmedName,
                         unit: input.unit?.trim() ?? null,
                         ...(typeof input.isPantryItem === "boolean" ? { isPantryItem: input.isPantryItem } : {}),
+                        ...(input.category ? { category: input.category } : {}),
                     },
                 });
-                return { id: updated.id, name: updated.name, unit: updated.unit ?? undefined, isPantryItem: updated.isPantryItem };
+                return { id: updated.id, name: updated.name, unit: updated.unit ?? undefined, isPantryItem: updated.isPantryItem, category: updated.category };
             } catch (e: any) {
                 if (e?.code === "P2025") {
                     throw new TRPCError({ code: "NOT_FOUND", message: "Ingredient not found" });
@@ -219,6 +271,7 @@ export const ingredientRouter = router({
                 name: ing.name,
                 unit: ing.unit ?? undefined,
                 isPantryItem: ing.isPantryItem,
+                category: ing.category,
                 recipes: ing.recipes.map((ri) => ({
                     id: ri.recipe.id,
                     name: ri.recipe.name,

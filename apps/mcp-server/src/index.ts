@@ -6,6 +6,7 @@ import {
   ExtraShoppingRemove,
   ExtraShoppingToggle,
   IngredientById,
+  IngredientCategory,
   IngredientCreate,
   IngredientListQuery,
   IngredientUpdate,
@@ -342,6 +343,118 @@ const buildServer = () => {
         return formatSuccess({ items: data });
       } catch (error) {
         return formatToolError(error, "Kunne ikke hente ingredienser uten enhet");
+      }
+    }
+  );
+
+  server.registerTool(
+    "get-ingredients-without-category",
+    {
+      title: "Hent ingredienser uten kategori",
+      description: "Returnerer alle ingredienser som er ukategorisert (har kategori UKATEGORISERT).",
+      inputSchema: z.object({}),
+    },
+    async (): Promise<CallToolResult> => {
+      try {
+        const data = await trpcClient.ingredient.listWithoutCategory.query();
+        return formatSuccess({ items: data });
+      } catch (error) {
+        return formatToolError(error, "Kunne ikke hente ingredienser uten kategori");
+      }
+    }
+  );
+
+  server.registerTool(
+    "bulk-update-missing-ingredient-categories",
+    {
+      title: "Oppdater manglende ingrediens-kategorier",
+      description:
+        "Oppdaterer kategorier for ingredienser som er ukategorisert ved å matche på navn. " +
+        "Gyldige kategorier: FRUKT, GRONNSAKER, KJOTT, OST, MEIERI_OG_EGG, BROD, BAKEVARER, HERMETIKK, TORRVARER, UKATEGORISERT.",
+      inputSchema: z.object({
+        updates: z
+          .array(
+            z.object({
+              name: z.string().min(1).describe("Ingrediensnavn som mangler kategori"),
+              category: IngredientCategory.describe("Kategori som skal settes"),
+            })
+          )
+          .min(1)
+          .describe("Liste med navn og kategorier som skal oppdateres"),
+      }),
+      annotations: {
+        readOnlyHint: false,
+      },
+    },
+    async ({ updates }): Promise<CallToolResult> => {
+      try {
+        const uncategorized = await trpcClient.ingredient.listWithoutCategory.query();
+        const byName = new Map<string, typeof uncategorized>();
+        for (const item of uncategorized) {
+          const key = normalizeName(item.name);
+          if (!byName.has(key)) {
+            byName.set(key, []);
+          }
+          byName.get(key)!.push(item);
+        }
+
+        const resolved: Array<{ id: string; name: string; category: z.infer<typeof IngredientCategory> }> = [];
+        const missing: string[] = [];
+        for (const update of updates) {
+          const key = normalizeName(update.name);
+          const matches = byName.get(key);
+          if (!matches || matches.length === 0) {
+            missing.push(update.name);
+            continue;
+          }
+          for (const match of matches) {
+            resolved.push({ id: match.id, name: match.name, category: update.category });
+          }
+        }
+
+        if (resolved.length === 0) {
+          return formatSuccess({ ok: true, updated: [], missing });
+        }
+
+        const data = await trpcClient.ingredient.bulkUpdateCategories.mutate({
+          updates: resolved.map((u) => ({ id: u.id, category: u.category })),
+        });
+
+        return formatSuccess({
+          ok: true,
+          updated: resolved,
+          missing,
+          count: data.count,
+        });
+      } catch (error) {
+        return formatToolError(error, "Kunne ikke oppdatere manglende ingrediens-kategorier");
+      }
+    }
+  );
+
+  server.registerTool(
+    "bulk-update-ingredient-categories",
+    {
+      title: "Bulk-oppdater ingrediens-kategorier",
+      description:
+        "Oppdaterer kategorier for flere ingredienser på en gang ved å bruke ingrediens-ID. " +
+        "Gyldige kategorier: FRUKT, GRONNSAKER, KJOTT, OST, MEIERI_OG_EGG, BROD, BAKEVARER, HERMETIKK, TORRVARER, UKATEGORISERT.",
+      inputSchema: z.object({
+        updates: z.array(z.object({
+          id: z.string().uuid().describe("Ingrediens-ID"),
+          category: IngredientCategory.describe("Ny kategori"),
+        })).describe("Liste med oppdateringer"),
+      }),
+      annotations: {
+        readOnlyHint: false,
+      },
+    },
+    async ({ updates }): Promise<CallToolResult> => {
+      try {
+        const data = await trpcClient.ingredient.bulkUpdateCategories.mutate({ updates });
+        return formatSuccess(data);
+      } catch (error) {
+        return formatToolError(error, "Kunne ikke oppdatere ingrediens-kategorier");
       }
     }
   );

@@ -4,16 +4,32 @@ import { z } from "zod";
 export const Category = z.enum(["FISK", "VEGETAR", "KYLLING", "STORFE", "ANNET"]);
 export type Category = z.infer<typeof Category>;
 
+export const IngredientCategory = z.enum([
+  "FRUKT",
+  "GRONNSAKER",
+  "KJOTT",
+  "OST",
+  "MEIERI_OG_EGG",
+  "BROD",
+  "BAKEVARER",
+  "HERMETIKK",
+  "TORRVARER",
+  "UKATEGORISERT",
+]);
+export type IngredientCategory = z.infer<typeof IngredientCategory>;
+
 export const IngredientCreate = z.object({
   name: z.string().min(1),
   unit: z.string().min(1).optional(),
   isPantryItem: z.boolean().optional(),
+  category: IngredientCategory.optional(),
 });
 export type IngredientCreate = z.infer<typeof IngredientCreate>;
 
 export const IngredientUpdate = IngredientCreate.extend({
   id: z.string().uuid(),
   isPantryItem: z.boolean().optional(),
+  category: IngredientCategory.optional(),
 });
 export type IngredientUpdate = z.infer<typeof IngredientUpdate>;
 
