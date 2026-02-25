@@ -120,6 +120,15 @@ export const ExtraItemSuggest = z.object({
   search: z.string().optional(),
 });
 
+export const ExtraCatalogCategoryUpdate = z.object({
+  id: z.string().uuid(),
+  category: IngredientCategory.nullable(),
+});
+
+export const ExtraCatalogBulkCategoryUpdate = z.object({
+  updates: z.array(ExtraCatalogCategoryUpdate).min(1),
+});
+
 export const ExtraShoppingToggle = z.object({
   weekStart: z.string().min(1),
   name: z.string().min(1),

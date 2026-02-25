@@ -5,6 +5,7 @@ import {
   WeekPlanInput,
   ExtraItemSuggest,
   ExtraItemUpsert,
+  ExtraCatalogBulkCategoryUpdate,
   ExtraShoppingToggle,
   ExtraShoppingRemove,
   ShoppingSettingsGetInput,
@@ -137,6 +138,41 @@ function normalizeIngredientCategory(
     return upper as IngredientCategoryKey;
   }
   return "ANNET";
+}
+
+function normalizeOptionalIngredientCategory(
+  value: string | null | undefined,
+): IngredientCategoryKey | null {
+  if (value == null) return null;
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+  return normalizeIngredientCategory(trimmed);
+}
+
+async function fetchExtraCatalogCategoryMap(catalogIds: string[]) {
+  const uniqueIds = Array.from(new Set(catalogIds.filter(Boolean)));
+  const result = new Map<string, IngredientCategoryKey | null>();
+  if (!uniqueIds.length) return result;
+
+  const rows = await prisma.$queryRaw<
+    Array<{ id: string; category: string | null }>
+  >(
+    Prisma.sql`
+      SELECT
+        id::text AS id,
+        category::text AS category
+      FROM "ExtraItemCatalog"
+      WHERE id IN (${Prisma.join(
+        uniqueIds.map((id) => Prisma.sql`${id}::uuid`),
+      )})
+    `,
+  );
+
+  for (const row of rows) {
+    result.set(row.id, normalizeOptionalIngredientCategory(row.category));
+  }
+
+  return result;
 }
 
 function toClientViewMode(mode: string | null | undefined) {
@@ -1393,6 +1429,9 @@ export const plannerRouter = router({
         include: { catalogItem: true },
         orderBy: { updatedAt: "desc" },
       });
+      const categoryByCatalogId = await fetchExtraCatalogCategoryMap(
+        extraItems.map((item) => item.catalogItemId),
+      );
 
       const seenCatalog = new Set<string>();
       const extras = extraItems
@@ -1403,12 +1442,17 @@ export const plannerRouter = router({
           seenCatalog.add(item.catalogItemId);
           return true;
         })
-        .map((e) => ({
-          id: e.id,
-          name: e.catalogItem.name,
-          weekStart: e.weekStart.toISOString(),
-          checked: e.checked,
-        }));
+        .map((e) => {
+          const category = categoryByCatalogId.get(e.catalogItemId) ?? null;
+          return {
+            id: e.id,
+            name: e.catalogItem.name,
+            weekStart: e.weekStart.toISOString(),
+            checked: e.checked,
+            category,
+            hasCategory: category !== null,
+          };
+        });
 
       return {
         weekStart: weekStart.toISOString(),
@@ -1528,18 +1572,89 @@ export const plannerRouter = router({
       });
     }),
 
+  extraCatalogList: publicProcedure.query(async () => {
+    const rows = await prisma.extraItemCatalog.findMany({
+      orderBy: { name: "asc" },
+      include: { _count: { select: { extras: true } } },
+    });
+    const categoryMap = await fetchExtraCatalogCategoryMap(
+      rows.map((item) => item.id),
+    );
+    return rows.map((item) => ({
+      id: item.id,
+      name: item.name,
+      usageCount: item._count.extras,
+      category: categoryMap.get(item.id) ?? null,
+    }));
+  }),
+
+  extraCatalogBulkUpdateCategories: publicProcedure
+    .input(ExtraCatalogBulkCategoryUpdate)
+    .output(z.object({ count: z.number().int() }))
+    .mutation(async ({ input }) => {
+      let count = 0;
+
+      for (const update of input.updates) {
+        const normalizedCategory =
+          normalizeOptionalIngredientCategory(update.category);
+        try {
+          const affectedRows =
+            normalizedCategory == null
+              ? await prisma.$executeRaw(
+                Prisma.sql`
+                  UPDATE "ExtraItemCatalog"
+                  SET "category" = NULL
+                  WHERE "id" = ${update.id}::uuid
+                `,
+              )
+              : await prisma.$executeRaw(
+                Prisma.sql`
+                  UPDATE "ExtraItemCatalog"
+                  SET "category" = ${normalizedCategory}::"IngredientCategory"
+                  WHERE "id" = ${update.id}::uuid
+                `,
+              );
+          if (Number(affectedRows) > 0) {
+            count += 1;
+          }
+        } catch (_error: unknown) {
+          // Skip records that cannot be updated so bulk operations continue.
+        }
+      }
+
+      return { count };
+    }),
+
   // Suggest extra items by prefix
   extraSuggest: publicProcedure
     .input(ExtraItemSuggest.optional())
     .query(async ({ input }) => {
       const q = (input?.search ?? "").trim();
-      if (!q) return [] as { id: string; name: string }[];
+      if (!q) {
+        return [] as {
+          id: string;
+          name: string;
+          category: IngredientCategoryKey | null;
+          hasCategory: boolean;
+        }[];
+      }
       const all = await prisma.extraItemCatalog.findMany({
         where: { name: { contains: q } },
         orderBy: { name: "asc" },
         take: 20,
       });
-      return all.map((x) => ({ id: x.id, name: x.name }));
+      const categoryMap = await fetchExtraCatalogCategoryMap(
+        all.map((item) => item.id),
+      );
+      return all.map((x) => {
+        const category = categoryMap.get(x.id) ?? null;
+        return {
+          id: x.id,
+          name: x.name,
+          category,
+          hasCategory: category !== null,
+        };
+      });
     }),
 
   // Add an extra item to the current week's list (upsert into catalog)

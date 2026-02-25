@@ -138,6 +138,21 @@ export const ExtraItemSuggest = z.object({
 });
 export type ExtraItemSuggest = z.infer<typeof ExtraItemSuggest>;
 
+export const ExtraCatalogCategoryUpdate = z.object({
+  id: z.string().uuid(),
+  category: IngredientCategory.nullable(),
+});
+export type ExtraCatalogCategoryUpdate = z.infer<
+  typeof ExtraCatalogCategoryUpdate
+>;
+
+export const ExtraCatalogBulkCategoryUpdate = z.object({
+  updates: z.array(ExtraCatalogCategoryUpdate).min(1),
+});
+export type ExtraCatalogBulkCategoryUpdate = z.infer<
+  typeof ExtraCatalogBulkCategoryUpdate
+>;
+
 export const ExtraShoppingToggle = z.object({
   weekStart: z.string().min(1),
   name: z.string().min(1),

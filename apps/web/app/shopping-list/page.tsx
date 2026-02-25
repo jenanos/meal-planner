@@ -258,12 +258,21 @@ export default function ShoppingListPage() {
     name: string;
     weekStart: string;
     checked: boolean;
+    category: string | null;
+    hasCategory: boolean;
   }>;
   const extras = useMemo(() => {
     // Extras are shared across weeks — deduplicate by name, preferring unchecked
     const byName = new Map<
       string,
-      { id: string; name: string; weekStart: string; checked: boolean }
+      {
+        id: string;
+        name: string;
+        weekStart: string;
+        checked: boolean;
+        category: string | null;
+        hasCategory: boolean;
+      }
     >();
     for (const e of extrasAll) {
       const existing = byName.get(e.name);
@@ -273,14 +282,24 @@ export default function ShoppingListPage() {
     }
     return Array.from(byName.values());
   }, [extrasAll]);
-
-  const uncheckedExtras = useMemo(
-    () => extras.filter((e) => !e.checked),
+  const categorizedExtras = useMemo(
+    () => extras.filter((e) => Boolean(e.category)),
     [extras],
   );
+  const extrasForTopSection = useMemo(
+    () =>
+      viewMode === "by-category"
+        ? extras.filter((e) => !e.category)
+        : extras,
+    [extras, viewMode],
+  );
+  const uncheckedExtras = useMemo(
+    () => extrasForTopSection.filter((e) => !e.checked),
+    [extrasForTopSection],
+  );
   const checkedExtras = useMemo(
-    () => extras.filter((e) => e.checked).slice(-20),
-    [extras],
+    () => extrasForTopSection.filter((e) => e.checked).slice(-20),
+    [extrasForTopSection],
   );
   const isLoading = shoppingQuery.isLoading;
   const isFetching = shoppingQuery.isFetching;
@@ -725,80 +744,113 @@ export default function ShoppingListPage() {
     [activeStore],
   );
 
-  const buildCategorySections = useCallback(
-    (sourceItems: ShoppingListItem[]): ShoppingListCategorySection[] => {
-      const categories = new Map<
-        IngredientCategory,
-        ShoppingListCategorySection["entries"]
-      >();
+  function buildCategorySections(
+    sourceItems: ShoppingListItem[],
+    extraEntries: Array<{
+      id: string;
+      name: string;
+      checked: boolean;
+      category: string | null;
+    }> = [],
+  ): ShoppingListCategorySection[] {
+    const categories = new Map<
+      IngredientCategory,
+      ShoppingListCategorySection["entries"]
+    >();
 
-      activeCategoryOrder.forEach((category) => {
+    activeCategoryOrder.forEach((category) => {
+      categories.set(category, []);
+    });
+
+    for (const item of sourceItems) {
+      const key = `${item.ingredientId}::${item.unit ?? ""}`;
+      if (removedKeys.has(key)) continue;
+
+      const occurrences = (item.occurrences ?? []).filter((occurrence) =>
+        visibleDayKeySet.has(`${occurrence.weekStart}::${occurrence.dayIndex}`),
+      );
+      if (!occurrences.length) continue;
+
+      const hasQuantity = occurrences.some(
+        (occurrence) => occurrence.quantity != null,
+      );
+      const quantity = hasQuantity
+        ? occurrences.reduce(
+          (sum, occurrence) => sum + (occurrence.quantity ?? 0),
+          0,
+        )
+        : null;
+      const hasMissingQuantities = occurrences.some(
+        (occurrence) => occurrence.hasMissingQuantities,
+      );
+      const checked = occurrences.every((occurrence) =>
+        isOccurrenceChecked(item, occurrence),
+      );
+
+      const rawCategory = (item as { category?: string }).category ?? "ANNET";
+      const category =
+        (normalizeCategoryOrder([rawCategory])[0] ?? "ANNET") as IngredientCategory;
+      if (!categories.has(category)) {
         categories.set(category, []);
+      }
+      const quantityLabel =
+        quantity != null
+          ? formatQuantity(quantity, item.unit ?? null)
+          : "Mengde ikke spesifisert";
+      const extraInfo =
+        hasMissingQuantities && quantity != null
+          ? " • noen mengder mangler"
+          : undefined;
+      categories.get(category)!.push({
+        key,
+        name: item.name,
+        quantityLabel,
+        extraInfo,
+        checked,
+        onToggle: () => toggleCategoryOccurrences(item, occurrences),
+        onRemove: () => removeItem(item),
       });
+    }
 
-      for (const item of sourceItems) {
-        const key = `${item.ingredientId}::${item.unit ?? ""}`;
-        if (removedKeys.has(key)) continue;
+    for (const extra of extraEntries) {
+      if (!extra.category) continue;
 
-        const occurrences = (item.occurrences ?? []).filter((occurrence) =>
-          visibleDayKeySet.has(`${occurrence.weekStart}::${occurrence.dayIndex}`),
-        );
-        if (!occurrences.length) continue;
-
-        const hasQuantity = occurrences.some(
-          (occurrence) => occurrence.quantity != null,
-        );
-        const quantity = hasQuantity
-          ? occurrences.reduce(
-            (sum, occurrence) => sum + (occurrence.quantity ?? 0),
-            0,
-          )
-          : null;
-        const hasMissingQuantities = occurrences.some(
-          (occurrence) => occurrence.hasMissingQuantities,
-        );
-        const checked = occurrences.every((occurrence) =>
-          isOccurrenceChecked(item, occurrence),
-        );
-
-        const rawCategory = (item as { category?: string }).category ?? "ANNET";
-        const category =
-          (normalizeCategoryOrder([rawCategory])[0] ?? "ANNET") as IngredientCategory;
-        if (!categories.has(category)) {
-          categories.set(category, []);
-        }
-        categories.get(category)!.push({
-          item,
-          quantity,
-          hasMissingQuantities,
-          checked,
-          occurrences,
-        });
+      const category =
+        (normalizeCategoryOrder([extra.category])[0] ??
+          "ANNET") as IngredientCategory;
+      if (!categories.has(category)) {
+        categories.set(category, []);
       }
 
-      return activeCategoryOrder.map((category) => ({
-        key: category,
-        label: ingredientCategoryLabel(category),
-        entries: (categories.get(category) ?? []).sort((a, b) => {
-          if (a.checked !== b.checked) return a.checked ? 1 : -1;
-          return a.item.name.localeCompare(b.item.name, "nb", {
-            sensitivity: "base",
-          });
-        }),
-      }));
-    },
-    [activeCategoryOrder, removedKeys, visibleDayKeySet, checkedByOccurrence],
-  );
+      categories.get(category)!.push({
+        key: `extra::${extra.id}`,
+        name: extra.name,
+        quantityLabel: "Eget element",
+        checked: extra.checked,
+        onToggle: () => {
+          void toggleExtra(extra.name, extra.checked);
+        },
+        onRemove: () => {
+          void removeExtra(extra.name);
+        },
+      });
+    }
 
-  const categorySections = useMemo<ShoppingListCategorySection[]>(
-    () => buildCategorySections(displayedItems),
-    [buildCategorySections, displayedItems],
-  );
+    return activeCategoryOrder.map((category) => ({
+      key: category,
+      label: ingredientCategoryLabel(category),
+      entries: (categories.get(category) ?? []).sort((a, b) => {
+        if (a.checked !== b.checked) return a.checked ? 1 : -1;
+        return a.name.localeCompare(b.name, "nb", {
+          sensitivity: "base",
+        });
+      }),
+    }));
+  }
 
-  const pantryCategorySections = useMemo<ShoppingListCategorySection[]>(
-    () => buildCategorySections(pantryItems),
-    [buildCategorySections, pantryItems],
-  );
+  const categorySections = buildCategorySections(displayedItems, categorizedExtras);
+
+  const pantryCategorySections = buildCategorySections(pantryItems);
 
   function toggleCategoryOccurrences(
     item: ShoppingListItem,
@@ -1165,7 +1217,11 @@ export default function ShoppingListPage() {
                         ) : (
                           (() => {
                             const suggestions = (extraSuggest.data ??
-                              []) as Array<{ id: string; name: string }>;
+                              []) as Array<{
+                              id: string;
+                              name: string;
+                              hasCategory: boolean;
+                            }>;
                             const exists = suggestions.some(
                               (s) =>
                                 s.name.toLowerCase() ===
@@ -1176,7 +1232,11 @@ export default function ShoppingListPage() {
                                 {suggestions.map((s) => (
                                   <Badge
                                     key={s.id}
-                                    className="cursor-pointer"
+                                    className={`cursor-pointer border text-white ${
+                                      s.hasCategory
+                                        ? "border-emerald-500 bg-emerald-500 hover:bg-emerald-600"
+                                        : "border-orange-500 bg-orange-500 hover:bg-orange-600"
+                                    }`}
                                     onClick={() => addOrToggleExtra(s.name)}
                                   >
                                     {s.name}
@@ -1184,7 +1244,7 @@ export default function ShoppingListPage() {
                                 ))}
                                 {!exists && (
                                   <Badge
-                                    className="cursor-pointer"
+                                    className="cursor-pointer border border-orange-500 bg-orange-500 text-white hover:bg-orange-600"
                                     onClick={() =>
                                       addOrToggleExtra(extraInput.trim())
                                     }
@@ -1227,10 +1287,16 @@ export default function ShoppingListPage() {
       ) : (
         <div className="max-w-2xl mx-auto w-full space-y-6">
           <section className="rounded-2xl border border-emerald-200/60 bg-emerald-50/40 p-4">
-            <h2 className="text-sm font-semibold mb-2">Egne elementer</h2>
+            <h2 className="text-sm font-semibold mb-2">
+              {viewMode === "by-category"
+                ? "Egne elementer uten kategori"
+                : "Egne elementer"}
+            </h2>
             {uncheckedExtras.length === 0 && checkedExtras.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                Ingen egne elementer ennå.
+                {viewMode === "by-category"
+                  ? "Ingen ukategoriserte egne elementer."
+                  : "Ingen egne elementer ennå."}
               </p>
             ) : (
               <div className="space-y-3">
@@ -1337,9 +1403,7 @@ export default function ShoppingListPage() {
             ) : viewMode === "by-category" ? (
               <ShoppingListCategoryView
                 sections={categorySections}
-                removedKeys={removedKeys}
-                onToggleEntry={toggleCategoryOccurrences}
-                onRemoveItem={removeItem}
+                emptyText="Ingen ingredienser eller kategoriserte egne elementer for valgte dager."
               />
             ) : (
               <ShoppingListDayView
@@ -1365,9 +1429,7 @@ export default function ShoppingListPage() {
               ) : viewMode === "by-category" ? (
                 <ShoppingListCategoryView
                   sections={pantryCategorySections}
-                  removedKeys={removedKeys}
-                  onToggleEntry={toggleCategoryOccurrences}
-                  onRemoveItem={removeItem}
+                  emptyText="Ingen basisvarer for valgte dager."
                 />
               ) : (
                 <ShoppingListDayView

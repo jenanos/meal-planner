@@ -138,10 +138,13 @@ model ShoppingState {
 model ExtraItemCatalog {
   id        String   @id @default(uuid()) @db.Uuid
   name      String   @unique @db.Citext
+  category  IngredientCategory?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   extras ExtraShoppingItem[]
+
+  @@index([category])
 }
 
 // Extra shopping items added for specific weeks
