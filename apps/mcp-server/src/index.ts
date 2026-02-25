@@ -710,9 +710,12 @@ const buildServer = () => {
     {
       title: "Oppdater oppskrift",
       description: 
-        "Oppdaterer en eksisterende oppskrift og dens ingredienser. " +
+        "Oppdaterer en eksisterende oppskrift. Kun oppgitte felter endres – " +
+        "felter som utelates beholder sine nåværende verdier. " +
         "Du MÅ oppgi oppskrift-ID (uuid). " +
-        "Bruk 'list-recipes' eller 'get-recipe' først for å finne oppskriften.",
+        "Bruk 'get-recipe' først for å hente nåværende data. " +
+        "VIKTIG: Hvis du oppgir 'ingredients', erstatter det HELE ingredienslisten. " +
+        "Utelat 'ingredients' helt for å beholde eksisterende ingredienser.",
       inputSchema: RecipeUpdate,
       annotations: {
         readOnlyHint: false,

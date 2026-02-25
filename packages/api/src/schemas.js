@@ -60,8 +60,21 @@ export const RecipeCreate = z.object({
   ).default([]),
 });
 
-export const RecipeUpdate = RecipeCreate.extend({
+export const RecipeUpdate = z.object({
   id: z.string().uuid(),
+  name: z.string().min(1).optional(),
+  description: z.string().optional(),
+  category: Category.optional(),
+  everydayScore: z.number().int().min(1).max(5).optional(),
+  healthScore: z.number().int().min(1).max(5).optional(),
+  ingredients: z.array(
+    z.object({
+      name: z.string().min(1),
+      quantity: z.union([z.number(), z.string()]).optional(),
+      unit: z.string().min(1).optional(),
+      notes: z.string().min(1).optional(),
+    }),
+  ).optional(),
 });
 
 export const RecipeListQuery = z.object({
