@@ -31,11 +31,11 @@ ALTER COLUMN "categoryOrder" TYPE "IngredientCategory_new"[]
 USING (
   ARRAY(
     SELECT CASE
-      WHEN category::text IN ('FRUKT', 'GRONNSAKER') THEN 'FRUKT_OG_GRONT'
-      WHEN category::text = 'UKATEGORISERT' THEN 'ANNET'
-      ELSE category::text
+      WHEN category_item::text IN ('FRUKT', 'GRONNSAKER') THEN 'FRUKT_OG_GRONT'
+      WHEN category_item::text = 'UKATEGORISERT' THEN 'ANNET'
+      ELSE category_item::text
     END
-    FROM unnest("categoryOrder") AS category
+    FROM unnest("categoryOrder") AS category_values(category_item)
   )
 )::"IngredientCategory_new"[];
 
@@ -61,3 +61,7 @@ SET "categoryOrder" = ARRAY[
   'ANNET'
 ]::"IngredientCategory"[]
 WHERE "name" = 'Standard butikk';
+
+-- Ensure id keeps generated default.
+ALTER TABLE "ShoppingStore"
+ALTER COLUMN "id" SET DEFAULT gen_random_uuid();
