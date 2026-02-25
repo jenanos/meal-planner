@@ -5,8 +5,7 @@ export const Category = z.enum(["FISK", "VEGETAR", "KYLLING", "STORFE", "ANNET"]
 export type Category = z.infer<typeof Category>;
 
 export const IngredientCategory = z.enum([
-  "FRUKT",
-  "GRONNSAKER",
+  "FRUKT_OG_GRONT",
   "KJOTT",
   "OST",
   "MEIERI_OG_EGG",
@@ -14,6 +13,7 @@ export const IngredientCategory = z.enum([
   "BAKEVARER",
   "HERMETIKK",
   "TORRVARER",
+  "HUSHOLDNING",
   "ANNET",
 ]);
 export type IngredientCategory = z.infer<typeof IngredientCategory>;

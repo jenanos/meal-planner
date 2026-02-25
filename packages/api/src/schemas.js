@@ -3,8 +3,7 @@ import { z } from "zod";
 export const Category = z.enum(["FISK", "VEGETAR", "KYLLING", "STORFE", "ANNET"]);
 
 export const IngredientCategory = z.enum([
-  "FRUKT",
-  "GRONNSAKER",
+  "FRUKT_OG_GRONT",
   "KJOTT",
   "OST",
   "MEIERI_OG_EGG",
@@ -12,6 +11,7 @@ export const IngredientCategory = z.enum([
   "BAKEVARER",
   "HERMETIKK",
   "TORRVARER",
+  "HUSHOLDNING",
   "ANNET",
 ]);
 
@@ -144,4 +144,3 @@ export const ShoppingStoreCreate = z.object({
   name: z.string().trim().min(1).max(80),
   categoryOrder: z.array(IngredientCategory).length(10),
 });
-

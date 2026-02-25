@@ -123,8 +123,7 @@ function parseQuantity(quantity: string | number | undefined) {
 }
 
 const INGREDIENT_CATEGORIES = [
-  "FRUKT",
-  "GRONNSAKER",
+  "FRUKT_OG_GRONT",
   "KJOTT",
   "OST",
   "BROD",
@@ -132,6 +131,7 @@ const INGREDIENT_CATEGORIES = [
   "HERMETIKK",
   "TORRVARER",
   "BAKEVARER",
+  "HUSHOLDNING",
   "ANNET",
 ] as const;
 
@@ -146,6 +146,8 @@ const DEFAULT_VISIBLE_DAY_INDICES = [0, 1, 2, 3, 4, 5, 6] as const;
 function normalizeIngredientCategory(value: string | null | undefined): IngredientCategory {
   if (!value) return "ANNET";
   const upper = value.toUpperCase();
+  if (upper === "UKATEGORISERT") return "ANNET";
+  if (upper === "FRUKT" || upper === "GRONNSAKER") return "FRUKT_OG_GRONT";
   if (INGREDIENT_CATEGORIES.includes(upper as IngredientCategory)) {
     return upper as IngredientCategory;
   }
@@ -155,11 +157,11 @@ function normalizeIngredientCategory(value: string | null | undefined): Ingredie
 function inferIngredientCategory(name: string): IngredientCategory {
   const normalized = normalizeName(name);
   const byName: Record<string, IngredientCategory> = {
-    tomat: "GRONNSAKER",
-    løk: "GRONNSAKER",
-    "hvitløk": "GRONNSAKER",
-    paprika: "GRONNSAKER",
-    poteter: "GRONNSAKER",
+    tomat: "FRUKT_OG_GRONT",
+    løk: "FRUKT_OG_GRONT",
+    "hvitløk": "FRUKT_OG_GRONT",
+    paprika: "FRUKT_OG_GRONT",
+    poteter: "FRUKT_OG_GRONT",
     torsk: "KJOTT",
     kylling: "KJOTT",
     storfekjøtt: "KJOTT",
@@ -198,7 +200,7 @@ function normalizeCategoryOrder(values: string[] | undefined): IngredientCategor
       normalized.push(category);
     }
   }
-  return normalized;
+  return [...normalized.filter((category) => category !== "ANNET"), "ANNET"];
 }
 
 type IngredientRecord = {

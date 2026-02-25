@@ -31,7 +31,19 @@ const IngredientWithRecipes = z.object({
 });
 
 function normalizeIngredientCategory(category: string): z.infer<typeof IngredientCategory> {
-    return (category === "UKATEGORISERT" ? "ANNET" : category) as z.infer<typeof IngredientCategory>;
+    const normalized = category.toUpperCase();
+    if (normalized === "UKATEGORISERT") return "ANNET";
+    if (normalized === "FRUKT" || normalized === "GRONNSAKER") {
+        return "FRUKT_OG_GRONT";
+    }
+    if (
+        IngredientCategory.options.includes(
+            normalized as z.infer<typeof IngredientCategory>,
+        )
+    ) {
+        return normalized as z.infer<typeof IngredientCategory>;
+    }
+    return "ANNET";
 }
 
 export const ingredientRouter = router({

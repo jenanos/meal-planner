@@ -16,8 +16,7 @@ import { DragOverlayCard } from "./DragOverlayCard";
 import { ingredientCategoryLabel } from "./labels";
 
 const INGREDIENT_CATEGORIES = [
-  "FRUKT",
-  "GRONNSAKER",
+  "FRUKT_OG_GRONT",
   "KJOTT",
   "OST",
   "MEIERI_OG_EGG",
@@ -25,6 +24,7 @@ const INGREDIENT_CATEGORIES = [
   "BAKEVARER",
   "HERMETIKK",
   "TORRVARER",
+  "HUSHOLDNING",
   "ANNET",
 ] as const;
 

@@ -720,7 +720,7 @@ export default function ShoppingListPage() {
     );
   }, [stores, selectedStoreId]);
 
-  const activeCategoryOrder = useMemo(
+  const activeCategoryOrder = useMemo<IngredientCategory[]>(
     () => normalizeCategoryOrder(activeStore?.categoryOrder),
     [activeStore],
   );
@@ -762,7 +762,8 @@ export default function ShoppingListPage() {
         );
 
         const rawCategory = (item as { category?: string }).category ?? "ANNET";
-        const category = normalizeCategoryOrder([rawCategory])[0];
+        const category =
+          (normalizeCategoryOrder([rawCategory])[0] ?? "ANNET") as IngredientCategory;
         if (!categories.has(category)) {
           categories.set(category, []);
         }

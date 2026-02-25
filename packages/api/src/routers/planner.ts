@@ -32,8 +32,7 @@ const CATEGORY_KEYS = [
 type MealCategoryKey = (typeof CATEGORY_KEYS)[number];
 
 const INGREDIENT_CATEGORY_KEYS = [
-  "FRUKT",
-  "GRONNSAKER",
+  "FRUKT_OG_GRONT",
   "KJOTT",
   "OST",
   "BROD",
@@ -41,6 +40,7 @@ const INGREDIENT_CATEGORY_KEYS = [
   "HERMETIKK",
   "TORRVARER",
   "BAKEVARER",
+  "HUSHOLDNING",
   "ANNET",
 ] as const;
 type IngredientCategoryKey = (typeof INGREDIENT_CATEGORY_KEYS)[number];
@@ -52,8 +52,7 @@ const DEFAULT_VISIBLE_DAY_INDICES = [0, 1, 2, 3, 4, 5, 6] as const;
 
 const STANDARD_STORE_NAME = "Standard butikk";
 const STANDARD_STORE_CATEGORY_ORDER: IngredientCategoryKey[] = [
-  "FRUKT",
-  "GRONNSAKER",
+  "FRUKT_OG_GRONT",
   "KJOTT",
   "OST",
   "BROD",
@@ -61,6 +60,7 @@ const STANDARD_STORE_CATEGORY_ORDER: IngredientCategoryKey[] = [
   "HERMETIKK",
   "TORRVARER",
   "BAKEVARER",
+  "HUSHOLDNING",
   "ANNET",
 ];
 
@@ -128,6 +128,9 @@ function normalizeIngredientCategory(
   if (!value) return "ANNET";
   const upper = String(value).toUpperCase();
   if (upper === "UKATEGORISERT") return "ANNET";
+  if (upper === "FRUKT" || upper === "GRONNSAKER") {
+    return "FRUKT_OG_GRONT";
+  }
   if (
     INGREDIENT_CATEGORY_KEYS.includes(upper as IngredientCategoryKey)
   ) {
@@ -416,7 +419,7 @@ function normalizeCategoryOrder(
       normalized.push(category);
     }
   }
-  return normalized;
+  return [...normalized.filter((category) => category !== "ANNET"), "ANNET"];
 }
 
 function serializeShoppingStore(store: {

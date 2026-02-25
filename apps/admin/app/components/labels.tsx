@@ -27,8 +27,7 @@ export function CategoryEmoji({
 }
 
 const ingredientCategoryLabels: Record<string, string> = {
-  FRUKT: "🍎 Frukt",
-  GRONNSAKER: "🥬 Grønnsaker",
+  FRUKT_OG_GRONT: "🍎🥬 Frukt og grønt",
   KJOTT: "🥩🐟 Kjøtt og fisk",
   OST: "🧀 Ost",
   MEIERI_OG_EGG: "🥛 Meieri & Egg",
@@ -36,6 +35,7 @@ const ingredientCategoryLabels: Record<string, string> = {
   BAKEVARER: "🧁 Bakevarer",
   HERMETIKK: "🥫 Hermetikk",
   TORRVARER: "🌾 Tørrvarer",
+  HUSHOLDNING: "🧻 Husholdning",
   ANNET: "❓ Annet",
 };
 

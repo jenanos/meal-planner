@@ -16,8 +16,7 @@ enum MealCategory {
 }
 
 enum IngredientCategory {
-  FRUKT
-  GRONNSAKER
+  FRUKT_OG_GRONT
   KJOTT
   OST
   MEIERI_OG_EGG
@@ -25,6 +24,7 @@ enum IngredientCategory {
   BAKEVARER
   HERMETIKK
   TORRVARER
+  HUSHOLDNING
   ANNET
 }
 

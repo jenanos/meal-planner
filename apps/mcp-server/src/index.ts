@@ -370,7 +370,7 @@ const buildServer = () => {
       title: "Oppdater manglende ingrediens-kategorier",
       description:
         "Oppdaterer kategorier for ingredienser i oppsamlingskategorien ved å matche på navn. " +
-        "Gyldige kategorier: FRUKT, GRONNSAKER, KJOTT, OST, MEIERI_OG_EGG, BROD, BAKEVARER, HERMETIKK, TORRVARER, ANNET.",
+        "Gyldige kategorier: FRUKT_OG_GRONT, KJOTT, OST, MEIERI_OG_EGG, BROD, BAKEVARER, HERMETIKK, TORRVARER, HUSHOLDNING, ANNET.",
       inputSchema: z.object({
         updates: z
           .array(
@@ -438,7 +438,7 @@ const buildServer = () => {
       title: "Bulk-oppdater ingrediens-kategorier",
       description:
         "Oppdaterer kategorier for flere ingredienser på en gang ved å bruke ingrediens-ID. " +
-        "Gyldige kategorier: FRUKT, GRONNSAKER, KJOTT, OST, MEIERI_OG_EGG, BROD, BAKEVARER, HERMETIKK, TORRVARER, ANNET.",
+        "Gyldige kategorier: FRUKT_OG_GRONT, KJOTT, OST, MEIERI_OG_EGG, BROD, BAKEVARER, HERMETIKK, TORRVARER, HUSHOLDNING, ANNET.",
       inputSchema: z.object({
         updates: z.array(z.object({
           id: z.string().uuid().describe("Ingrediens-ID"),
