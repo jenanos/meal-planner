@@ -18,6 +18,16 @@ export const IngredientCategory = z.enum([
 ]);
 export type IngredientCategory = z.infer<typeof IngredientCategory>;
 
+export const ShoppingUserRole = z.enum(["INGVILD", "JENS"]);
+export type ShoppingUserRole = z.infer<typeof ShoppingUserRole>;
+
+export const ShoppingViewMode = z.enum([
+  "by-day",
+  "alphabetical",
+  "by-category",
+]);
+export type ShoppingViewMode = z.infer<typeof ShoppingViewMode>;
+
 export const IngredientCreate = z.object({
   name: z.string().min(1),
   unit: z.string().min(1).optional(),
@@ -127,3 +137,38 @@ export const ExtraShoppingRemove = z.object({
   name: z.string().min(1),
 });
 export type ExtraShoppingRemove = z.infer<typeof ExtraShoppingRemove>;
+
+export const ShoppingSettingsGetInput = z.object({
+  deviceId: z.string().trim().min(8).max(128),
+});
+export type ShoppingSettingsGetInput = z.infer<typeof ShoppingSettingsGetInput>;
+
+export const ShoppingDeviceRoleUpsert = z.object({
+  deviceId: z.string().trim().min(8).max(128),
+  role: ShoppingUserRole,
+});
+export type ShoppingDeviceRoleUpsert = z.infer<
+  typeof ShoppingDeviceRoleUpsert
+>;
+
+export const ShoppingRoleSettingsUpdate = z.object({
+  role: ShoppingUserRole,
+  defaultViewMode: ShoppingViewMode,
+  startDay: z.number().int().min(0).max(6),
+  includeNextWeek: z.boolean(),
+  showPantryWithIngredients: z.boolean(),
+  visibleDayIndices: z
+    .array(z.number().int().min(0).max(6))
+    .min(1)
+    .max(7),
+  defaultStoreId: z.string().uuid().nullable().optional(),
+});
+export type ShoppingRoleSettingsUpdate = z.infer<
+  typeof ShoppingRoleSettingsUpdate
+>;
+
+export const ShoppingStoreCreate = z.object({
+  name: z.string().trim().min(1).max(80),
+  categoryOrder: z.array(IngredientCategory).length(10),
+});
+export type ShoppingStoreCreate = z.infer<typeof ShoppingStoreCreate>;

@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { href: "/recipes", label: "Oppskrifter" },
   { href: "/ingredients", label: "Ingredienser" },
   { href: "/shopping-list", label: "Handleliste" },
+  { href: "/settings", label: "Innstillinger" },
 ];
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

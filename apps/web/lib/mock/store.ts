@@ -122,11 +122,91 @@ function parseQuantity(quantity: string | number | undefined) {
   return Number.isFinite(num) ? num : null;
 }
 
+const INGREDIENT_CATEGORIES = [
+  "FRUKT",
+  "GRONNSAKER",
+  "KJOTT",
+  "OST",
+  "BROD",
+  "MEIERI_OG_EGG",
+  "HERMETIKK",
+  "TORRVARER",
+  "BAKEVARER",
+  "ANNET",
+] as const;
+
+type IngredientCategory = (typeof INGREDIENT_CATEGORIES)[number];
+type ShoppingRole = "INGVILD" | "JENS";
+type ShoppingViewMode = "by-day" | "alphabetical" | "by-category";
+
+const STANDARD_STORE_NAME = "Standard butikk";
+const STANDARD_CATEGORY_ORDER: IngredientCategory[] = [...INGREDIENT_CATEGORIES];
+const DEFAULT_VISIBLE_DAY_INDICES = [0, 1, 2, 3, 4, 5, 6] as const;
+
+function normalizeIngredientCategory(value: string | null | undefined): IngredientCategory {
+  if (!value) return "ANNET";
+  const upper = value.toUpperCase();
+  if (INGREDIENT_CATEGORIES.includes(upper as IngredientCategory)) {
+    return upper as IngredientCategory;
+  }
+  return "ANNET";
+}
+
+function inferIngredientCategory(name: string): IngredientCategory {
+  const normalized = normalizeName(name);
+  const byName: Record<string, IngredientCategory> = {
+    tomat: "GRONNSAKER",
+    løk: "GRONNSAKER",
+    "hvitløk": "GRONNSAKER",
+    paprika: "GRONNSAKER",
+    poteter: "GRONNSAKER",
+    torsk: "KJOTT",
+    kylling: "KJOTT",
+    storfekjøtt: "KJOTT",
+    tortillalefser: "BROD",
+    ris: "TORRVARER",
+    bønner: "TORRVARER",
+  };
+  return byName[normalized] ?? "ANNET";
+}
+
+function sanitizeDayIndices(values: number[] | undefined) {
+  const source = Array.isArray(values) ? values : [];
+  const unique = Array.from(
+    new Set(
+      source
+        .filter((value) => Number.isFinite(value))
+        .map((value) => Math.max(MIN_DAY_INDEX, Math.min(MAX_DAY_INDEX, Math.trunc(value)))),
+    ),
+  ).sort((a, b) => a - b);
+  if (!unique.length) {
+    return [...DEFAULT_VISIBLE_DAY_INDICES];
+  }
+  return unique;
+}
+
+function normalizeCategoryOrder(values: string[] | undefined): IngredientCategory[] {
+  const normalized: IngredientCategory[] = [];
+  for (const value of values ?? []) {
+    const category = normalizeIngredientCategory(value);
+    if (!normalized.includes(category)) {
+      normalized.push(category);
+    }
+  }
+  for (const category of STANDARD_CATEGORY_ORDER) {
+    if (!normalized.includes(category)) {
+      normalized.push(category);
+    }
+  }
+  return normalized;
+}
+
 type IngredientRecord = {
   id: string;
   name: string;
   unit: string | null;
   isPantryItem: boolean;
+  category: IngredientCategory;
   recipeIds: Set<string>;
 };
 
@@ -137,6 +217,7 @@ type RecipeIngredientRecord = {
   quantity: number | null;
   notes: string | null;
   isPantryItem: boolean;
+  category: IngredientCategory;
 };
 
 type RecipeRecord = {
@@ -166,6 +247,23 @@ type ExtraCatalogRecord = { id: string; name: string };
 
 type ExtraEntryRecord = { id: string; name: string; checked: boolean; catalogId: string };
 
+type ShoppingStoreRecord = {
+  id: string;
+  name: string;
+  categoryOrder: IngredientCategory[];
+  isDefault: boolean;
+};
+
+type ShoppingRoleSettingsRecord = {
+  role: ShoppingRole;
+  defaultViewMode: ShoppingViewMode;
+  startDay: number;
+  includeNextWeek: boolean;
+  showPantryWithIngredients: boolean;
+  visibleDayIndices: number[];
+  defaultStoreId: string | null;
+};
+
 type MockState = {
   ingredientsById: Map<string, IngredientRecord>;
   ingredientsByName: Map<string, IngredientRecord>;
@@ -176,13 +274,21 @@ type MockState = {
   shoppingChecks: Map<string, boolean>;
   shoppingFirstChecked: Map<string, number>;
   extrasByWeek: Map<string, Map<string, ExtraEntryRecord>>;
+  shoppingStores: Map<string, ShoppingStoreRecord>;
+  shoppingRoleSettings: Map<ShoppingRole, ShoppingRoleSettingsRecord>;
+  deviceRoles: Map<string, ShoppingRole>;
 };
 
 function createInitialState(): MockState {
   const ingredientsById = new Map<string, IngredientRecord>();
   const ingredientsByName = new Map<string, IngredientRecord>();
 
-  function ensureIngredient(name: string, unit?: string | null, isPantryItem?: boolean) {
+  function ensureIngredient(
+    name: string,
+    unit?: string | null,
+    isPantryItem?: boolean,
+    category?: string | null,
+  ) {
     const normalized = normalizeName(name);
     let record = ingredientsByName.get(normalized);
     if (!record) {
@@ -191,6 +297,7 @@ function createInitialState(): MockState {
         name: cleanName(name),
         unit: unit?.trim() ?? null,
         isPantryItem: Boolean(isPantryItem),
+        category: normalizeIngredientCategory(category ?? inferIngredientCategory(name)),
         recipeIds: new Set<string>(),
       };
       ingredientsByName.set(normalized, record);
@@ -202,12 +309,20 @@ function createInitialState(): MockState {
       if (typeof isPantryItem === "boolean") {
         record.isPantryItem = isPantryItem;
       }
+      if (category) {
+        record.category = normalizeIngredientCategory(category);
+      }
     }
     return record;
   }
 
   SEED_INGREDIENTS.forEach((ing) => {
-    ensureIngredient(ing.name, ing.unit ?? null, ing.isPantryItem ?? false);
+    ensureIngredient(
+      ing.name,
+      ing.unit ?? null,
+      ing.isPantryItem ?? false,
+      (ing as { category?: string }).category ?? null,
+    );
   });
 
   const recipesById = new Map<string, RecipeRecord>();
@@ -225,6 +340,7 @@ function createInitialState(): MockState {
         quantity,
         notes: usage.notes?.trim() ?? null,
         isPantryItem: ingRecord.isPantryItem,
+        category: ingRecord.category,
       };
     });
   }
@@ -255,6 +371,28 @@ function createInitialState(): MockState {
     extrasCatalogByName.set(normalized, record);
   });
 
+  const standardStoreId = uuidFromString("shopping-store:standard");
+  const shoppingStores = new Map<string, ShoppingStoreRecord>();
+  shoppingStores.set(standardStoreId, {
+    id: standardStoreId,
+    name: STANDARD_STORE_NAME,
+    categoryOrder: [...STANDARD_CATEGORY_ORDER],
+    isDefault: true,
+  });
+
+  const shoppingRoleSettings = new Map<ShoppingRole, ShoppingRoleSettingsRecord>();
+  (["INGVILD", "JENS"] as const).forEach((role) => {
+    shoppingRoleSettings.set(role, {
+      role,
+      defaultViewMode: "by-day",
+      startDay: 0,
+      includeNextWeek: false,
+      showPantryWithIngredients: false,
+      visibleDayIndices: [...DEFAULT_VISIBLE_DAY_INDICES],
+      defaultStoreId: standardStoreId,
+    });
+  });
+
   return {
     ingredientsById,
     ingredientsByName,
@@ -265,12 +403,20 @@ function createInitialState(): MockState {
     shoppingChecks: new Map<string, boolean>(),
     shoppingFirstChecked: new Map<string, number>(),
     extrasByWeek: new Map<string, Map<string, ExtraEntryRecord>>(),
+    shoppingStores,
+    shoppingRoleSettings,
+    deviceRoles: new Map<string, ShoppingRole>(),
   };
 }
 
 const state = createInitialState();
 
-function ensureIngredient(name: string, unit?: string | null, isPantryItem?: boolean) {
+function ensureIngredient(
+  name: string,
+  unit?: string | null,
+  isPantryItem?: boolean,
+  category?: string | null,
+) {
   const normalized = normalizeName(name);
   let record = state.ingredientsByName.get(normalized);
   if (!record) {
@@ -279,6 +425,7 @@ function ensureIngredient(name: string, unit?: string | null, isPantryItem?: boo
       name: cleanName(name),
       unit: unit?.trim() ?? null,
       isPantryItem: Boolean(isPantryItem),
+      category: normalizeIngredientCategory(category ?? inferIngredientCategory(name)),
       recipeIds: new Set<string>(),
     };
     state.ingredientsByName.set(normalized, record);
@@ -289,6 +436,9 @@ function ensureIngredient(name: string, unit?: string | null, isPantryItem?: boo
     }
     if (typeof isPantryItem === "boolean") {
       record.isPantryItem = isPantryItem;
+    }
+    if (category) {
+      record.category = normalizeIngredientCategory(category);
     }
   }
   return record;
@@ -329,6 +479,7 @@ function serializeRecipe(recipe: RecipeRecord) {
       quantity: ing.quantity,
       notes: ing.notes,
       isPantryItem: ing.isPantryItem,
+      category: ing.category,
     })),
   };
 }
@@ -446,6 +597,7 @@ function aggregateShopping(weekStarts: string[]) {
     ingredientId: string;
     name: string;
     unit: string | null;
+    category: IngredientCategory;
     totalQuantity: number;
     hasQuantity: boolean;
     hasMissing: boolean;
@@ -479,6 +631,7 @@ function aggregateShopping(weekStarts: string[]) {
             ingredientId: ing.ingredientId,
             name: ing.name,
             unit: ing.unit ?? null,
+            category: ing.category,
             totalQuantity: 0,
             hasQuantity: false,
             hasMissing: false,
@@ -492,6 +645,7 @@ function aggregateShopping(weekStarts: string[]) {
         if (ing.isPantryItem) {
           bucket.isPantryItem = true;
         }
+        bucket.category = normalizeIngredientCategory(ing.category);
         if (ing.quantity != null) {
           bucket.totalQuantity += ing.quantity;
           bucket.hasQuantity = true;
@@ -570,6 +724,7 @@ function aggregateShopping(weekStarts: string[]) {
         ingredientId: bucket.ingredientId,
         name: bucket.name,
         unit: bucket.unit,
+        category: bucket.category,
         totalQuantity: bucket.hasQuantity ? bucket.totalQuantity : null,
         hasMissingQuantities: bucket.hasMissing,
         details: bucket.details,
@@ -677,6 +832,7 @@ async function handleRecipeCreate(input: any) {
       quantity,
       notes: typeof usage?.notes === "string" && usage.notes.trim() ? usage.notes.trim() : null,
       isPantryItem: ing.isPantryItem,
+      category: ing.category,
     });
   });
 
@@ -730,6 +886,7 @@ async function handleRecipeUpdate(input: any) {
         quantity,
         notes: typeof usage?.notes === "string" && usage.notes.trim() ? usage.notes.trim() : null,
         isPantryItem: ing.isPantryItem,
+        category: ing.category,
       };
     })
     .filter((item): item is RecipeIngredientRecord => Boolean(item));
@@ -746,6 +903,7 @@ async function handleIngredientList(input?: any) {
       unit: ing.unit ?? undefined,
       usageCount: ing.recipeIds.size,
       isPantryItem: ing.isPantryItem,
+      category: ing.category,
     }))
     .filter((item) => (term ? item.name.toLowerCase().includes(term) : true))
     .sort((a, b) => a.name.localeCompare(b.name, "nb", { sensitivity: "base" }));
@@ -757,14 +915,24 @@ async function handleIngredientCreate(input: any) {
   if (!name) throw new Error("Navn er påkrevd");
   const unit = typeof input?.unit === "string" && input.unit.trim() ? input.unit.trim() : undefined;
   const isPantryItem = typeof input?.isPantryItem === "boolean" ? input.isPantryItem : undefined;
-  const ing = ensureIngredient(name, unit, isPantryItem);
+  const category = typeof input?.category === "string" ? input.category : undefined;
+  const ing = ensureIngredient(name, unit, isPantryItem, category);
   if (unit) {
     ing.unit = unit;
   }
   if (typeof isPantryItem === "boolean") {
     ing.isPantryItem = isPantryItem;
   }
-  return { id: ing.id, name: ing.name, unit: ing.unit ?? undefined, isPantryItem: ing.isPantryItem };
+  if (category) {
+    ing.category = normalizeIngredientCategory(category);
+  }
+  return {
+    id: ing.id,
+    name: ing.name,
+    unit: ing.unit ?? undefined,
+    isPantryItem: ing.isPantryItem,
+    category: ing.category,
+  };
 }
 
 async function handleIngredientDetail(input: any) {
@@ -782,7 +950,14 @@ async function handleIngredientDetail(input: any) {
       healthScore: recipe.healthScore,
     }))
     .sort((a, b) => a.name.localeCompare(b.name, "nb", { sensitivity: "base" }));
-  return { id: ing.id, name: ing.name, unit: ing.unit ?? undefined, isPantryItem: ing.isPantryItem, recipes };
+  return {
+    id: ing.id,
+    name: ing.name,
+    unit: ing.unit ?? undefined,
+    isPantryItem: ing.isPantryItem,
+    category: ing.category,
+    recipes,
+  };
 }
 
 async function handleWeekPlan(input: any) {
@@ -872,10 +1047,17 @@ async function handleSuggestions(input: any) {
 
 async function handleShoppingList(input: any) {
   const includeNextWeek = Boolean(input?.includeNextWeek);
+  const rawLookahead = Number(input?.lookaheadWeeks);
+  const lookaheadWeeks =
+    Number.isFinite(rawLookahead) && rawLookahead > 0
+      ? Math.min(4, Math.max(0, Math.trunc(rawLookahead)))
+      : includeNextWeek
+        ? 1
+        : 0;
   const base = startOfWeekISO(input?.weekStart);
   const weekStarts = [base];
-  if (includeNextWeek) {
-    weekStarts.push(addWeeksISO(base, 1));
+  for (let i = 1; i <= lookaheadWeeks; i += 1) {
+    weekStarts.push(addWeeksISO(base, i));
   }
 
   const { items, extras, plannedDays } = aggregateShopping(weekStarts);
@@ -1008,6 +1190,145 @@ async function handleExtraSuggest(input: any) {
     .map((item) => ({ id: item.id, name: item.name }));
 }
 
+function resolveRole(value: unknown): ShoppingRole {
+  return value === "INGVILD" ? "INGVILD" : "JENS";
+}
+
+function serializeShoppingStore(store: ShoppingStoreRecord) {
+  return {
+    id: store.id,
+    name: store.name,
+    categoryOrder: normalizeCategoryOrder(store.categoryOrder),
+    isDefault: Boolean(store.isDefault),
+  };
+}
+
+function serializeShoppingRoleSettings(settings: ShoppingRoleSettingsRecord, fallbackStoreId: string | null) {
+  return {
+    role: settings.role,
+    defaultViewMode: settings.defaultViewMode,
+    startDay: Math.max(MIN_DAY_INDEX, Math.min(MAX_DAY_INDEX, settings.startDay)),
+    includeNextWeek: settings.includeNextWeek,
+    showPantryWithIngredients: settings.showPantryWithIngredients,
+    visibleDayIndices: sanitizeDayIndices(settings.visibleDayIndices),
+    defaultStoreId: settings.defaultStoreId ?? fallbackStoreId,
+  };
+}
+
+async function handleShoppingSettings(input: any) {
+  const deviceId = String(input?.deviceId ?? "").trim();
+  if (!deviceId) throw new Error("deviceId mangler");
+
+  let activeRole = state.deviceRoles.get(deviceId);
+  if (!activeRole) {
+    activeRole = "JENS";
+    state.deviceRoles.set(deviceId, activeRole);
+  }
+
+  const stores = Array.from(state.shoppingStores.values())
+    .sort((a, b) => {
+      if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1;
+      return a.name.localeCompare(b.name, "nb", { sensitivity: "base" });
+    })
+    .map(serializeShoppingStore);
+
+  const fallbackStoreId = stores.find((store) => store.isDefault)?.id ?? stores[0]?.id ?? null;
+
+  const roles = (["INGVILD", "JENS"] as const).map((role) => {
+    const settings = state.shoppingRoleSettings.get(role);
+    if (!settings) {
+      return {
+        role,
+        defaultViewMode: "by-day" as const,
+        startDay: 0,
+        includeNextWeek: false,
+        showPantryWithIngredients: false,
+        visibleDayIndices: [...DEFAULT_VISIBLE_DAY_INDICES],
+        defaultStoreId: fallbackStoreId,
+      };
+    }
+    return serializeShoppingRoleSettings(settings, fallbackStoreId);
+  });
+
+  return {
+    deviceId,
+    activeRole,
+    roles,
+    stores,
+  };
+}
+
+async function handleSetShoppingDeviceRole(input: any) {
+  const deviceId = String(input?.deviceId ?? "").trim();
+  if (!deviceId) throw new Error("deviceId mangler");
+  const role = resolveRole(input?.role);
+  state.deviceRoles.set(deviceId, role);
+  return { deviceId, role };
+}
+
+async function handleUpdateShoppingRoleSettings(input: any) {
+  const role = resolveRole(input?.role);
+  const defaultStoreIdInput = typeof input?.defaultStoreId === "string" ? input.defaultStoreId : null;
+  const defaultStoreId =
+    defaultStoreIdInput && state.shoppingStores.has(defaultStoreIdInput)
+      ? defaultStoreIdInput
+      : Array.from(state.shoppingStores.values()).find((store) => store.isDefault)?.id ?? null;
+
+  const existing = state.shoppingRoleSettings.get(role);
+  const next: ShoppingRoleSettingsRecord = {
+    role,
+    defaultViewMode:
+      input?.defaultViewMode === "alphabetical" || input?.defaultViewMode === "by-category"
+        ? input.defaultViewMode
+        : existing?.defaultViewMode ?? "by-day",
+    startDay:
+      typeof input?.startDay === "number"
+        ? Math.max(MIN_DAY_INDEX, Math.min(MAX_DAY_INDEX, Math.trunc(input.startDay)))
+        : existing?.startDay ?? 0,
+    includeNextWeek:
+      typeof input?.includeNextWeek === "boolean"
+        ? input.includeNextWeek
+        : existing?.includeNextWeek ?? false,
+    showPantryWithIngredients:
+      typeof input?.showPantryWithIngredients === "boolean"
+        ? input.showPantryWithIngredients
+        : existing?.showPantryWithIngredients ?? false,
+    visibleDayIndices: sanitizeDayIndices(input?.visibleDayIndices),
+    defaultStoreId,
+  };
+  state.shoppingRoleSettings.set(role, next);
+  return serializeShoppingRoleSettings(next, defaultStoreId);
+}
+
+async function handleCreateShoppingStore(input: any) {
+  const name = String(input?.name ?? "").trim();
+  if (!name) throw new Error("Navn er påkrevd");
+
+  const providedOrder = Array.isArray(input?.categoryOrder) ? input.categoryOrder : [];
+  const normalizedOrder = providedOrder.map((value: string) => normalizeIngredientCategory(value));
+  const unique = new Set(normalizedOrder);
+  if (normalizedOrder.length !== INGREDIENT_CATEGORIES.length || unique.size !== INGREDIENT_CATEGORIES.length) {
+    throw new Error("Butikkrekkefølgen må inneholde hver kategori nøyaktig én gang");
+  }
+
+  const hasExisting = Array.from(state.shoppingStores.values()).some(
+    (store) => normalizeName(store.name) === normalizeName(name),
+  );
+  if (hasExisting) {
+    throw new Error("Det finnes allerede en butikk med dette navnet");
+  }
+
+  const id = randomId("shopping-store");
+  const store: ShoppingStoreRecord = {
+    id,
+    name,
+    categoryOrder: normalizedOrder,
+    isDefault: false,
+  };
+  state.shoppingStores.set(id, store);
+  return serializeShoppingStore(store);
+}
+
 export async function handleMockQuery(path: string, input: unknown) {
   switch (path) {
     case "recipe.list":
@@ -1024,6 +1345,8 @@ export async function handleMockQuery(path: string, input: unknown) {
       return handleSuggestions(input);
     case "planner.shoppingList":
       return handleShoppingList(input);
+    case "planner.shoppingSettings":
+      return handleShoppingSettings(input);
     case "planner.extraSuggest":
       return handleExtraSuggest(input);
     default:
@@ -1045,6 +1368,12 @@ export async function handleMockMutation(path: string, input: unknown) {
       return handleSaveWeekPlan(input);
     case "planner.updateShoppingItem":
       return handleUpdateShoppingItem(input);
+    case "planner.setShoppingDeviceRole":
+      return handleSetShoppingDeviceRole(input);
+    case "planner.updateShoppingRoleSettings":
+      return handleUpdateShoppingRoleSettings(input);
+    case "planner.createShoppingStore":
+      return handleCreateShoppingStore(input);
     case "planner.extraAdd":
       return handleExtraAdd(input);
     case "planner.extraToggle":
@@ -1064,4 +1393,5 @@ export type MockWeekPlanResult = Awaited<ReturnType<typeof handleWeekPlan>>;
 export type MockWeekTimelineResult = Awaited<ReturnType<typeof handleWeekTimeline>>;
 export type MockSuggestionsResult = Awaited<ReturnType<typeof handleSuggestions>>;
 export type MockShoppingListResult = Awaited<ReturnType<typeof handleShoppingList>>;
+export type MockShoppingSettingsResult = Awaited<ReturnType<typeof handleShoppingSettings>>;
 export type MockExtraSuggestResult = Awaited<ReturnType<typeof handleExtraSuggest>>;

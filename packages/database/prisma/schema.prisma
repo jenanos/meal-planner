@@ -33,6 +33,17 @@ enum WeekPlanEntryType {
   TAKEAWAY
 }
 
+enum ShoppingViewMode {
+  BY_DAY
+  ALPHABETICAL
+  BY_CATEGORY
+}
+
+enum ShoppingUserRole {
+  INGVILD
+  JENS
+}
+
 model Recipe {
   id            String         @id @default(uuid()) @db.Uuid
   name          String         @unique @db.Citext
@@ -146,4 +157,40 @@ model ExtraShoppingItem {
 
   @@unique([weekStart, catalogItemId])
   @@index([weekStart])
+}
+
+model ShoppingStore {
+  id            String               @id @default(uuid()) @db.Uuid
+  name          String               @unique @db.Citext
+  categoryOrder IngredientCategory[]
+  isDefault     Boolean              @default(false)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  preferences ShoppingPreference[]
+
+  @@index([isDefault])
+}
+
+model ShoppingPreference {
+  role                       ShoppingUserRole @id
+  defaultViewMode            ShoppingViewMode @default(BY_DAY)
+  startDay                   Int              @default(0)
+  includeNextWeek            Boolean          @default(false)
+  showPantryWithIngredients  Boolean          @default(false)
+  visibleDayIndices          Int[]            @default([0, 1, 2, 3, 4, 5, 6])
+  defaultStoreId             String?          @db.Uuid
+  createdAt                  DateTime         @default(now())
+  updatedAt                  DateTime         @updatedAt
+
+  defaultStore ShoppingStore? @relation(fields: [defaultStoreId], references: [id], onDelete: SetNull)
+
+  @@index([defaultStoreId])
+}
+
+model DevicePreference {
+  deviceId   String           @id @db.VarChar(128)
+  role       ShoppingUserRole
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
 }
