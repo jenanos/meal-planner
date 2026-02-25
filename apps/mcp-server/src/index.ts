@@ -1,3 +1,4 @@
+import { createServer, type Server } from "node:http";
 import type { Request, Response } from "express";
 import { createTRPCProxyClient, httpBatchLink } from "@trpc/client";
 import {
@@ -988,15 +989,37 @@ app.get("/health", (_req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
-const port = Number(process.env.PORT ?? 5050);
-const httpServer = app.listen(port, (error?: Error) => {
-  if (error) {
+const requestedPort = Number(process.env.PORT ?? 5050);
+const canRetryPort = !process.env.PORT;
+const maxRetryPort = requestedPort + 10;
+let activePort = requestedPort;
+let httpServer: Server;
+
+const startHttpServer = (port: number) => {
+  activePort = port;
+  const candidateServer = createServer(app);
+  httpServer = candidateServer;
+
+  candidateServer.once("error", (error: NodeJS.ErrnoException) => {
+    if (error.code === "EADDRINUSE" && canRetryPort && port < maxRetryPort) {
+      const nextPort = port + 1;
+      console.warn(
+        `Port ${port} is in use. Retrying MCP server on port ${nextPort}...`,
+      );
+      startHttpServer(nextPort);
+      return;
+    }
     console.error("Failed to start MCP server:", error);
     process.exit(1);
-  }
-  console.log(`Meal Planner MCP server listening on port ${port}`);
-  console.log(`Using meals API origin: ${mealsApiOrigin}`);
-});
+  });
+
+  candidateServer.listen(port, () => {
+    console.log(`Meal Planner MCP server listening on port ${activePort}`);
+    console.log(`Using meals API origin: ${mealsApiOrigin}`);
+  });
+};
+
+startHttpServer(requestedPort);
 
 const gracefulShutdown = (signal: string) => {
   console.log(`Received ${signal}, shutting down gracefully...`);

@@ -26,18 +26,26 @@ USING (
   END
 )::"IngredientCategory_new";
 
+-- PostgreSQL does not allow subqueries inside ALTER COLUMN ... USING.
+-- Convert via text[] first, then cast to the new enum array type.
+ALTER TABLE "ShoppingStore"
+ALTER COLUMN "categoryOrder" TYPE text[]
+USING ("categoryOrder"::text[]);
+
+UPDATE "ShoppingStore"
+SET "categoryOrder" = array_replace(
+  array_replace(
+    array_replace("categoryOrder", 'FRUKT', 'FRUKT_OG_GRONT'),
+    'GRONNSAKER',
+    'FRUKT_OG_GRONT'
+  ),
+  'UKATEGORISERT',
+  'ANNET'
+);
+
 ALTER TABLE "ShoppingStore"
 ALTER COLUMN "categoryOrder" TYPE "IngredientCategory_new"[]
-USING (
-  ARRAY(
-    SELECT CASE
-      WHEN category_item::text IN ('FRUKT', 'GRONNSAKER') THEN 'FRUKT_OG_GRONT'
-      WHEN category_item::text = 'UKATEGORISERT' THEN 'ANNET'
-      ELSE category_item::text
-    END
-    FROM unnest("categoryOrder") AS category_values(category_item)
-  )
-)::"IngredientCategory_new"[];
+USING ("categoryOrder"::"IngredientCategory_new"[]);
 
 ALTER TYPE "IngredientCategory" RENAME TO "IngredientCategory_old";
 ALTER TYPE "IngredientCategory_new" RENAME TO "IngredientCategory";
