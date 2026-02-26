@@ -1,5 +1,5 @@
 -- Restore gen_random_uuid() defaults on UUID id columns that were
--- accidentally dropped in the 20251004173608_errorfix migration.
+-- accidentally dropped in the 20251004173608_errorfix_migration_jenanos_copilot migration.
 
 ALTER TABLE "Recipe" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();
 ALTER TABLE "Ingredient" ALTER COLUMN "id" SET DEFAULT gen_random_uuid();
