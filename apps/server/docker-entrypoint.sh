@@ -23,7 +23,7 @@ fi
 # Optionally seed
 if [[ "${SEED_ON_START:-false}" == "true" ]]; then
   echo "Seeding database..."
-  pnpm run db:seed
+  pnpm --filter @repo/database run db:seed
 fi
 
 # Go back and start the server

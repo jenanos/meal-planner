@@ -1009,7 +1009,9 @@ const startHttpServer = (port: number) => {
       console.warn(
         `Port ${port} is in use. Retrying MCP server on port ${nextPort}...`,
       );
-      startHttpServer(nextPort);
+      candidateServer.close(() => {
+        startHttpServer(nextPort);
+      });
       return;
     }
     console.error("Failed to start MCP server:", error);
