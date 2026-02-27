@@ -16,8 +16,7 @@ enum MealCategory {
 }
 
 enum IngredientCategory {
-  FRUKT
-  GRONNSAKER
+  FRUKT_OG_GRONT
   KJOTT
   OST
   MEIERI_OG_EGG
@@ -25,12 +24,24 @@ enum IngredientCategory {
   BAKEVARER
   HERMETIKK
   TORRVARER
-  UKATEGORISERT
+  HUSHOLDNING
+  ANNET
 }
 
 enum WeekPlanEntryType {
   RECIPE
   TAKEAWAY
+}
+
+enum ShoppingViewMode {
+  BY_DAY
+  ALPHABETICAL
+  BY_CATEGORY
+}
+
+enum ShoppingUserRole {
+  INGVILD
+  JENS
 }
 
 model Recipe {
@@ -57,7 +68,7 @@ model Ingredient {
   name String  @unique @db.Citext
   unit String? @db.VarChar(32)
   isPantryItem Boolean @default(false)
-  category IngredientCategory @default(UKATEGORISERT)
+  category IngredientCategory @default(ANNET)
 
   recipes RecipeIngredient[]
 
@@ -127,10 +138,13 @@ model ShoppingState {
 model ExtraItemCatalog {
   id        String   @id @default(uuid()) @db.Uuid
   name      String   @unique @db.Citext
+  category  IngredientCategory?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   extras ExtraShoppingItem[]
+
+  @@index([category])
 }
 
 // Extra shopping items added for specific weeks
@@ -146,4 +160,40 @@ model ExtraShoppingItem {
 
   @@unique([weekStart, catalogItemId])
   @@index([weekStart])
+}
+
+model ShoppingStore {
+  id            String               @id @default(uuid()) @db.Uuid
+  name          String               @unique @db.Citext
+  categoryOrder IngredientCategory[]
+  isDefault     Boolean              @default(false)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  preferences ShoppingPreference[]
+
+  @@index([isDefault])
+}
+
+model ShoppingPreference {
+  role                       ShoppingUserRole @id
+  defaultViewMode            ShoppingViewMode @default(BY_DAY)
+  startDay                   Int              @default(0)
+  includeNextWeek            Boolean          @default(false)
+  showPantryWithIngredients  Boolean          @default(false)
+  visibleDayIndices          Int[]            @default([0, 1, 2, 3, 4, 5, 6])
+  defaultStoreId             String?          @db.Uuid
+  createdAt                  DateTime         @default(now())
+  updatedAt                  DateTime         @updatedAt
+
+  defaultStore ShoppingStore? @relation(fields: [defaultStoreId], references: [id], onDelete: SetNull)
+
+  @@index([defaultStoreId])
+}
+
+model DevicePreference {
+  deviceId   String           @id @db.VarChar(128)
+  role       ShoppingUserRole
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
 }

@@ -16,7 +16,7 @@ export function BoardColumn({ id, title, count, children }: BoardColumnProps) {
   return (
     <div
       ref={setNodeRef}
-      className={`flex w-72 shrink-0 flex-col rounded-xl border bg-card/60 transition-colors ${
+      className={`flex min-w-0 flex-col rounded-xl border bg-card/60 transition-colors ${
         isOver ? "border-primary/60 bg-primary/5" : "border-border/50"
       }`}
     >

@@ -27,16 +27,16 @@ export function CategoryEmoji({
 }
 
 const ingredientCategoryLabels: Record<string, string> = {
-  FRUKT: "🍎 Frukt",
-  GRONNSAKER: "🥬 Grønnsaker",
-  KJOTT: "🥩 Kjøtt",
+  FRUKT_OG_GRONT: "🍎🥬 Frukt og grønt",
+  KJOTT: "🥩🐟 Kjøtt og fisk",
   OST: "🧀 Ost",
   MEIERI_OG_EGG: "🥛 Meieri & Egg",
   BROD: "🍞 Brød",
   BAKEVARER: "🧁 Bakevarer",
   HERMETIKK: "🥫 Hermetikk",
   TORRVARER: "🌾 Tørrvarer",
-  UKATEGORISERT: "❓ Ukategorisert",
+  HUSHOLDNING: "🧻 Husholdning",
+  ANNET: "❓ Annet",
 };
 
 export function ingredientCategoryLabel(cat: string) {

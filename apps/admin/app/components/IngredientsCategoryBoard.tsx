@@ -16,8 +16,7 @@ import { DragOverlayCard } from "./DragOverlayCard";
 import { ingredientCategoryLabel } from "./labels";
 
 const INGREDIENT_CATEGORIES = [
-  "FRUKT",
-  "GRONNSAKER",
+  "FRUKT_OG_GRONT",
   "KJOTT",
   "OST",
   "MEIERI_OG_EGG",
@@ -25,7 +24,8 @@ const INGREDIENT_CATEGORIES = [
   "BAKEVARER",
   "HERMETIKK",
   "TORRVARER",
-  "UKATEGORISERT",
+  "HUSHOLDNING",
+  "ANNET",
 ] as const;
 
 type Ingredient = {
@@ -55,7 +55,7 @@ export function IngredientsCategoryBoard() {
     const map = new Map<string, Ingredient[]>();
     for (const cat of INGREDIENT_CATEGORIES) map.set(cat, []);
     for (const ing of ingredients) {
-      const key = ing.category || "UKATEGORISERT";
+      const key = ing.category || "ANNET";
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(ing);
     }
@@ -89,7 +89,7 @@ export function IngredientsCategoryBoard() {
       onDragStart={({ active }) => setActiveId(active.id as string)}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex gap-4 overflow-x-auto pb-4">
+      <div className="grid grid-cols-1 gap-3 pb-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
         {INGREDIENT_CATEGORIES.map((cat) => {
           const items = columns.get(cat) ?? [];
           return (

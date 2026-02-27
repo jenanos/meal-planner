@@ -121,7 +121,7 @@ export function RecipePickerModal({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="h-[90vh] max-h-[90vh] flex flex-col p-0 gap-0">
+            <DialogContent className="h-[90vh] max-h-[90vh] max-w-[calc(100%-1rem)] sm:max-w-xl flex flex-col p-0 gap-0">
                 <DialogHeader className="p-4 pb-2 border-b shrink-0">
                     <DialogTitle className="text-center">
                         {dayName} {dateLabel && <span className="font-normal opacity-75">{dateLabel}</span>}
@@ -139,12 +139,12 @@ export function RecipePickerModal({
                 </DialogHeader>
 
                 {/* Action buttons for current entry */}
-                <div className="flex gap-2 px-4 py-2 border-b shrink-0">
+                <div className="flex flex-wrap gap-2 px-4 py-2 border-b shrink-0">
                     {currentRecipe && (
                         <Button
                             variant="outline"
                             size="sm"
-                            className="flex-1"
+                            className="flex-1 min-w-0 whitespace-normal h-auto py-1.5 leading-tight"
                             onClick={handleViewRecipe}
                         >
                             Se oppskrift
@@ -154,7 +154,7 @@ export function RecipePickerModal({
                         <Button
                             variant="outline"
                             size="sm"
-                            className="flex-1 text-amber-700 border-amber-300 hover:bg-amber-50"
+                            className="flex-1 min-w-0 whitespace-normal h-auto py-1.5 leading-tight text-amber-700 border-amber-300 hover:bg-amber-50"
                             onClick={handleSetTakeaway}
                         >
                             Sett som takeaway
@@ -164,7 +164,7 @@ export function RecipePickerModal({
                         <Button
                             variant="outline"
                             size="sm"
-                            className="flex-1 text-red-600 border-red-300 hover:bg-red-50"
+                            className="flex-1 min-w-0 whitespace-normal h-auto py-1.5 leading-tight text-red-600 border-red-300 hover:bg-red-50"
                             onClick={handleClearEntry}
                         >
                             Fjern

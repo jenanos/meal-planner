@@ -1,3 +1,4 @@
+import { createServer, type Server } from "node:http";
 import type { Request, Response } from "express";
 import { createTRPCProxyClient, httpBatchLink } from "@trpc/client";
 import {
@@ -351,7 +352,7 @@ const buildServer = () => {
     "get-ingredients-without-category",
     {
       title: "Hent ingredienser uten kategori",
-      description: "Returnerer alle ingredienser som er ukategorisert (har kategori UKATEGORISERT).",
+      description: "Returnerer alle ingredienser i oppsamlingskategorien ANNET.",
       inputSchema: z.object({}),
     },
     async (): Promise<CallToolResult> => {
@@ -369,8 +370,8 @@ const buildServer = () => {
     {
       title: "Oppdater manglende ingrediens-kategorier",
       description:
-        "Oppdaterer kategorier for ingredienser som er ukategorisert ved å matche på navn. " +
-        "Gyldige kategorier: FRUKT, GRONNSAKER, KJOTT, OST, MEIERI_OG_EGG, BROD, BAKEVARER, HERMETIKK, TORRVARER, UKATEGORISERT.",
+        "Oppdaterer kategorier for ingredienser i oppsamlingskategorien ved å matche på navn. " +
+        "Gyldige kategorier: FRUKT_OG_GRONT, KJOTT, OST, MEIERI_OG_EGG, BROD, BAKEVARER, HERMETIKK, TORRVARER, HUSHOLDNING, ANNET.",
       inputSchema: z.object({
         updates: z
           .array(
@@ -438,7 +439,7 @@ const buildServer = () => {
       title: "Bulk-oppdater ingrediens-kategorier",
       description:
         "Oppdaterer kategorier for flere ingredienser på en gang ved å bruke ingrediens-ID. " +
-        "Gyldige kategorier: FRUKT, GRONNSAKER, KJOTT, OST, MEIERI_OG_EGG, BROD, BAKEVARER, HERMETIKK, TORRVARER, UKATEGORISERT.",
+        "Gyldige kategorier: FRUKT_OG_GRONT, KJOTT, OST, MEIERI_OG_EGG, BROD, BAKEVARER, HERMETIKK, TORRVARER, HUSHOLDNING, ANNET.",
       inputSchema: z.object({
         updates: z.array(z.object({
           id: z.string().uuid().describe("Ingrediens-ID"),
@@ -709,9 +710,12 @@ const buildServer = () => {
     {
       title: "Oppdater oppskrift",
       description: 
-        "Oppdaterer en eksisterende oppskrift og dens ingredienser. " +
+        "Oppdaterer en eksisterende oppskrift. Kun oppgitte felter endres – " +
+        "felter som utelates beholder sine nåværende verdier. " +
         "Du MÅ oppgi oppskrift-ID (uuid). " +
-        "Bruk 'list-recipes' eller 'get-recipe' først for å finne oppskriften.",
+        "Bruk 'get-recipe' først for å hente nåværende data. " +
+        "VIKTIG: Hvis du oppgir 'ingredients', erstatter det HELE ingredienslisten. " +
+        "Utelat 'ingredients' helt for å beholde eksisterende ingredienser.",
       inputSchema: RecipeUpdate,
       annotations: {
         readOnlyHint: false,
@@ -988,15 +992,39 @@ app.get("/health", (_req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
-const port = Number(process.env.PORT ?? 5050);
-const httpServer = app.listen(port, (error?: Error) => {
-  if (error) {
+const requestedPort = Number(process.env.PORT ?? 5050);
+const canRetryPort = !process.env.PORT;
+const maxRetryPort = requestedPort + 10;
+let activePort = requestedPort;
+let httpServer: Server;
+
+const startHttpServer = (port: number) => {
+  activePort = port;
+  const candidateServer = createServer(app);
+  httpServer = candidateServer;
+
+  candidateServer.once("error", (error: NodeJS.ErrnoException) => {
+    if (error.code === "EADDRINUSE" && canRetryPort && port < maxRetryPort) {
+      const nextPort = port + 1;
+      console.warn(
+        `Port ${port} is in use. Retrying MCP server on port ${nextPort}...`,
+      );
+      candidateServer.close(() => {
+        startHttpServer(nextPort);
+      });
+      return;
+    }
     console.error("Failed to start MCP server:", error);
     process.exit(1);
-  }
-  console.log(`Meal Planner MCP server listening on port ${port}`);
-  console.log(`Using meals API origin: ${mealsApiOrigin}`);
-});
+  });
+
+  candidateServer.listen(port, () => {
+    console.log(`Meal Planner MCP server listening on port ${activePort}`);
+    console.log(`Using meals API origin: ${mealsApiOrigin}`);
+  });
+};
+
+startHttpServer(requestedPort);
 
 const gracefulShutdown = (signal: string) => {
   console.log(`Received ${signal}, shutting down gracefully...`);

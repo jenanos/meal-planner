@@ -6,10 +6,12 @@ import { IngredientsCategoryBoard } from "./components/IngredientsCategoryBoard"
 import { RecipesHealthBoard } from "./components/RecipesHealthBoard";
 import { RecipesEverydayBoard } from "./components/RecipesEverydayBoard";
 import { RecipesCategoryBoard } from "./components/RecipesCategoryBoard";
+import { ExtraItemsCategoryBoard } from "./components/ExtraItemsCategoryBoard";
 
 const VIEWS = [
   { key: "ing-unit", label: "Ingredienser → Enhet" },
   { key: "ing-cat", label: "Ingredienser → Kategori" },
+  { key: "extra-cat", label: "Egne elementer → Kategori" },
   { key: "rec-health", label: "Oppskrifter → Helsescore" },
   { key: "rec-everyday", label: "Oppskrifter → Hverdagsscore" },
   { key: "rec-cat", label: "Oppskrifter → Kategori" },
@@ -43,6 +45,7 @@ export default function AdminPage() {
       <div className="mt-2">
         {view === "ing-unit" && <IngredientsUnitBoard />}
         {view === "ing-cat" && <IngredientsCategoryBoard />}
+        {view === "extra-cat" && <ExtraItemsCategoryBoard />}
         {view === "rec-health" && <RecipesHealthBoard />}
         {view === "rec-everyday" && <RecipesEverydayBoard />}
         {view === "rec-cat" && <RecipesCategoryBoard />}

@@ -14,20 +14,16 @@ import {
   DialogTitle,
   DialogDescription,
   DialogTrigger,
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuCheckboxItem,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
 } from "@repo/ui";
 import { ChevronDown, ChevronRight, ChevronUp, X } from "lucide-react";
 import {
   ShoppingListDayView,
   type ShoppingListDaySection,
 } from "./components/shopping-list-day-view";
+import {
+  ShoppingListCategoryView,
+  type ShoppingListCategorySection,
+} from "./components/shopping-list-category-view";
 import { ShoppingListDisplayModal } from "./components/ShoppingListDisplayModal";
 import { FALL_BADGE_PALETTE, formatQuantity } from "./utils";
 import type { ShoppingListItem, ShoppingListOccurrence } from "./types";
@@ -35,9 +31,43 @@ import { WeekSelector } from "../planner/components/WeekSelector";
 import { deriveWeekLabel, startOfWeekISO } from "../../lib/week";
 import type { TimelineWeekEntry } from "../planner/types";
 import type { MockWeekTimelineResult } from "../../lib/mock/store";
-import { ALL_DAY_NAMES } from "../planner/utils";
+import { getOrCreateDeviceId } from "../../lib/device-id";
+import {
+  DEFAULT_VISIBLE_DAY_INDICES,
+  ingredientCategoryLabel,
+  normalizeCategoryOrder,
+  type IngredientCategory,
+  type ShoppingViewMode,
+} from "../../lib/shopping";
 
 const EMPTY_ITEMS: ShoppingListItem[] = [];
+
+type ShoppingStore = {
+  id: string;
+  name: string;
+  categoryOrder: string[];
+  isDefault: boolean;
+};
+
+type ShoppingRoleSettings = {
+  role: "INGVILD" | "JENS";
+  defaultViewMode: ShoppingViewMode;
+  startDay: number;
+  includeNextWeek: boolean;
+  showPantryWithIngredients: boolean;
+  visibleDayIndices: number[];
+  defaultStoreId: string | null;
+};
+
+const DEFAULT_ROLE_SETTINGS: ShoppingRoleSettings = {
+  role: "JENS",
+  defaultViewMode: "by-day",
+  startDay: 0,
+  includeNextWeek: false,
+  showPantryWithIngredients: false,
+  visibleDayIndices: [...DEFAULT_VISIBLE_DAY_INDICES],
+  defaultStoreId: null,
+};
 
 function toDayOffset(
   weekStartISO: string,
@@ -61,12 +91,18 @@ function toDayOffset(
 export default function ShoppingListPage() {
   const currentWeekStart = useMemo(() => startOfWeekISO(), []);
   const [activeWeekStart, setActiveWeekStart] = useState(currentWeekStart);
+  const [deviceId, setDeviceId] = useState<string | null>(null);
   const [includeNextWeek, setIncludeNextWeek] = useState(false);
   const [startDay, setStartDay] = useState(0);
   const [isDisplayModalOpen, setIsDisplayModalOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<"by-day" | "alphabetical">("by-day");
+  const [viewMode, setViewMode] = useState<ShoppingViewMode>("by-day");
   const [showPantryWithIngredients, setShowPantryWithIngredients] =
     useState(false);
+  const [stores, setStores] = useState<ShoppingStore[]>([]);
+  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
+  const [activeRoleSettings, setActiveRoleSettings] =
+    useState<ShoppingRoleSettings>(DEFAULT_ROLE_SETTINGS);
+  const [defaultsHydrated, setDefaultsHydrated] = useState(false);
   const [checkedByOccurrence, setCheckedByOccurrence] = useState<
     Record<string, boolean>
   >({});
@@ -83,6 +119,59 @@ export default function ShoppingListPage() {
   const [showCompletedExtras, setShowCompletedExtras] = useState(false);
 
   const lookaheadWeeks = includeNextWeek ? (startDay > 0 ? 2 : 1) : 0;
+
+  useEffect(() => {
+    setDeviceId(getOrCreateDeviceId());
+  }, []);
+
+  const shoppingSettingsQuery = trpc.planner.shoppingSettings.useQuery(
+    { deviceId: deviceId ?? "" } as any,
+    {
+      enabled: Boolean(deviceId),
+      staleTime: 60_000,
+    },
+  );
+
+  useEffect(() => {
+    const data = shoppingSettingsQuery.data as
+      | {
+        activeRole: "INGVILD" | "JENS";
+        stores: ShoppingStore[];
+        roles: ShoppingRoleSettings[];
+      }
+      | undefined;
+    if (!data) return;
+
+    const nextStores = (data.stores ?? []).map((store) => ({
+      ...store,
+      categoryOrder: normalizeCategoryOrder(store.categoryOrder),
+    }));
+    setStores(nextStores);
+
+    const activeRole = data.activeRole ?? "JENS";
+    const roleSettings =
+      data.roles?.find((candidate) => candidate.role === activeRole) ??
+      DEFAULT_ROLE_SETTINGS;
+    setActiveRoleSettings(roleSettings);
+
+    const fallbackStoreId =
+      roleSettings.defaultStoreId ??
+      nextStores.find((store) => store.isDefault)?.id ??
+      nextStores[0]?.id ??
+      null;
+    setSelectedStoreId(fallbackStoreId);
+
+    if (!defaultsHydrated) {
+      setViewMode(roleSettings.defaultViewMode ?? "by-day");
+      setStartDay(roleSettings.startDay ?? 0);
+      setIncludeNextWeek(Boolean(roleSettings.includeNextWeek));
+      setShowPantryWithIngredients(
+        Boolean(roleSettings.showPantryWithIngredients),
+      );
+      setVisibleDayKeys([]);
+      setDefaultsHydrated(true);
+    }
+  }, [shoppingSettingsQuery.data, defaultsHydrated]);
 
   const shoppingQuery = trpc.planner.shoppingList.useQuery({
     weekStart: activeWeekStart,
@@ -143,15 +232,15 @@ export default function ShoppingListPage() {
   const items = shoppingQuery.data?.items ?? EMPTY_ITEMS;
   const plannedDays = (shoppingQuery.data as any)?.plannedDays as
     | {
-        weekStart: string;
-        dayIndex: number;
-        recipeName: string | null;
-        entryType: string;
-        dateISO: string;
-        weekdayLabel: string;
-        longLabel: string;
-        shortLabel: string;
-      }[]
+      weekStart: string;
+      dayIndex: number;
+      recipeName: string | null;
+      entryType: string;
+      dateISO: string;
+      weekdayLabel: string;
+      longLabel: string;
+      shortLabel: string;
+    }[]
     | undefined;
 
   useEffect(() => {
@@ -169,12 +258,21 @@ export default function ShoppingListPage() {
     name: string;
     weekStart: string;
     checked: boolean;
+    category: string | null;
+    hasCategory: boolean;
   }>;
   const extras = useMemo(() => {
     // Extras are shared across weeks — deduplicate by name, preferring unchecked
     const byName = new Map<
       string,
-      { id: string; name: string; weekStart: string; checked: boolean }
+      {
+        id: string;
+        name: string;
+        weekStart: string;
+        checked: boolean;
+        category: string | null;
+        hasCategory: boolean;
+      }
     >();
     for (const e of extrasAll) {
       const existing = byName.get(e.name);
@@ -184,14 +282,24 @@ export default function ShoppingListPage() {
     }
     return Array.from(byName.values());
   }, [extrasAll]);
-
-  const uncheckedExtras = useMemo(
-    () => extras.filter((e) => !e.checked),
+  const categorizedExtras = useMemo(
+    () => extras.filter((e) => Boolean(e.category)),
     [extras],
   );
+  const extrasForTopSection = useMemo(
+    () =>
+      viewMode === "by-category"
+        ? extras.filter((e) => !e.category)
+        : extras,
+    [extras, viewMode],
+  );
+  const uncheckedExtras = useMemo(
+    () => extrasForTopSection.filter((e) => !e.checked),
+    [extrasForTopSection],
+  );
   const checkedExtras = useMemo(
-    () => extras.filter((e) => e.checked).slice(-20),
-    [extras],
+    () => extrasForTopSection.filter((e) => e.checked).slice(-20),
+    [extrasForTopSection],
   );
   const isLoading = shoppingQuery.isLoading;
   const isFetching = shoppingQuery.isFetching;
@@ -263,7 +371,25 @@ export default function ShoppingListPage() {
       if (optionKeys.length === 0) {
         return [];
       }
-      if (prev.length === 0) return optionKeys;
+      if (prev.length === 0) {
+        if (defaultsHydrated) {
+          const preferred = new Set(
+            (activeRoleSettings.visibleDayIndices ?? []).map((day) =>
+              Number(day),
+            ),
+          );
+          const filtered = occurrenceOptions
+            .filter((option) => {
+              const dayIndex = Number(option.key.split("::")[1] ?? 0);
+              return preferred.has(dayIndex);
+            })
+            .map((option) => option.key);
+          if (filtered.length > 0) {
+            return filtered;
+          }
+        }
+        return optionKeys;
+      }
       const prevSet = new Set(prev);
       const filtered = optionKeys.filter((key) => prevSet.has(key));
       if (filtered.length === 0) {
@@ -280,36 +406,12 @@ export default function ShoppingListPage() {
       return filtered;
     });
     previousOptionKeysRef.current = optionKeys;
-  }, [occurrenceOptions]);
+  }, [occurrenceOptions, defaultsHydrated, activeRoleSettings.visibleDayIndices]);
 
   const visibleDayKeySet = useMemo(
     () => new Set(visibleDayKeys),
     [visibleDayKeys],
   );
-
-  const dayFilterLabel = useMemo(() => {
-    if (occurrenceOptions.length === 0) return "Alle";
-    if (visibleDayKeys.length === 0) return "Ingen";
-    if (visibleDayKeys.length === occurrenceOptions.length) return "Alle";
-    const selected = occurrenceOptions.filter((option) =>
-      visibleDayKeySet.has(option.key),
-    );
-    if (selected.length === 0) return "Ingen";
-    if (selected.length <= 3) {
-      return selected
-        .map((option) => option.weekdayLabel.substring(0, 3))
-        .join(", ");
-    }
-    return `${selected.length} dager`;
-  }, [occurrenceOptions, visibleDayKeySet, visibleDayKeys.length]);
-
-  const startDayLabel = ALL_DAY_NAMES[startDay];
-  const viewModeLabel = viewMode === "by-day" ? "Ukesplan" : "Alfabetisk";
-  const pantryVisibilityLabel = showPantryWithIngredients
-    ? "Basisvarer i ingredienser"
-    : "Basisvarer separat";
-  const settingsLabel = `${viewModeLabel}${viewMode === "by-day" ? ` · ${dayFilterLabel}` : ""
-    } · ${pantryVisibilityLabel}${startDay !== 0 ? ` · Fra ${startDayLabel.toLowerCase()}` : ""}${includeNextWeek ? " · Neste uke" : ""}`;
 
   const { regularItems, pantryItems } = useMemo(() => {
     const regularUnchecked: ShoppingListItem[] = [];
@@ -628,6 +730,175 @@ export default function ShoppingListPage() {
     [buildDaySections, pantryItems],
   );
 
+  const activeStore = useMemo(() => {
+    if (!stores.length) return null;
+    return (
+      stores.find((store) => store.id === selectedStoreId) ??
+      stores.find((store) => store.isDefault) ??
+      stores[0]
+    );
+  }, [stores, selectedStoreId]);
+
+  const activeCategoryOrder = useMemo<IngredientCategory[]>(
+    () => normalizeCategoryOrder(activeStore?.categoryOrder),
+    [activeStore],
+  );
+
+  function buildCategorySections(
+    sourceItems: ShoppingListItem[],
+    extraEntries: Array<{
+      id: string;
+      name: string;
+      checked: boolean;
+      category: string | null;
+    }> = [],
+  ): ShoppingListCategorySection[] {
+    const categories = new Map<
+      IngredientCategory,
+      ShoppingListCategorySection["entries"]
+    >();
+
+    activeCategoryOrder.forEach((category) => {
+      categories.set(category, []);
+    });
+
+    for (const item of sourceItems) {
+      const key = `${item.ingredientId}::${item.unit ?? ""}`;
+      if (removedKeys.has(key)) continue;
+
+      const occurrences = (item.occurrences ?? []).filter((occurrence) =>
+        visibleDayKeySet.has(`${occurrence.weekStart}::${occurrence.dayIndex}`),
+      );
+      if (!occurrences.length) continue;
+
+      const hasQuantity = occurrences.some(
+        (occurrence) => occurrence.quantity != null,
+      );
+      const quantity = hasQuantity
+        ? occurrences.reduce(
+          (sum, occurrence) => sum + (occurrence.quantity ?? 0),
+          0,
+        )
+        : null;
+      const hasMissingQuantities = occurrences.some(
+        (occurrence) => occurrence.hasMissingQuantities,
+      );
+      const checked = occurrences.every((occurrence) =>
+        isOccurrenceChecked(item, occurrence),
+      );
+
+      const rawCategory = (item as { category?: string }).category ?? "ANNET";
+      const category =
+        (normalizeCategoryOrder([rawCategory])[0] ?? "ANNET") as IngredientCategory;
+      if (!categories.has(category)) {
+        categories.set(category, []);
+      }
+      const quantityLabel =
+        quantity != null
+          ? formatQuantity(quantity, item.unit ?? null)
+          : "Mengde ikke spesifisert";
+      const extraInfo =
+        hasMissingQuantities && quantity != null
+          ? " • noen mengder mangler"
+          : undefined;
+      categories.get(category)!.push({
+        key,
+        name: item.name,
+        quantityLabel,
+        extraInfo,
+        checked,
+        onToggle: () => toggleCategoryOccurrences(item, occurrences),
+        onRemove: () => removeItem(item),
+      });
+    }
+
+    for (const extra of extraEntries) {
+      if (!extra.category) continue;
+
+      const category =
+        (normalizeCategoryOrder([extra.category])[0] ??
+          "ANNET") as IngredientCategory;
+      if (!categories.has(category)) {
+        categories.set(category, []);
+      }
+
+      categories.get(category)!.push({
+        key: `extra::${extra.id}`,
+        name: extra.name,
+        quantityLabel: "Eget element",
+        checked: extra.checked,
+        onToggle: () => {
+          void toggleExtra(extra.name, extra.checked);
+        },
+        onRemove: () => {
+          void removeExtra(extra.name);
+        },
+      });
+    }
+
+    return activeCategoryOrder.map((category) => ({
+      key: category,
+      label: ingredientCategoryLabel(category),
+      entries: (categories.get(category) ?? []).sort((a, b) => {
+        if (a.checked !== b.checked) return a.checked ? 1 : -1;
+        return a.name.localeCompare(b.name, "nb", {
+          sensitivity: "base",
+        });
+      }),
+    }));
+  }
+
+  const categorySections = buildCategorySections(displayedItems, categorizedExtras);
+
+  const pantryCategorySections = buildCategorySections(pantryItems);
+
+  function toggleCategoryOccurrences(
+    item: ShoppingListItem,
+    occurrences: ShoppingListOccurrence[],
+  ) {
+    if (!occurrences.length) return;
+
+    const keys = occurrences.map((occurrence) => getOccurrenceKey(item, occurrence));
+    const prevValues = keys.map((key) => checkedByOccurrence[key] ?? false);
+    const nextValue = occurrences.some(
+      (occurrence) => !isOccurrenceChecked(item, occurrence),
+    );
+
+    setCheckedByOccurrence((prev) => {
+      const next = { ...prev };
+      keys.forEach((key) => {
+        next[key] = nextValue;
+      });
+      return next;
+    });
+
+    updateShoppingItem.mutate(
+      {
+        ingredientId: item.ingredientId,
+        unit: item.unit ?? null,
+        occurrences: occurrences.map((occurrence) => ({
+          weekStart: occurrence.weekStart,
+          dayIndex: occurrence.dayIndex,
+        })),
+        checked: nextValue,
+      },
+      {
+        onError: () => {
+          setCheckedByOccurrence((prev) => {
+            const next = { ...prev };
+            keys.forEach((key, index) => {
+              next[key] = prevValues[index];
+            });
+            return next;
+          });
+        },
+        onSuccess: () => {
+          shoppingQuery.refetch().catch(() => undefined);
+        },
+      },
+    );
+  }
+
   function toggleDayKey(dayKey: string, checked: boolean) {
     setVisibleDayKeys((prev) => {
       const next = new Set(prev);
@@ -885,6 +1156,9 @@ export default function ShoppingListPage() {
             visibleDayKeys={visibleDayKeys}
             setVisibleDayKeys={setVisibleDayKeys}
             toggleDayKey={toggleDayKey}
+            stores={stores.map((store) => ({ id: store.id, name: store.name }))}
+            selectedStoreId={selectedStoreId}
+            setSelectedStoreId={(storeId) => setSelectedStoreId(storeId)}
           />
           <div className="w-full justify-self-end sm:w-auto sm:justify-self-end sm:ml-auto">
             <Dialog open={isAddExtraOpen} onOpenChange={setIsAddExtraOpen}>
@@ -943,7 +1217,11 @@ export default function ShoppingListPage() {
                         ) : (
                           (() => {
                             const suggestions = (extraSuggest.data ??
-                              []) as Array<{ id: string; name: string }>;
+                              []) as Array<{
+                              id: string;
+                              name: string;
+                              hasCategory: boolean;
+                            }>;
                             const exists = suggestions.some(
                               (s) =>
                                 s.name.toLowerCase() ===
@@ -954,7 +1232,11 @@ export default function ShoppingListPage() {
                                 {suggestions.map((s) => (
                                   <Badge
                                     key={s.id}
-                                    className="cursor-pointer"
+                                    className={`cursor-pointer border text-white ${
+                                      s.hasCategory
+                                        ? "border-emerald-500 bg-emerald-500 hover:bg-emerald-600"
+                                        : "border-orange-500 bg-orange-500 hover:bg-orange-600"
+                                    }`}
                                     onClick={() => addOrToggleExtra(s.name)}
                                   >
                                     {s.name}
@@ -962,7 +1244,7 @@ export default function ShoppingListPage() {
                                 ))}
                                 {!exists && (
                                   <Badge
-                                    className="cursor-pointer"
+                                    className="cursor-pointer border border-orange-500 bg-orange-500 text-white hover:bg-orange-600"
                                     onClick={() =>
                                       addOrToggleExtra(extraInput.trim())
                                     }
@@ -1005,10 +1287,16 @@ export default function ShoppingListPage() {
       ) : (
         <div className="max-w-2xl mx-auto w-full space-y-6">
           <section className="rounded-2xl border border-emerald-200/60 bg-emerald-50/40 p-4">
-            <h2 className="text-sm font-semibold mb-2">Egne elementer</h2>
+            <h2 className="text-sm font-semibold mb-2">
+              {viewMode === "by-category"
+                ? "Egne elementer uten kategori"
+                : "Egne elementer"}
+            </h2>
             {uncheckedExtras.length === 0 && checkedExtras.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                Ingen egne elementer ennå.
+                {viewMode === "by-category"
+                  ? "Ingen ukategoriserte egne elementer."
+                  : "Ingen egne elementer ennå."}
               </p>
             ) : (
               <div className="space-y-3">
@@ -1058,7 +1346,7 @@ export default function ShoppingListPage() {
                       ) : (
                         <ChevronRight className="h-3.5 w-3.5" />
                       )}
-                      {checkedExtras.length} fullført
+                      {checkedExtras.length} siste fullført
                       {checkedExtras.length !== 1 ? "e" : ""}
                     </button>
                     {showCompletedExtras && (
@@ -1101,11 +1389,22 @@ export default function ShoppingListPage() {
             )}
           </section>
           <section className="rounded-2xl border border-orange-200/60 bg-orange-50/40 p-4">
-            <h2 className="text-sm font-semibold mb-2">Ukesplan</h2>
+            <h2 className="text-sm font-semibold mb-2">
+              {viewMode === "by-day"
+                ? "Ukesplan"
+                : viewMode === "by-category"
+                  ? `Kategorier${activeStore ? ` · ${activeStore.name}` : ""}`
+                  : "Alfabetisk"}
+            </h2>
             {viewMode === "alphabetical" ? (
               <ul className="space-y-3">
                 {renderAlphabeticalItems(displayedItems)}
               </ul>
+            ) : viewMode === "by-category" ? (
+              <ShoppingListCategoryView
+                sections={categorySections}
+                emptyText="Ingen ingredienser eller kategoriserte egne elementer for valgte dager."
+              />
             ) : (
               <ShoppingListDayView
                 sections={daySections}
@@ -1127,6 +1426,11 @@ export default function ShoppingListPage() {
                 </p>
               ) : viewMode === "alphabetical" ? (
                 <ul className="space-y-3">{renderAlphabeticalItems(pantryItems)}</ul>
+              ) : viewMode === "by-category" ? (
+                <ShoppingListCategoryView
+                  sections={pantryCategorySections}
+                  emptyText="Ingen basisvarer for valgte dager."
+                />
               ) : (
                 <ShoppingListDayView
                   sections={pantryDaySections}

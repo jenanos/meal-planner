@@ -52,10 +52,13 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends openssl \
 WORKDIR /app
 
 COPY --from=builder /app/node_modules ./node_modules
+# Workspace root files needed by pnpm and the entrypoint (prisma, seeding)
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY --from=builder /app/pnpm-lock.yaml ./pnpm-lock.yaml
 # Include workspace sources (for linked packages) and server sources
 COPY --from=builder /app/packages ./packages
 COPY --from=builder /app/apps/server ./apps/server
-COPY apps/server/package.json ./apps/server/package.json
 
 EXPOSE 4000
 

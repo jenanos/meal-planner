@@ -1,12 +1,18 @@
 import { prisma, Prisma } from "@repo/database";
+import { TRPCError } from "@trpc/server";
 import { router, publicProcedure } from "../trpc.js";
 import {
   PlannerConstraints,
   WeekPlanInput,
   ExtraItemSuggest,
   ExtraItemUpsert,
+  ExtraCatalogBulkCategoryUpdate,
   ExtraShoppingToggle,
   ExtraShoppingRemove,
+  ShoppingSettingsGetInput,
+  ShoppingDeviceRoleUpsert,
+  ShoppingRoleSettingsUpdate,
+  ShoppingStoreCreate,
 } from "../schemas.js";
 import { z } from "zod";
 
@@ -26,6 +32,39 @@ const CATEGORY_KEYS = [
   "ANNET",
 ] as const;
 type MealCategoryKey = (typeof CATEGORY_KEYS)[number];
+
+const INGREDIENT_CATEGORY_KEYS = [
+  "FRUKT_OG_GRONT",
+  "KJOTT",
+  "OST",
+  "BROD",
+  "MEIERI_OG_EGG",
+  "HERMETIKK",
+  "TORRVARER",
+  "BAKEVARER",
+  "HUSHOLDNING",
+  "ANNET",
+] as const;
+type IngredientCategoryKey = (typeof INGREDIENT_CATEGORY_KEYS)[number];
+
+const SHOPPING_USER_ROLES = ["INGVILD", "JENS"] as const;
+type ShoppingUserRoleKey = (typeof SHOPPING_USER_ROLES)[number];
+
+const DEFAULT_VISIBLE_DAY_INDICES = [0, 1, 2, 3, 4, 5, 6] as const;
+
+const STANDARD_STORE_NAME = "Standard butikk";
+const STANDARD_STORE_CATEGORY_ORDER: IngredientCategoryKey[] = [
+  "FRUKT_OG_GRONT",
+  "KJOTT",
+  "OST",
+  "BROD",
+  "MEIERI_OG_EGG",
+  "HERMETIKK",
+  "TORRVARER",
+  "BAKEVARER",
+  "HUSHOLDNING",
+  "ANNET",
+];
 
 const DAY_META: Record<DayIndex, DayMeta> = {
   0: { label: "Mon" },
@@ -56,6 +95,7 @@ type RecipeDTO = {
     quantity: number | null;
     notes: string | null;
     isPantryItem: boolean;
+    category: IngredientCategoryKey;
   }[];
 };
 
@@ -84,6 +124,85 @@ type WeekPlanDayEntryInput =
 
 type PlannerConfig = ReturnType<typeof resolveConstraints>;
 
+function normalizeIngredientCategory(
+  value: string | null | undefined,
+): IngredientCategoryKey {
+  if (!value) return "ANNET";
+  const upper = String(value).toUpperCase();
+  if (upper === "UKATEGORISERT") return "ANNET";
+  if (upper === "FRUKT" || upper === "GRONNSAKER") {
+    return "FRUKT_OG_GRONT";
+  }
+  if (
+    INGREDIENT_CATEGORY_KEYS.includes(upper as IngredientCategoryKey)
+  ) {
+    return upper as IngredientCategoryKey;
+  }
+  return "ANNET";
+}
+
+function normalizeOptionalIngredientCategory(
+  value: string | null | undefined,
+): IngredientCategoryKey | null {
+  if (value == null) return null;
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+  return normalizeIngredientCategory(trimmed);
+}
+
+async function fetchExtraCatalogCategoryMap(catalogIds: string[]) {
+  const uniqueIds = Array.from(new Set(catalogIds.filter(Boolean)));
+  const result = new Map<string, IngredientCategoryKey | null>();
+  if (!uniqueIds.length) return result;
+
+  const rows = await prisma.$queryRaw<
+    Array<{ id: string; category: string | null }>
+  >(
+    Prisma.sql`
+      SELECT
+        id::text AS id,
+        category::text AS category
+      FROM "ExtraItemCatalog"
+      WHERE id IN (${Prisma.join(
+        uniqueIds.map((id) => Prisma.sql`${id}::uuid`),
+      )})
+    `,
+  );
+
+  for (const row of rows) {
+    result.set(row.id, normalizeOptionalIngredientCategory(row.category));
+  }
+
+  return result;
+}
+
+function toClientViewMode(mode: string | null | undefined) {
+  if (mode === "ALPHABETICAL") return "alphabetical";
+  if (mode === "BY_CATEGORY") return "by-category";
+  return "by-day";
+}
+
+function toDbViewMode(mode: string | null | undefined) {
+  if (mode === "alphabetical") return "ALPHABETICAL";
+  if (mode === "by-category") return "BY_CATEGORY";
+  return "BY_DAY";
+}
+
+function sanitizeVisibleDayIndices(indices: number[] | null | undefined) {
+  const source = Array.isArray(indices) ? indices : [];
+  const uniqueSorted = Array.from(
+    new Set(
+      source
+        .filter((value) => Number.isInteger(value))
+        .map((value) => Math.min(6, Math.max(0, Number(value)))),
+    ),
+  ).sort((a, b) => a - b);
+  if (!uniqueSorted.length) {
+    return [...DEFAULT_VISIBLE_DAY_INDICES];
+  }
+  return uniqueSorted;
+}
+
 function toNumber(value: any): number | null {
   if (value == null) return null;
   const num = typeof value === "number" ? value : Number(value);
@@ -106,6 +225,7 @@ function toDTO(r: any): RecipeDTO {
       quantity: toNumber(ri.quantity),
       notes: ri.notes ?? null,
       isPantryItem: Boolean(ri.ingredient.isPantryItem),
+      category: normalizeIngredientCategory(ri.ingredient.category),
     })),
   };
 }
@@ -319,6 +439,108 @@ async function ensureWeekIndexWindow(baseWeek: Date) {
   for (const week of Array.from(seen.values())) {
     await ensureWeekIndex(prisma, week);
   }
+}
+
+function normalizeCategoryOrder(
+  categoryOrder: string[] | null | undefined,
+): IngredientCategoryKey[] {
+  const normalized: IngredientCategoryKey[] = [];
+  for (const value of categoryOrder ?? []) {
+    const category = normalizeIngredientCategory(value);
+    if (!normalized.includes(category)) {
+      normalized.push(category);
+    }
+  }
+  for (const category of STANDARD_STORE_CATEGORY_ORDER) {
+    if (!normalized.includes(category)) {
+      normalized.push(category);
+    }
+  }
+  return [...normalized.filter((category) => category !== "ANNET"), "ANNET"];
+}
+
+function serializeShoppingStore(store: {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  categoryOrder: string[];
+}) {
+  return {
+    id: store.id,
+    name: store.name,
+    isDefault: Boolean(store.isDefault),
+    categoryOrder: normalizeCategoryOrder(store.categoryOrder),
+  };
+}
+
+function serializeShoppingPreference(
+  preference: any,
+  fallbackStoreId: string | null,
+) {
+  return {
+    role: preference.role as ShoppingUserRoleKey,
+    defaultViewMode: toClientViewMode(preference.defaultViewMode),
+    startDay: Math.min(6, Math.max(0, Number(preference.startDay ?? 0))),
+    includeNextWeek: Boolean(preference.includeNextWeek),
+    showPantryWithIngredients: Boolean(
+      preference.showPantryWithIngredients,
+    ),
+    visibleDayIndices: sanitizeVisibleDayIndices(preference.visibleDayIndices),
+    defaultStoreId: preference.defaultStoreId ?? fallbackStoreId,
+  };
+}
+
+async function ensureShoppingPreferencesSeed(
+  client: any = prisma as any,
+) {
+  const defaultStore = await client.shoppingStore.upsert({
+    where: { name: STANDARD_STORE_NAME },
+    update: {
+      isDefault: true,
+      categoryOrder: STANDARD_STORE_CATEGORY_ORDER as any,
+    },
+    create: {
+      name: STANDARD_STORE_NAME,
+      isDefault: true,
+      categoryOrder: STANDARD_STORE_CATEGORY_ORDER as any,
+    },
+  });
+
+  await client.shoppingStore.updateMany({
+    where: {
+      isDefault: true,
+      NOT: { id: defaultStore.id },
+    },
+    data: { isDefault: false },
+  });
+
+  for (const role of SHOPPING_USER_ROLES) {
+    const existing = await client.shoppingPreference.findUnique({
+      where: { role },
+    });
+    if (!existing) {
+      await client.shoppingPreference.create({
+        data: {
+          role,
+          defaultViewMode: "BY_DAY" as any,
+          startDay: 0,
+          includeNextWeek: false,
+          showPantryWithIngredients: false,
+          visibleDayIndices: [...DEFAULT_VISIBLE_DAY_INDICES],
+          defaultStoreId: defaultStore.id,
+        },
+      });
+      continue;
+    }
+    if (!existing.defaultStoreId) {
+      await client.shoppingPreference.update({
+        where: { role },
+        data: { defaultStoreId: defaultStore.id },
+      });
+    }
+  }
+
+  return defaultStore;
 }
 
 async function writeWeekPlan(weekStart: Date, days: WeekPlanDayEntryInput[]) {
@@ -767,6 +989,167 @@ export const plannerRouter = router({
       });
     }),
 
+  shoppingSettings: publicProcedure
+    .input(ShoppingSettingsGetInput)
+    .query(async ({ input }) => {
+      const deviceId = input.deviceId.trim();
+      await ensureShoppingPreferencesSeed(prisma);
+      const db = prisma as any;
+
+      const [devicePreference, preferences, stores] = await Promise.all([
+        db.devicePreference.findUnique({
+          where: { deviceId },
+        }),
+        db.shoppingPreference.findMany({
+          orderBy: { role: "asc" },
+        }),
+        db.shoppingStore.findMany({
+          orderBy: [{ isDefault: "desc" }, { name: "asc" }],
+        }),
+      ]);
+
+      let activeRole = devicePreference?.role as ShoppingUserRoleKey | undefined;
+      if (!activeRole || !SHOPPING_USER_ROLES.includes(activeRole)) {
+        activeRole = "JENS";
+        await db.devicePreference.upsert({
+          where: { deviceId },
+          create: { deviceId, role: activeRole },
+          update: { role: activeRole },
+        });
+      }
+
+      const serializedStores = stores.map(serializeShoppingStore);
+      const fallbackStoreId =
+        serializedStores.find((store) => store.isDefault)?.id ?? null;
+      const preferenceByRole = new Map(
+        preferences.map((preference) => [preference.role, preference]),
+      );
+
+      const roles = SHOPPING_USER_ROLES.map((role) => {
+        const preference = preferenceByRole.get(role);
+        if (!preference) {
+          return {
+            role,
+            defaultViewMode: "by-day",
+            startDay: 0,
+            includeNextWeek: false,
+            showPantryWithIngredients: false,
+            visibleDayIndices: [...DEFAULT_VISIBLE_DAY_INDICES],
+            defaultStoreId: fallbackStoreId,
+          };
+        }
+        return serializeShoppingPreference(preference, fallbackStoreId);
+      });
+
+      return {
+        deviceId,
+        activeRole,
+        roles,
+        stores: serializedStores,
+      };
+    }),
+
+  setShoppingDeviceRole: publicProcedure
+    .input(ShoppingDeviceRoleUpsert)
+    .mutation(async ({ input }) => {
+      const deviceId = input.deviceId.trim();
+      await ensureShoppingPreferencesSeed(prisma);
+      const db = prisma as any;
+      const result = await db.devicePreference.upsert({
+        where: { deviceId },
+        create: { deviceId, role: input.role as any },
+        update: { role: input.role as any },
+      });
+      return {
+        deviceId: result.deviceId,
+        role: result.role,
+      };
+    }),
+
+  updateShoppingRoleSettings: publicProcedure
+    .input(ShoppingRoleSettingsUpdate)
+    .mutation(async ({ input }) => {
+      await ensureShoppingPreferencesSeed(prisma);
+      const db = prisma as any;
+
+      const defaultStore = await db.shoppingStore.findFirst({
+        where: { isDefault: true },
+        orderBy: { createdAt: "asc" },
+      });
+
+      let defaultStoreId = input.defaultStoreId ?? defaultStore?.id ?? null;
+      if (defaultStoreId) {
+        const store = await db.shoppingStore.findUnique({
+          where: { id: defaultStoreId },
+        });
+        if (!store) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Valgt butikk finnes ikke" });
+        }
+        defaultStoreId = store.id;
+      }
+
+      const visibleDayIndices = sanitizeVisibleDayIndices(
+        input.visibleDayIndices,
+      );
+
+      const updated = await db.shoppingPreference.upsert({
+        where: { role: input.role as any },
+        create: {
+          role: input.role as any,
+          defaultViewMode: toDbViewMode(input.defaultViewMode) as any,
+          startDay: input.startDay,
+          includeNextWeek: input.includeNextWeek,
+          showPantryWithIngredients: input.showPantryWithIngredients,
+          visibleDayIndices,
+          defaultStoreId,
+        },
+        update: {
+          defaultViewMode: toDbViewMode(input.defaultViewMode) as any,
+          startDay: input.startDay,
+          includeNextWeek: input.includeNextWeek,
+          showPantryWithIngredients: input.showPantryWithIngredients,
+          visibleDayIndices,
+          defaultStoreId,
+        },
+      });
+
+      return serializeShoppingPreference(updated, defaultStoreId);
+    }),
+
+  createShoppingStore: publicProcedure
+    .input(ShoppingStoreCreate)
+    .mutation(async ({ input }) => {
+      await ensureShoppingPreferencesSeed(prisma);
+      const db = prisma as any;
+
+      const categoryOrder = input.categoryOrder.map((category) =>
+        normalizeIngredientCategory(category),
+      );
+      const uniqueCategories = new Set(categoryOrder);
+      if (uniqueCategories.size !== STANDARD_STORE_CATEGORY_ORDER.length) {
+        throw new Error(
+          "Butikkrekkefølgen må inneholde hver kategori nøyaktig én gang",
+        );
+      }
+
+      const normalizedName = input.name.trim();
+      try {
+        const created = await db.shoppingStore.create({
+          data: {
+            name: normalizedName,
+            categoryOrder: categoryOrder as any,
+            isDefault: false,
+          },
+        });
+        return serializeShoppingStore(created);
+      } catch (error: any) {
+        if (error?.code === "P2002") {
+          throw new TRPCError({ code: "CONFLICT", message: "Det finnes allerede en butikk med dette navnet" });
+        }
+        throw error;
+      }
+    }),
+
   shoppingList: publicProcedure
     .input(shoppingListInputSchema.optional())
     .query(async ({ input }) => {
@@ -842,6 +1225,7 @@ export const plannerRouter = router({
         ingredientId: string;
         name: string;
         unit: string | null;
+        category: IngredientCategoryKey;
         sumQuantity: number;
         hasQuantities: boolean;
         hasMissingQuantities: boolean;
@@ -874,6 +1258,7 @@ export const plannerRouter = router({
                 ingredientId: ingredient.ingredientId,
                 name: ingredient.name,
                 unit,
+                category: ingredient.category,
                 sumQuantity: 0,
                 hasQuantities: false,
                 hasMissingQuantities: false,
@@ -887,6 +1272,7 @@ export const plannerRouter = router({
             if (ingredient.isPantryItem) {
               acc.isPantryItem = true;
             }
+            acc.category = normalizeIngredientCategory(ingredient.category);
             const quantity = ingredient.quantity;
             if (quantity != null) {
               acc.sumQuantity += quantity;
@@ -1024,6 +1410,7 @@ export const plannerRouter = router({
             ingredientId: item.ingredientId,
             name: item.name,
             unit: item.unit,
+            category: item.category,
             totalQuantity: item.hasQuantities ? item.sumQuantity : null,
             hasMissingQuantities: item.hasMissingQuantities,
             details: item.details,
@@ -1043,6 +1430,9 @@ export const plannerRouter = router({
         include: { catalogItem: true },
         orderBy: { updatedAt: "desc" },
       });
+      const categoryByCatalogId = await fetchExtraCatalogCategoryMap(
+        extraItems.map((item) => item.catalogItemId),
+      );
 
       const seenCatalog = new Set<string>();
       const extras = extraItems
@@ -1053,12 +1443,17 @@ export const plannerRouter = router({
           seenCatalog.add(item.catalogItemId);
           return true;
         })
-        .map((e) => ({
-          id: e.id,
-          name: e.catalogItem.name,
-          weekStart: e.weekStart.toISOString(),
-          checked: e.checked,
-        }));
+        .map((e) => {
+          const category = categoryByCatalogId.get(e.catalogItemId) ?? null;
+          return {
+            id: e.id,
+            name: e.catalogItem.name,
+            weekStart: e.weekStart.toISOString(),
+            checked: e.checked,
+            category,
+            hasCategory: category !== null,
+          };
+        });
 
       return {
         weekStart: weekStart.toISOString(),
@@ -1178,18 +1573,89 @@ export const plannerRouter = router({
       });
     }),
 
+  extraCatalogList: publicProcedure.query(async () => {
+    const rows = await prisma.extraItemCatalog.findMany({
+      orderBy: { name: "asc" },
+      include: { _count: { select: { extras: true } } },
+    });
+    const categoryMap = await fetchExtraCatalogCategoryMap(
+      rows.map((item) => item.id),
+    );
+    return rows.map((item) => ({
+      id: item.id,
+      name: item.name,
+      usageCount: item._count.extras,
+      category: categoryMap.get(item.id) ?? null,
+    }));
+  }),
+
+  extraCatalogBulkUpdateCategories: publicProcedure
+    .input(ExtraCatalogBulkCategoryUpdate)
+    .output(z.object({ count: z.number().int() }))
+    .mutation(async ({ input }) => {
+      let count = 0;
+
+      for (const update of input.updates) {
+        const normalizedCategory =
+          normalizeOptionalIngredientCategory(update.category);
+        try {
+          const affectedRows =
+            normalizedCategory == null
+              ? await prisma.$executeRaw(
+                Prisma.sql`
+                  UPDATE "ExtraItemCatalog"
+                  SET "category" = NULL
+                  WHERE "id" = ${update.id}::uuid
+                `,
+              )
+              : await prisma.$executeRaw(
+                Prisma.sql`
+                  UPDATE "ExtraItemCatalog"
+                  SET "category" = ${normalizedCategory}::"IngredientCategory"
+                  WHERE "id" = ${update.id}::uuid
+                `,
+              );
+          if (Number(affectedRows) > 0) {
+            count += 1;
+          }
+        } catch (_error: unknown) {
+          // Skip records that cannot be updated so bulk operations continue.
+        }
+      }
+
+      return { count };
+    }),
+
   // Suggest extra items by prefix
   extraSuggest: publicProcedure
     .input(ExtraItemSuggest.optional())
     .query(async ({ input }) => {
       const q = (input?.search ?? "").trim();
-      if (!q) return [] as { id: string; name: string }[];
+      if (!q) {
+        return [] as {
+          id: string;
+          name: string;
+          category: IngredientCategoryKey | null;
+          hasCategory: boolean;
+        }[];
+      }
       const all = await prisma.extraItemCatalog.findMany({
         where: { name: { contains: q } },
         orderBy: { name: "asc" },
         take: 20,
       });
-      return all.map((x) => ({ id: x.id, name: x.name }));
+      const categoryMap = await fetchExtraCatalogCategoryMap(
+        all.map((item) => item.id),
+      );
+      return all.map((x) => {
+        const category = categoryMap.get(x.id) ?? null;
+        return {
+          id: x.id,
+          name: x.name,
+          category,
+          hasCategory: category !== null,
+        };
+      });
     }),
 
   // Add an extra item to the current week's list (upsert into catalog)

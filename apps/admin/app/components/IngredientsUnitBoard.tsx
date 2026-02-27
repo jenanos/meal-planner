@@ -85,7 +85,7 @@ export function IngredientsUnitBoard() {
       onDragStart={({ active }) => setActiveId(active.id as string)}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex gap-4 overflow-x-auto pb-4">
+      <div className="grid grid-cols-1 gap-3 pb-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
         {unitKeys.map((unitKey) => {
           const items = columns.get(unitKey) ?? [];
           return (

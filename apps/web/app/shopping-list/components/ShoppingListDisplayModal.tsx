@@ -4,7 +4,6 @@ import {
     Button,
     Dialog,
     DialogContent,
-    DialogHeader,
     DialogTitle,
     DialogClose,
     Label,
@@ -13,12 +12,13 @@ import {
 } from "@repo/ui";
 import { X } from "lucide-react";
 import { ALL_DAY_NAMES } from "../../planner/utils";
+import type { ShoppingViewMode } from "../../../lib/shopping";
 
 export type ShoppingListDisplayModalProps = {
     open: boolean;
     onOpenChange: (open: boolean) => void;
-    viewMode: "by-day" | "alphabetical";
-    setViewMode: (mode: "by-day" | "alphabetical") => void;
+    viewMode: ShoppingViewMode;
+    setViewMode: (mode: ShoppingViewMode) => void;
     startDay: number;
     setStartDay: (day: number) => void;
     includeNextWeek: boolean;
@@ -33,6 +33,9 @@ export type ShoppingListDisplayModalProps = {
     visibleDayKeys: string[];
     toggleDayKey: (key: string, checked: boolean) => void;
     setVisibleDayKeys: (keys: string[]) => void;
+    stores: Array<{ id: string; name: string }>;
+    selectedStoreId: string | null;
+    setSelectedStoreId: (storeId: string) => void;
 };
 
 export function ShoppingListDisplayModal({
@@ -50,6 +53,9 @@ export function ShoppingListDisplayModal({
     visibleDayKeys,
     toggleDayKey,
     setVisibleDayKeys,
+    stores,
+    selectedStoreId,
+    setSelectedStoreId,
 }: ShoppingListDisplayModalProps) {
     const visibleDayKeySet = new Set(visibleDayKeys);
 
@@ -90,7 +96,7 @@ export function ShoppingListDisplayModal({
                             <h3 className="font-medium text-xs text-muted-foreground uppercase tracking-wider">
                                 Visning
                             </h3>
-                            <div className="grid grid-cols-2 gap-2">
+                            <div className="grid grid-cols-3 gap-2">
                                 <div
                                     className={`flex items-center space-x-2 border rounded-lg p-2 cursor-pointer transition-colors ${viewMode === "by-day" ? "border-primary bg-accent/50" : "hover:bg-accent"}`}
                                     onClick={() => setViewMode("by-day")}
@@ -111,6 +117,17 @@ export function ShoppingListDisplayModal({
                                     </div>
                                     <Label className="flex-1 cursor-pointer text-sm">
                                         Alfabetisk
+                                    </Label>
+                                </div>
+                                <div
+                                    className={`flex items-center space-x-2 border rounded-lg p-2 cursor-pointer transition-colors ${viewMode === "by-category" ? "border-primary bg-accent/50" : "hover:bg-accent"}`}
+                                    onClick={() => setViewMode("by-category")}
+                                >
+                                    <div className={`h-4 w-4 rounded-full border border-primary flex items-center justify-center ${viewMode === "by-category" ? "bg-primary text-primary-foreground" : "opacity-50"}`}>
+                                        {viewMode === "by-category" && <div className="h-2 w-2 rounded-full bg-current" />}
+                                    </div>
+                                    <Label className="flex-1 cursor-pointer text-sm">
+                                        Kategorier
                                     </Label>
                                 </div>
                             </div>
@@ -169,8 +186,27 @@ export function ShoppingListDisplayModal({
                             </div>
                         </div>
 
+                        {viewMode === "by-category" && stores.length > 0 && (
+                            <div className="space-y-2">
+                                <h3 className="font-medium text-xs text-muted-foreground uppercase tracking-wider">
+                                    Butikk
+                                </h3>
+                                <select
+                                    value={selectedStoreId ?? stores[0]?.id}
+                                    onChange={(event) => setSelectedStoreId(event.target.value)}
+                                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                >
+                                    {stores.map((store) => (
+                                        <option key={store.id} value={store.id}>
+                                            {store.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
                         {/* Day Filter (only if viewMode is by-day) */}
-                        {viewMode === "by-day" && occurrenceOptions.length > 0 && (
+                        {(viewMode === "by-day" || viewMode === "by-category") && occurrenceOptions.length > 0 && (
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">
                                     <h3 className="font-medium text-xs text-muted-foreground uppercase tracking-wider">

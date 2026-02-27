@@ -94,28 +94,34 @@ export const recipeRouter = router({
     update: publicProcedure
         .input(RecipeUpdate)
         .mutation(async ({ input }) => {
-        const { id, ingredients, ...data } = input;
+        const { id, ingredients, ...fields } = input;
         const existing = await prisma.recipe.findUnique({ where: { id } });
         if (!existing)
             throw new TRPCError({ code: "NOT_FOUND", message: "Recipe not found" });
+        const data = {};
+        if (fields.name !== undefined) data.name = fields.name;
+        if (fields.description !== undefined) data.description = fields.description;
+        if (fields.category !== undefined) data.category = fields.category;
+        if (fields.everydayScore !== undefined) data.everydayScore = fields.everydayScore;
+        if (fields.healthScore !== undefined) data.healthScore = fields.healthScore;
+        if (ingredients !== undefined) {
+            data.ingredients = {
+                deleteMany: {},
+                create: ingredients.map((i) => ({
+                    notes: i.notes?.trim() ?? null,
+                    quantity: toDecimalInput(i.quantity),
+                    ingredient: {
+                        connectOrCreate: {
+                            where: { name: i.name.trim() },
+                            create: { name: i.name.trim(), unit: i.unit?.trim() ?? null },
+                        },
+                    },
+                })),
+            };
+        }
         const updated = await prisma.recipe.update({
             where: { id },
-            data: {
-                ...data,
-                ingredients: {
-                    deleteMany: {},
-                    create: ingredients.map((i) => ({
-                        notes: i.notes?.trim() ?? null,
-                        quantity: toDecimalInput(i.quantity),
-                        ingredient: {
-                            connectOrCreate: {
-                                where: { name: i.name.trim() },
-                                create: { name: i.name.trim(), unit: i.unit?.trim() ?? null },
-                            },
-                        },
-                    })),
-                },
-            },
+            data,
             include: { ingredients: { include: { ingredient: true } } },
         });
         return toDTO(updated);
