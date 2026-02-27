@@ -74,7 +74,7 @@ export type RecipeCreate = z.infer<typeof RecipeCreate>;
 export const RecipeUpdate = z.object({
   id: z.string().uuid(),
   name: z.string().min(1).optional(),
-  description: z.string().optional(),
+  description: z.string().min(1).optional(),
   category: Category.optional(),
   everydayScore: z.number().int().min(1).max(5).optional(),
   healthScore: z.number().int().min(1).max(5).optional(),
@@ -197,6 +197,6 @@ export type ShoppingRoleSettingsUpdate = z.infer<
 
 export const ShoppingStoreCreate = z.object({
   name: z.string().trim().min(1).max(80),
-  categoryOrder: z.array(IngredientCategory).length(10),
+  categoryOrder: z.array(IngredientCategory).length(IngredientCategory.options.length),
 });
 export type ShoppingStoreCreate = z.infer<typeof ShoppingStoreCreate>;

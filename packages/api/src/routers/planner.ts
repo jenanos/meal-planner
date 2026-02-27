@@ -1,4 +1,5 @@
 import { prisma, Prisma } from "@repo/database";
+import { TRPCError } from "@trpc/server";
 import { router, publicProcedure } from "../trpc.js";
 import {
   PlannerConstraints,
@@ -1082,7 +1083,7 @@ export const plannerRouter = router({
           where: { id: defaultStoreId },
         });
         if (!store) {
-          throw new Error("Valgt butikk finnes ikke");
+          throw new TRPCError({ code: "NOT_FOUND", message: "Valgt butikk finnes ikke" });
         }
         defaultStoreId = store.id;
       }
@@ -1143,7 +1144,7 @@ export const plannerRouter = router({
         return serializeShoppingStore(created);
       } catch (error: any) {
         if (error?.code === "P2002") {
-          throw new Error("Det finnes allerede en butikk med dette navnet");
+          throw new TRPCError({ code: "CONFLICT", message: "Det finnes allerede en butikk med dette navnet" });
         }
         throw error;
       }
