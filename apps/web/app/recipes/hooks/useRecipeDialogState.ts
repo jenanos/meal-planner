@@ -107,6 +107,7 @@ export function useRecipeDialogState({
         prev.some((item) => item.name.toLowerCase() === newIng.name.toLowerCase())
           ? prev
           : [
+            ...prev,
             {
               id: newIng.id,
               name: newIng.name,
