@@ -69,6 +69,8 @@ const formatToolError = (error: unknown, context: string): CallToolResult => {
 
 const normalizeName = (name: string) => name.trim().toLowerCase();
 
+const validIngredientCategories = `Gyldige kategorier: ${IngredientCategory.options.join(", ")}.`;
+
 const formatSuccess = <T extends Record<string, unknown>>(payload: T): CallToolResult => ({
   content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
   structuredContent: payload,
@@ -371,7 +373,7 @@ const buildServer = () => {
       title: "Oppdater manglende ingrediens-kategorier",
       description:
         "Oppdaterer kategorier for ingredienser i oppsamlingskategorien ved å matche på navn. " +
-        "Gyldige kategorier: FRUKT_OG_GRONT, KJOTT, OST, MEIERI_OG_EGG, BROD, BAKEVARER, HERMETIKK, TORRVARER, HUSHOLDNING, ANNET.",
+        validIngredientCategories,
       inputSchema: z.object({
         updates: z
           .array(
@@ -439,7 +441,7 @@ const buildServer = () => {
       title: "Bulk-oppdater ingrediens-kategorier",
       description:
         "Oppdaterer kategorier for flere ingredienser på en gang ved å bruke ingrediens-ID. " +
-        "Gyldige kategorier: FRUKT_OG_GRONT, KJOTT, OST, MEIERI_OG_EGG, BROD, BAKEVARER, HERMETIKK, TORRVARER, HUSHOLDNING, ANNET.",
+        validIngredientCategories,
       inputSchema: z.object({
         updates: z.array(z.object({
           id: z.string().uuid().describe("Ingrediens-ID"),
@@ -616,7 +618,7 @@ const buildServer = () => {
         "Oppdaterer en eksisterende ingrediens i databasen. " +
         "Du MÅ oppgi ingrediens-ID (uuid). " +
         "Du kan oppdatere: navn, enhet (f.eks. 'stk', 'dl', 'g'), pantry-status, eller kategori. " +
-        "Gyldige kategorier: FRUKT_OG_GRONT, KJOTT, OST, MEIERI_OG_EGG, BROD, BAKEVARER, HERMETIKK, TORRVARER, HUSHOLDNING, ANNET. " +
+        validIngredientCategories + " " +
         "Bruk dette verktøyet etter å ha funnet ingredienser med 'list-ingredients' eller 'get-ingredients-without-unit'.",
       inputSchema: IngredientUpdate,
       annotations: {
