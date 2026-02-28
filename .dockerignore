@@ -6,6 +6,8 @@ pnpm-debug.log
 .env*
 
 # Build outputs
+apps/admin/.next
+apps/admin/out
 apps/web/.next
 apps/web/out
 apps/server/dist
