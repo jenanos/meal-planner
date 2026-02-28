@@ -59,12 +59,14 @@ RUN corepack enable
 
 WORKDIR /app
 
-COPY --from=builder /app/apps/admin/.next/standalone ./
-COPY --from=builder /app/apps/admin/.next/static ./apps/admin/.next/static
+COPY --from=builder --chown=node:node /app/apps/admin/.next/standalone ./
+COPY --from=builder --chown=node:node /app/apps/admin/.next/static ./apps/admin/.next/static
 # public folder is optional; copy if it exists in future
 
+USER node
 WORKDIR /app/apps/admin
 
+ENV PORT=3001
 EXPOSE 3001
 
 CMD ["node", "server.js"]
