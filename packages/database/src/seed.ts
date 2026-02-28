@@ -17,11 +17,13 @@ async function main() {
       update: {
         unit: ing.unit ?? null,
         isPantryItem: Boolean(ing.isPantryItem),
+        ...(ing.category ? { category: ing.category } : {}),
       },
       create: {
         name: trimmedName,
         unit: ing.unit ?? null,
         isPantryItem: Boolean(ing.isPantryItem),
+        ...(ing.category ? { category: ing.category } : {}),
       },
     });
   }
