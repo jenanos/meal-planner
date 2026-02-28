@@ -1,6 +1,18 @@
 export type SeedCategory = "FISK" | "VEGETAR" | "KYLLING" | "STORFE" | "ANNET";
 
-export type SeedIngredient = { name: string; unit?: string; isPantryItem?: boolean };
+export type SeedIngredientCategory =
+  | "FRUKT_OG_GRONT"
+  | "KJOTT"
+  | "OST"
+  | "MEIERI_OG_EGG"
+  | "BROD"
+  | "BAKEVARER"
+  | "HERMETIKK"
+  | "TORRVARER"
+  | "HUSHOLDNING"
+  | "ANNET";
+
+export type SeedIngredient = { name: string; unit?: string; isPantryItem?: boolean; category?: SeedIngredientCategory };
 
 export type SeedIngredientUsage = { name: string; quantity?: string | number; unit?: string; notes?: string };
 
@@ -16,17 +28,17 @@ export type SeedRecipe = {
 };
 
 export const INGREDIENTS: ReadonlyArray<SeedIngredient> = [
-  { name: "løk", unit: "stk" },
-  { name: "tomat", unit: "stk" },
-  { name: "bønner", unit: "g" },
-  { name: "ris", unit: "g", isPantryItem: true },
-  { name: "tortillalefser", unit: "stk" },
-  { name: "torsk", unit: "g" },
-  { name: "poteter", unit: "g" },
-  { name: "kylling", unit: "g" },
-  { name: "storfekjøtt", unit: "g" },
-  { name: "hvitløk", unit: "fedd", isPantryItem: true },
-  { name: "paprika", unit: "stk" },
+  { name: "løk", unit: "stk", category: "FRUKT_OG_GRONT" },
+  { name: "tomat", unit: "stk", category: "FRUKT_OG_GRONT" },
+  { name: "bønner", unit: "g", category: "HERMETIKK" },
+  { name: "ris", unit: "g", isPantryItem: true, category: "TORRVARER" },
+  { name: "tortillalefser", unit: "stk", category: "BROD" },
+  { name: "torsk", unit: "g", category: "KJOTT" },
+  { name: "poteter", unit: "g", category: "FRUKT_OG_GRONT" },
+  { name: "kylling", unit: "g", category: "KJOTT" },
+  { name: "storfekjøtt", unit: "g", category: "KJOTT" },
+  { name: "hvitløk", unit: "fedd", isPantryItem: true, category: "FRUKT_OG_GRONT" },
+  { name: "paprika", unit: "stk", category: "FRUKT_OG_GRONT" },
 ] as const;
 
 export const RECIPES: ReadonlyArray<SeedRecipe> = [

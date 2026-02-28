@@ -615,7 +615,8 @@ const buildServer = () => {
       description: 
         "Oppdaterer en eksisterende ingrediens i databasen. " +
         "Du MÅ oppgi ingrediens-ID (uuid). " +
-        "Du kan oppdatere: navn, enhet (f.eks. 'stk', 'dl', 'g'), eller pantry-status. " +
+        "Du kan oppdatere: navn, enhet (f.eks. 'stk', 'dl', 'g'), pantry-status, eller kategori. " +
+        "Gyldige kategorier: FRUKT_OG_GRONT, KJOTT, OST, MEIERI_OG_EGG, BROD, BAKEVARER, HERMETIKK, TORRVARER, HUSHOLDNING, ANNET. " +
         "Bruk dette verktøyet etter å ha funnet ingredienser med 'list-ingredients' eller 'get-ingredients-without-unit'.",
       inputSchema: IngredientUpdate,
       annotations: {
