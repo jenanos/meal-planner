@@ -65,11 +65,12 @@ export function ShoppingListGridItem({
     <>
       <button
         type="button"
-        className={`flex flex-col items-center justify-center rounded-lg border bg-white p-2 text-center select-none touch-manipulation transition-opacity ${checked ? "opacity-40" : ""}`}
+        className={`flex flex-col items-center justify-center rounded-lg border bg-white p-2 text-center select-none touch-manipulation transition-opacity focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 ${checked ? "opacity-40" : ""}`}
         style={{ minHeight: "3.5rem" }}
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerLeave}
+        onPointerCancel={handlePointerLeave}
         onContextMenu={handleContextMenu}
         aria-label={`${name}${checked ? " (kjøpt)" : ""}`}
       >
