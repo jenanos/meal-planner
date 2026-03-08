@@ -24,6 +24,9 @@ import {
   ShoppingListCategoryView,
   type ShoppingListCategorySection,
 } from "./components/shopping-list-category-view";
+import { ShoppingListDayGridView } from "./components/shopping-list-day-grid-view";
+import { ShoppingListCategoryGridView } from "./components/shopping-list-category-grid-view";
+import { ShoppingListGridItem } from "./components/shopping-list-grid-item";
 import { ShoppingListDisplayModal } from "./components/ShoppingListDisplayModal";
 import { FALL_BADGE_PALETTE, formatQuantity } from "./utils";
 import type { ShoppingListItem, ShoppingListOccurrence } from "./types";
@@ -38,6 +41,7 @@ import {
   normalizeCategoryOrder,
   type IngredientCategory,
   type ShoppingViewMode,
+  type ShoppingDisplayStyle,
 } from "../../lib/shopping";
 
 const EMPTY_ITEMS: ShoppingListItem[] = [];
@@ -96,6 +100,7 @@ export default function ShoppingListPage() {
   const [startDay, setStartDay] = useState(0);
   const [isDisplayModalOpen, setIsDisplayModalOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ShoppingViewMode>("by-day");
+  const [displayStyle, setDisplayStyle] = useState<ShoppingDisplayStyle>("list");
   const [showPantryWithIngredients, setShowPantryWithIngredients] =
     useState(false);
   const [stores, setStores] = useState<ShoppingStore[]>([]);
@@ -1115,6 +1120,31 @@ export default function ShoppingListPage() {
     });
   }
 
+  function renderAlphabeticalGrid(list: ShoppingListItem[]) {
+    return list.map((item) => {
+      const key = `${item.ingredientId}::${item.unit ?? ""}`;
+      if (removedKeys.has(key)) return null;
+      const checked = areAllOccurrencesChecked(item);
+      const quantityLabel =
+        item.totalQuantity != null && item.unit !== null
+          ? formatQuantity(item.totalQuantity, item.unit)
+          : item.totalQuantity != null
+            ? formatQuantity(item.totalQuantity, null)
+            : null;
+
+      return (
+        <ShoppingListGridItem
+          key={key}
+          name={item.name}
+          quantityLabel={quantityLabel}
+          checked={checked}
+          onToggle={() => toggleAllOccurrences(item)}
+          onRemove={() => removeItem(item)}
+        />
+      );
+    });
+  }
+
   return (
     <div className="space-y-6">
       <h1 className="hidden text-xl font-bold text-center md:block">
@@ -1146,6 +1176,8 @@ export default function ShoppingListPage() {
             onOpenChange={setIsDisplayModalOpen}
             viewMode={viewMode}
             setViewMode={setViewMode}
+            displayStyle={displayStyle}
+            setDisplayStyle={setDisplayStyle}
             startDay={startDay}
             setStartDay={setStartDay}
             includeNextWeek={includeNextWeek}
@@ -1298,6 +1330,59 @@ export default function ShoppingListPage() {
                   ? "Ingen ukategoriserte egne elementer."
                   : "Ingen egne elementer ennå."}
               </p>
+            ) : displayStyle === "grid" ? (
+              <div className="space-y-3">
+                {uncheckedExtras.length > 0 && (
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {uncheckedExtras.map((e) => (
+                      <ShoppingListGridItem
+                        key={e.id}
+                        name={e.name}
+                        quantityLabel={null}
+                        checked={false}
+                        onToggle={() => toggleExtra(e.name, e.checked)}
+                        onRemove={() => removeExtra(e.name)}
+                      />
+                    ))}
+                  </div>
+                )}
+                {checkedExtras.length > 0 && (
+                  <div>
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      onClick={() => setShowCompletedExtras((prev) => !prev)}
+                      aria-label={
+                        showCompletedExtras
+                          ? "Skjul fullførte elementer"
+                          : "Vis fullførte elementer"
+                      }
+                    >
+                      {showCompletedExtras ? (
+                        <ChevronDown className="h-3.5 w-3.5" />
+                      ) : (
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      )}
+                      {checkedExtras.length} siste fullført
+                      {checkedExtras.length !== 1 ? "e" : ""}
+                    </button>
+                    {showCompletedExtras && (
+                      <div className="grid grid-cols-4 gap-1.5 mt-2">
+                        {checkedExtras.map((e) => (
+                          <ShoppingListGridItem
+                            key={e.id}
+                            name={e.name}
+                            quantityLabel={null}
+                            checked={true}
+                            onToggle={() => toggleExtra(e.name, e.checked)}
+                            onRemove={() => removeExtra(e.name)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             ) : (
               <div className="space-y-3">
                 {uncheckedExtras.length > 0 && (
@@ -1396,7 +1481,27 @@ export default function ShoppingListPage() {
                   ? `Kategorier${activeStore ? ` · ${activeStore.name}` : ""}`
                   : "Alfabetisk"}
             </h2>
-            {viewMode === "alphabetical" ? (
+            {displayStyle === "grid" ? (
+              viewMode === "alphabetical" ? (
+                <div className="grid grid-cols-4 gap-1.5">
+                  {renderAlphabeticalGrid(displayedItems)}
+                </div>
+              ) : viewMode === "by-category" ? (
+                <ShoppingListCategoryGridView
+                  sections={categorySections}
+                  emptyText="Ingen ingredienser eller kategoriserte egne elementer for valgte dager."
+                />
+              ) : (
+                <ShoppingListDayGridView
+                  sections={daySections}
+                  getOccurrenceKey={getOccurrenceKey}
+                  isOccurrenceChecked={isOccurrenceChecked}
+                  onToggleOccurrence={toggleSingleOccurrence}
+                  onRemoveItem={removeItem}
+                  removedKeys={removedKeys}
+                />
+              )
+            ) : viewMode === "alphabetical" ? (
               <ul className="space-y-3">
                 {renderAlphabeticalItems(displayedItems)}
               </ul>
@@ -1424,6 +1529,26 @@ export default function ShoppingListPage() {
                 <p className="text-sm text-muted-foreground">
                   Ingen basisvarer i ukesplanen.
                 </p>
+              ) : displayStyle === "grid" ? (
+                viewMode === "alphabetical" ? (
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {renderAlphabeticalGrid(pantryItems)}
+                  </div>
+                ) : viewMode === "by-category" ? (
+                  <ShoppingListCategoryGridView
+                    sections={pantryCategorySections}
+                    emptyText="Ingen basisvarer for valgte dager."
+                  />
+                ) : (
+                  <ShoppingListDayGridView
+                    sections={pantryDaySections}
+                    getOccurrenceKey={getOccurrenceKey}
+                    isOccurrenceChecked={isOccurrenceChecked}
+                    onToggleOccurrence={toggleSingleOccurrence}
+                    onRemoveItem={removeItem}
+                    removedKeys={removedKeys}
+                  />
+                )
               ) : viewMode === "alphabetical" ? (
                 <ul className="space-y-3">{renderAlphabeticalItems(pantryItems)}</ul>
               ) : viewMode === "by-category" ? (

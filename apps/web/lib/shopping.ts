@@ -6,6 +6,9 @@ export const SHOPPING_VIEW_MODES = [
 
 export type ShoppingViewMode = (typeof SHOPPING_VIEW_MODES)[number];
 
+export const SHOPPING_DISPLAY_STYLES = ["list", "grid"] as const;
+export type ShoppingDisplayStyle = (typeof SHOPPING_DISPLAY_STYLES)[number];
+
 export const SHOPPING_USER_ROLES = ["INGVILD", "JENS"] as const;
 export type ShoppingUserRole = (typeof SHOPPING_USER_ROLES)[number];
 
