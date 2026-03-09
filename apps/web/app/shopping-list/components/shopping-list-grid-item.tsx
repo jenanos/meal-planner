@@ -81,7 +81,9 @@ export function ShoppingListGridItem({
         aria-label={`${name}${checked ? " (kjøpt)" : ""}`}
       >
         <span
-          className={`text-xs font-medium leading-tight line-clamp-2 ${checked ? "text-gray-400 line-through" : "text-gray-900"}`}
+          lang="nb"
+          className={`text-xs font-medium leading-tight line-clamp-2 break-words ${checked ? "text-gray-400 line-through" : "text-gray-900"}`}
+          style={{ hyphens: "auto" }}
         >
           {name}
         </span>
