@@ -8,7 +8,6 @@ import {
     DialogClose,
     Label,
     Checkbox,
-    ScrollArea,
 } from "@repo/ui";
 import { X } from "lucide-react";
 import { ALL_DAY_NAMES } from "../../planner/utils";
@@ -78,8 +77,8 @@ export function ShoppingListDisplayModal({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-md w-full max-h-[85dvh] overflow-hidden flex flex-col p-0 gap-0">
-                <div className="p-4 pb-2 border-b shrink-0 flex flex-row items-center justify-between">
+            <DialogContent className="max-w-md w-full max-h-[85dvh] overflow-y-auto overscroll-contain p-0 gap-0">
+                <div className="sticky top-0 z-10 bg-background p-4 pb-2 border-b flex flex-row items-center justify-between">
                     <DialogTitle>Visningsvalg</DialogTitle>
                     <DialogClose asChild>
                         <Button
@@ -93,8 +92,7 @@ export function ShoppingListDisplayModal({
                     </DialogClose>
                 </div>
 
-                <ScrollArea className="flex-1 min-h-0">
-                    <div className="p-4 space-y-5">
+                <div className="p-4 space-y-5">
                         {/* View Mode */}
                         <div className="space-y-2">
                             <h3 className="font-medium text-xs text-muted-foreground uppercase tracking-wider">
@@ -279,10 +277,9 @@ export function ShoppingListDisplayModal({
                                 </div>
                             </div>
                         )}
-                    </div>
-                </ScrollArea>
+                </div>
 
-                <div className="p-4 border-t shrink-0">
+                <div className="sticky bottom-0 bg-background p-4 border-t">
                     <Button className="w-full" onClick={() => onOpenChange(false)}>
                         Ferdig
                     </Button>
