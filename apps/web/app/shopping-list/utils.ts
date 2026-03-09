@@ -1,3 +1,5 @@
+import type { IngredientCategory } from "../../lib/shopping";
+
 export function formatQuantity(quantity: number, unit: string | null) {
   const formatter = new Intl.NumberFormat("nb-NO", {
     maximumFractionDigits: 2,
@@ -27,6 +29,22 @@ export function stableColorIndex(name: string): number {
   }
   return Math.abs(hash) % GRID_TILE_COLORS.length;
 }
+
+export const CATEGORY_SECTION_COLORS: Record<
+  IngredientCategory,
+  { bg: string; border: string }
+> = {
+  FRUKT_OG_GRONT: { bg: "hsl(145, 60%, 92%)", border: "hsl(145, 45%, 82%)" },
+  KJOTT: { bg: "hsl(0, 65%, 93%)", border: "hsl(0, 50%, 84%)" },
+  OST: { bg: "hsl(45, 80%, 91%)", border: "hsl(45, 65%, 80%)" },
+  BROD: { bg: "hsl(30, 75%, 92%)", border: "hsl(30, 60%, 82%)" },
+  MEIERI_OG_EGG: { bg: "hsl(210, 70%, 93%)", border: "hsl(210, 55%, 84%)" },
+  HERMETIKK: { bg: "hsl(180, 50%, 92%)", border: "hsl(180, 40%, 82%)" },
+  TORRVARER: { bg: "hsl(50, 60%, 91%)", border: "hsl(50, 45%, 80%)" },
+  BAKEVARER: { bg: "hsl(340, 55%, 93%)", border: "hsl(340, 42%, 84%)" },
+  HUSHOLDNING: { bg: "hsl(270, 50%, 93%)", border: "hsl(270, 38%, 84%)" },
+  ANNET: { bg: "hsl(220, 20%, 93%)", border: "hsl(220, 15%, 83%)" },
+};
 
 export const FALL_BADGE_PALETTE = [
   "24 94% 42%", // amber
