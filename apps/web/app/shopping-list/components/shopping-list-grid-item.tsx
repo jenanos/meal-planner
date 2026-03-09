@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -8,6 +8,7 @@ import {
   DialogDescription,
   Button,
 } from "@repo/ui";
+import { GRID_TILE_COLORS, stableColorIndex } from "../utils";
 
 interface ShoppingListGridItemProps {
   name: string;
@@ -61,12 +62,17 @@ export function ShoppingListGridItem({
     [],
   );
 
+  const tileColor = useMemo(() => {
+    const idx = stableColorIndex(name);
+    return GRID_TILE_COLORS[idx];
+  }, [name]);
+
   return (
     <>
       <button
         type="button"
-        className={`flex flex-col items-center justify-center rounded-lg border bg-white p-2 text-center select-none touch-manipulation transition-opacity focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 ${checked ? "opacity-40" : ""}`}
-        style={{ minHeight: "3.5rem" }}
+        className={`flex flex-col items-center justify-center rounded-lg border p-2 text-center select-none touch-manipulation transition-opacity focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 ${checked ? "opacity-40" : ""}`}
+        style={{ minHeight: "3.5rem", backgroundColor: tileColor.bg, borderColor: tileColor.border }}
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerLeave}

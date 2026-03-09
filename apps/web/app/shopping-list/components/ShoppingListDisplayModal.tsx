@@ -78,7 +78,7 @@ export function ShoppingListDisplayModal({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-md w-full max-h-[90vh] flex flex-col p-0 gap-0">
+            <DialogContent className="max-w-md w-full max-h-[85dvh] overflow-hidden flex flex-col p-0 gap-0">
                 <div className="p-4 pb-2 border-b shrink-0 flex flex-row items-center justify-between">
                     <DialogTitle>Visningsvalg</DialogTitle>
                     <DialogClose asChild>
