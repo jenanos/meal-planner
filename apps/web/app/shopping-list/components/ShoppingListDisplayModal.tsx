@@ -8,17 +8,18 @@ import {
     DialogClose,
     Label,
     Checkbox,
-    ScrollArea,
 } from "@repo/ui";
 import { X } from "lucide-react";
 import { ALL_DAY_NAMES } from "../../planner/utils";
-import type { ShoppingViewMode } from "../../../lib/shopping";
+import type { ShoppingViewMode, ShoppingDisplayStyle } from "../../../lib/shopping";
 
 export type ShoppingListDisplayModalProps = {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     viewMode: ShoppingViewMode;
     setViewMode: (mode: ShoppingViewMode) => void;
+    displayStyle: ShoppingDisplayStyle;
+    setDisplayStyle: (style: ShoppingDisplayStyle) => void;
     startDay: number;
     setStartDay: (day: number) => void;
     includeNextWeek: boolean;
@@ -43,6 +44,8 @@ export function ShoppingListDisplayModal({
     onOpenChange,
     viewMode,
     setViewMode,
+    displayStyle,
+    setDisplayStyle,
     startDay,
     setStartDay,
     includeNextWeek,
@@ -74,8 +77,8 @@ export function ShoppingListDisplayModal({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-md w-full max-h-[90vh] flex flex-col p-0 gap-0">
-                <div className="p-4 pb-2 border-b shrink-0 flex flex-row items-center justify-between">
+            <DialogContent className="max-w-md w-full max-h-[85dvh] overflow-y-auto overscroll-contain p-0 gap-0">
+                <div className="sticky top-0 z-10 bg-background p-4 pb-2 border-b flex flex-row items-center justify-between">
                     <DialogTitle>Visningsvalg</DialogTitle>
                     <DialogClose asChild>
                         <Button
@@ -89,8 +92,7 @@ export function ShoppingListDisplayModal({
                     </DialogClose>
                 </div>
 
-                <ScrollArea className="flex-1 min-h-0">
-                    <div className="p-4 space-y-5">
+                <div className="p-4 space-y-5">
                         {/* View Mode */}
                         <div className="space-y-2">
                             <h3 className="font-medium text-xs text-muted-foreground uppercase tracking-wider">
@@ -128,6 +130,37 @@ export function ShoppingListDisplayModal({
                                     </div>
                                     <Label className="flex-1 cursor-pointer text-sm">
                                         Kategorier
+                                    </Label>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Display Style */}
+                        <div className="space-y-2">
+                            <h3 className="font-medium text-xs text-muted-foreground uppercase tracking-wider">
+                                Listeformat
+                            </h3>
+                            <div className="grid grid-cols-2 gap-2">
+                                <div
+                                    className={`flex items-center space-x-2 border rounded-lg p-2 cursor-pointer transition-colors ${displayStyle === "list" ? "border-primary bg-accent/50" : "hover:bg-accent"}`}
+                                    onClick={() => setDisplayStyle("list")}
+                                >
+                                    <div className={`h-4 w-4 rounded-full border border-primary flex items-center justify-center ${displayStyle === "list" ? "bg-primary text-primary-foreground" : "opacity-50"}`}>
+                                        {displayStyle === "list" && <div className="h-2 w-2 rounded-full bg-current" />}
+                                    </div>
+                                    <Label className="flex-1 cursor-pointer text-sm">
+                                        Liste
+                                    </Label>
+                                </div>
+                                <div
+                                    className={`flex items-center space-x-2 border rounded-lg p-2 cursor-pointer transition-colors ${displayStyle === "grid" ? "border-primary bg-accent/50" : "hover:bg-accent"}`}
+                                    onClick={() => setDisplayStyle("grid")}
+                                >
+                                    <div className={`h-4 w-4 rounded-full border border-primary flex items-center justify-center ${displayStyle === "grid" ? "bg-primary text-primary-foreground" : "opacity-50"}`}>
+                                        {displayStyle === "grid" && <div className="h-2 w-2 rounded-full bg-current" />}
+                                    </div>
+                                    <Label className="flex-1 cursor-pointer text-sm">
+                                        Rutenett
                                     </Label>
                                 </div>
                             </div>
@@ -244,10 +277,9 @@ export function ShoppingListDisplayModal({
                                 </div>
                             </div>
                         )}
-                    </div>
-                </ScrollArea>
+                </div>
 
-                <div className="p-4 border-t shrink-0">
+                <div className="sticky bottom-0 bg-background p-4 border-t">
                     <Button className="w-full" onClick={() => onOpenChange(false)}>
                         Ferdig
                     </Button>
