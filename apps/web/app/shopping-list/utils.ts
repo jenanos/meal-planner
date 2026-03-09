@@ -1,3 +1,5 @@
+import type { IngredientCategory } from "../../lib/shopping";
+
 export function formatQuantity(quantity: number, unit: string | null) {
   const formatter = new Intl.NumberFormat("nb-NO", {
     maximumFractionDigits: 2,
@@ -29,7 +31,7 @@ export function stableColorIndex(name: string): number {
 }
 
 export const CATEGORY_SECTION_COLORS: Record<
-  string,
+  IngredientCategory,
   { bg: string; border: string }
 > = {
   FRUKT_OG_GRONT: { bg: "hsl(145, 60%, 92%)", border: "hsl(145, 45%, 82%)" },

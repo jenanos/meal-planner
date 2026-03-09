@@ -28,14 +28,16 @@ export function ShoppingListCategoryGridView({
   return (
     <div className="space-y-4">
       {visibleSections.map((section) => {
-        const color = CATEGORY_SECTION_COLORS[section.key];
+        const color = CATEGORY_SECTION_COLORS[
+          section.key as keyof typeof CATEGORY_SECTION_COLORS
+        ] ?? { bg: "hsl(0, 0%, 96%)", border: "hsl(0, 0%, 88%)" };
         return (
           <section
             key={section.key}
             className="space-y-2 rounded-xl border p-3"
             style={{
-              backgroundColor: color?.bg,
-              borderColor: color?.border,
+              backgroundColor: color.bg,
+              borderColor: color.border,
             }}
           >
             <h3 className="text-xs font-semibold text-gray-900">
