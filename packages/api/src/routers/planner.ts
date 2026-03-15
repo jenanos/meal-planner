@@ -1450,6 +1450,7 @@ export const plannerRouter = router({
             name: e.catalogItem.name,
             weekStart: e.weekStart.toISOString(),
             checked: e.checked,
+            updatedAt: e.updatedAt.toISOString(),
             category,
             hasCategory: category !== null,
           };

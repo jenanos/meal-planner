@@ -263,6 +263,7 @@ export default function ShoppingListPage() {
     name: string;
     weekStart: string;
     checked: boolean;
+    updatedAt: string;
     category: string | null;
     hasCategory: boolean;
   }>;
@@ -275,6 +276,7 @@ export default function ShoppingListPage() {
         name: string;
         weekStart: string;
         checked: boolean;
+        updatedAt: string;
         category: string | null;
         hasCategory: boolean;
       }
@@ -303,7 +305,12 @@ export default function ShoppingListPage() {
     [extrasForTopSection],
   );
   const checkedExtras = useMemo(
-    () => extrasForTopSection.filter((e) => e.checked).slice(-20),
+    () => {
+      const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+      return extrasForTopSection.filter(
+        (e) => e.checked && new Date(e.updatedAt) >= fiveDaysAgo,
+      );
+    },
     [extrasForTopSection],
   );
   const isLoading = shoppingQuery.isLoading;
@@ -1363,8 +1370,7 @@ export default function ShoppingListPage() {
                       ) : (
                         <ChevronRight className="h-3.5 w-3.5" />
                       )}
-                      {checkedExtras.length} siste fullført
-                      {checkedExtras.length !== 1 ? "e" : ""}
+                      {checkedExtras.length} fullført siste 5 dager
                     </button>
                     {showCompletedExtras && (
                       <div className="grid grid-cols-4 gap-1.5 mt-2">
@@ -1431,8 +1437,7 @@ export default function ShoppingListPage() {
                       ) : (
                         <ChevronRight className="h-3.5 w-3.5" />
                       )}
-                      {checkedExtras.length} siste fullført
-                      {checkedExtras.length !== 1 ? "e" : ""}
+                      {checkedExtras.length} fullført siste 5 dager
                     </button>
                     {showCompletedExtras && (
                       <ul className="space-y-3 mt-2">

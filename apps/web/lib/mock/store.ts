@@ -247,7 +247,7 @@ type WeekPlanEntryRecord =
 
 type ExtraCatalogRecord = { id: string; name: string };
 
-type ExtraEntryRecord = { id: string; name: string; checked: boolean; catalogId: string };
+type ExtraEntryRecord = { id: string; name: string; checked: boolean; catalogId: string; updatedAt: string };
 
 type ShoppingStoreRecord = {
   id: string;
@@ -740,10 +740,10 @@ function aggregateShopping(weekStarts: string[]) {
     .sort((a, b) => a.name.localeCompare(b.name, "nb", { sensitivity: "base" }));
 
   // Return all extras (shared across weeks)
-  const extras: { id: string; name: string; weekStart: string; checked: boolean }[] = [];
+  const extras: { id: string; name: string; weekStart: string; checked: boolean; updatedAt: string }[] = [];
   state.extrasByWeek.forEach((entries, week) => {
     entries.forEach((entry) => {
-      extras.push({ id: entry.id, name: entry.name, weekStart: week, checked: entry.checked });
+      extras.push({ id: entry.id, name: entry.name, weekStart: week, checked: entry.checked, updatedAt: entry.updatedAt });
     });
   });
 
@@ -1161,10 +1161,11 @@ async function handleExtraToggle(input: any) {
   let entry = weekEntries.get(catalog.id);
   const nextChecked = typeof input?.checked === "boolean" ? Boolean(input.checked) : !entry?.checked;
   if (!entry) {
-    entry = { id: randomId("extra-entry"), name: catalog.name, checked: nextChecked, catalogId: catalog.id };
+    entry = { id: randomId("extra-entry"), name: catalog.name, checked: nextChecked, catalogId: catalog.id, updatedAt: new Date().toISOString() };
     weekEntries.set(catalog.id, entry);
   } else {
     entry.checked = nextChecked;
+    entry.updatedAt = new Date().toISOString();
   }
   return { id: entry.id, checked: entry.checked };
 }
