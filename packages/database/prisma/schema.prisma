@@ -7,6 +7,8 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// ─── Enums ───
+
 enum MealCategory {
   FISK
   VEGETAR
@@ -39,10 +41,132 @@ enum ShoppingViewMode {
   BY_CATEGORY
 }
 
-enum ShoppingUserRole {
-  INGVILD
-  JENS
+enum HouseholdRole {
+  OWNER
+  MEMBER
 }
+
+// ─── Auth models (managed by better-auth) ───
+
+model User {
+  id            String    @id
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  sessions    Session[]
+  accounts    Account[]
+  memberships HouseholdMember[]
+  preference  UserPreference?
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
+
+model Verification {
+  id         String    @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime? @default(now())
+  updatedAt  DateTime? @updatedAt
+}
+
+// ─── Household models ───
+
+model Household {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members     HouseholdMember[]
+  invitations HouseholdInvitation[]
+  weekPlans   WeekPlan[]
+  weekIndices WeekIndex[]
+  shoppingStates   ShoppingState[]
+  extraCatalog     ExtraItemCatalog[]
+  extraItems       ExtraShoppingItem[]
+  shoppingStores   ShoppingStore[]
+}
+
+model HouseholdMember {
+  id          String        @id @default(uuid()) @db.Uuid
+  householdId String        @db.Uuid
+  userId      String
+  role        HouseholdRole @default(MEMBER)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([householdId, userId])
+}
+
+model HouseholdInvitation {
+  id          String    @id @default(uuid()) @db.Uuid
+  householdId String    @db.Uuid
+  email       String
+  invitedBy   String
+  token       String    @unique
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([token])
+}
+
+// ─── User preferences (replaces device/role-based ShoppingPreference) ───
+
+model UserPreference {
+  userId                    String           @id
+  defaultViewMode           ShoppingViewMode @default(BY_DAY)
+  startDay                  Int              @default(0)
+  includeNextWeek           Boolean          @default(false)
+  showPantryWithIngredients Boolean          @default(false)
+  visibleDayIndices         Int[]            @default([0, 1, 2, 3, 4, 5, 6])
+  defaultStoreId            String?          @db.Uuid
+  createdAt                 DateTime         @default(now())
+  updatedAt                 DateTime         @updatedAt
+
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  defaultStore ShoppingStore? @relation(fields: [defaultStoreId], references: [id], onDelete: SetNull)
+}
+
+// ─── Shared data (global, not household-scoped) ───
 
 model Recipe {
   id            String         @id @default(uuid()) @db.Uuid
@@ -88,23 +212,33 @@ model RecipeIngredient {
   @@id([recipeId, ingredientId])
 }
 
+// ─── Household-scoped data ───
+
 model WeekPlan {
   id          String   @id @default(uuid()) @db.Uuid
-  weekStart   DateTime @unique
+  weekStart   DateTime
+  householdId String   @db.Uuid
   weekIndexId String?  @unique @db.Uuid
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   entries   WeekPlanEntry[]
   weekIndex WeekIndex?      @relation(fields: [weekIndexId], references: [id], onDelete: Cascade)
+  household Household       @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@unique([weekStart, householdId])
 }
 
 model WeekIndex {
-  id        String   @id @default(uuid()) @db.Uuid
-  weekStart DateTime @unique
-  createdAt DateTime @default(now())
+  id          String   @id @default(uuid()) @db.Uuid
+  weekStart   DateTime
+  householdId String   @db.Uuid
+  createdAt   DateTime @default(now())
 
-  plan WeekPlan?
+  plan      WeekPlan?
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@unique([weekStart, householdId])
 }
 
 model WeekPlanEntry {
@@ -121,79 +255,65 @@ model WeekPlanEntry {
 }
 
 model ShoppingState {
-  id           String   @id @default(uuid()) @db.Uuid
-  weekStart    DateTime
-  ingredientId String @db.Uuid
-  unit         String? @db.VarChar(32)
-  checked      Boolean  @default(false)
+  id                   String   @id @default(uuid()) @db.Uuid
+  weekStart            DateTime
+  ingredientId         String   @db.Uuid
+  unit                 String?  @db.VarChar(32)
+  checked              Boolean  @default(false)
   firstCheckedDayIndex Int?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  householdId          String   @db.Uuid
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
-  @@unique([weekStart, ingredientId, unit])
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@unique([weekStart, ingredientId, unit, householdId])
   @@index([weekStart])
 }
 
-// Catalog of user-added extra shopping items (not tied to recipes)
 model ExtraItemCatalog {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String   @unique @db.Citext
-  category  IngredientCategory?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String              @id @default(uuid()) @db.Uuid
+  name        String              @db.Citext
+  category    IngredientCategory?
+  householdId String              @db.Uuid
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
 
-  extras ExtraShoppingItem[]
+  extras    ExtraShoppingItem[]
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
 
+  @@unique([name, householdId])
   @@index([category])
 }
 
-// Extra shopping items added for specific weeks
 model ExtraShoppingItem {
   id            String   @id @default(uuid()) @db.Uuid
   weekStart     DateTime
   catalogItemId String   @db.Uuid
   checked       Boolean  @default(false)
+  householdId   String   @db.Uuid
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   catalogItem ExtraItemCatalog @relation(fields: [catalogItemId], references: [id], onDelete: Cascade)
+  household   Household        @relation(fields: [householdId], references: [id], onDelete: Cascade)
 
-  @@unique([weekStart, catalogItemId])
+  @@unique([weekStart, catalogItemId, householdId])
   @@index([weekStart])
 }
 
 model ShoppingStore {
   id            String               @id @default(uuid()) @db.Uuid
-  name          String               @unique @db.Citext
+  name          String               @db.Citext
   categoryOrder IngredientCategory[]
   isDefault     Boolean              @default(false)
+  householdId   String               @db.Uuid
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
 
-  preferences ShoppingPreference[]
+  household   Household          @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  preferences UserPreference[]
 
+  @@unique([name, householdId])
   @@index([isDefault])
-}
-
-model ShoppingPreference {
-  role                       ShoppingUserRole @id
-  defaultViewMode            ShoppingViewMode @default(BY_DAY)
-  startDay                   Int              @default(0)
-  includeNextWeek            Boolean          @default(false)
-  showPantryWithIngredients  Boolean          @default(false)
-  visibleDayIndices          Int[]            @default([0, 1, 2, 3, 4, 5, 6])
-  defaultStoreId             String?          @db.Uuid
-  createdAt                  DateTime         @default(now())
-  updatedAt                  DateTime         @updatedAt
-
-  defaultStore ShoppingStore? @relation(fields: [defaultStoreId], references: [id], onDelete: SetNull)
-
-  @@index([defaultStoreId])
-}
-
-model DevicePreference {
-  deviceId   String           @id @db.VarChar(128)
-  role       ShoppingUserRole
-  createdAt  DateTime         @default(now())
-  updatedAt  DateTime         @updatedAt
 }
