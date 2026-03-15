@@ -3,15 +3,19 @@
 import React, { useState } from "react";
 import { IngredientsUnitBoard } from "./components/IngredientsUnitBoard";
 import { IngredientsCategoryBoard } from "./components/IngredientsCategoryBoard";
+import { IngredientsDuplicateBoard } from "./components/IngredientsDuplicateBoard";
 import { RecipesHealthBoard } from "./components/RecipesHealthBoard";
 import { RecipesEverydayBoard } from "./components/RecipesEverydayBoard";
 import { RecipesCategoryBoard } from "./components/RecipesCategoryBoard";
 import { ExtraItemsCategoryBoard } from "./components/ExtraItemsCategoryBoard";
+import { ExtraItemsDuplicateBoard } from "./components/ExtraItemsDuplicateBoard";
 
 const VIEWS = [
   { key: "ing-unit", label: "Ingredienser → Enhet" },
   { key: "ing-cat", label: "Ingredienser → Kategori" },
+  { key: "ing-dup", label: "Ingredienser → Duplikater" },
   { key: "extra-cat", label: "Egne elementer → Kategori" },
+  { key: "extra-dup", label: "Egne elementer → Duplikater" },
   { key: "rec-health", label: "Oppskrifter → Helsescore" },
   { key: "rec-everyday", label: "Oppskrifter → Hverdagsscore" },
   { key: "rec-cat", label: "Oppskrifter → Kategori" },
@@ -45,7 +49,9 @@ export default function AdminPage() {
       <div className="mt-2">
         {view === "ing-unit" && <IngredientsUnitBoard />}
         {view === "ing-cat" && <IngredientsCategoryBoard />}
+        {view === "ing-dup" && <IngredientsDuplicateBoard />}
         {view === "extra-cat" && <ExtraItemsCategoryBoard />}
+        {view === "extra-dup" && <ExtraItemsDuplicateBoard />}
         {view === "rec-health" && <RecipesHealthBoard />}
         {view === "rec-everyday" && <RecipesEverydayBoard />}
         {view === "rec-cat" && <RecipesCategoryBoard />}

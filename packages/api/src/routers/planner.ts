@@ -1627,6 +1627,113 @@ export const plannerRouter = router({
       return { count };
     }),
 
+  extraCatalogListPotentialDuplicates: publicProcedure
+    .output(z.array(z.array(z.object({
+      id: z.string().uuid(),
+      name: z.string(),
+      usageCount: z.number().int(),
+      category: z.string().nullable(),
+    }))))
+    .query(async () => {
+      const allItems = await prisma.extraItemCatalog.findMany({
+        orderBy: { name: "asc" },
+        include: { _count: { select: { extras: true } } },
+      });
+      const categoryMap = await fetchExtraCatalogCategoryMap(
+        allItems.map((item) => item.id),
+      );
+
+      const normalize = (name?: string) =>
+        name?.toLowerCase().replace(/[^a-zæøå0-9]/g, "") ?? "";
+
+      const groups = new Map<string, typeof allItems>();
+
+      for (const item of allItems) {
+        const normalized = normalize(item.name);
+        if (!normalized) continue;
+        let foundGroup = false;
+
+        for (const [key, group] of groups.entries()) {
+          if (
+            normalized.startsWith(key) ||
+            key.startsWith(normalized) ||
+            (normalized.length > 3 && key.length > 3 &&
+              (normalized.includes(key) || key.includes(normalized)))
+          ) {
+            group.push(item);
+            foundGroup = true;
+            break;
+          }
+        }
+
+        if (!foundGroup) {
+          groups.set(normalized, [item]);
+        }
+      }
+
+      return Array.from(groups.values())
+        .filter((group) => group.length > 1)
+        .map((group) =>
+          group.map((item) => ({
+            id: item.id,
+            name: item.name,
+            usageCount: item._count.extras,
+            category: categoryMap.get(item.id) ?? null,
+          }))
+        );
+    }),
+
+  extraCatalogMerge: publicProcedure
+    .input(z.object({
+      keepId: z.string().uuid(),
+      mergeIds: z.array(z.string().uuid()).min(1),
+    }))
+    .output(z.object({ mergedCount: z.number().int(), updatedItems: z.number().int() }))
+    .mutation(async ({ input }) => {
+      const { keepId, mergeIds } = input;
+      const uniqueMergeIds = [...new Set(mergeIds.filter((id) => id !== keepId))];
+      if (uniqueMergeIds.length === 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "No items to merge" });
+      }
+
+      const keep = await prisma.extraItemCatalog.findUnique({ where: { id: keepId } });
+      if (!keep) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Keep item not found" });
+      }
+
+      let updatedItems = 0;
+
+      await prisma.$transaction(async (tx) => {
+        const mergeLinks = await tx.extraShoppingItem.findMany({
+          where: { catalogItemId: { in: uniqueMergeIds } },
+        });
+
+        const keepLinks = await tx.extraShoppingItem.findMany({
+          where: { catalogItemId: keepId },
+        });
+        const keepWeeks = new Set(keepLinks.map((l) => l.weekStart.getTime()));
+
+        for (const link of mergeLinks) {
+          if (keepWeeks.has(link.weekStart.getTime())) {
+            await tx.extraShoppingItem.delete({ where: { id: link.id } });
+          } else {
+            await tx.extraShoppingItem.update({
+              where: { id: link.id },
+              data: { catalogItemId: keepId },
+            });
+            keepWeeks.add(link.weekStart.getTime());
+            updatedItems++;
+          }
+        }
+
+        await tx.extraItemCatalog.deleteMany({
+          where: { id: { in: uniqueMergeIds } },
+        });
+      });
+
+      return { mergedCount: uniqueMergeIds.length, updatedItems };
+    }),
+
   // Suggest extra items by prefix
   extraSuggest: publicProcedure
     .input(ExtraItemSuggest.optional())
