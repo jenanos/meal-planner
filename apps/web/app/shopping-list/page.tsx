@@ -45,6 +45,7 @@ import {
 } from "../../lib/shopping";
 
 const EMPTY_ITEMS: ShoppingListItem[] = [];
+const CHECKED_EXTRAS_WINDOW_MS = 5 * 24 * 60 * 60 * 1000;
 
 type ShoppingStore = {
   id: string;
@@ -306,9 +307,9 @@ export default function ShoppingListPage() {
   );
   const checkedExtras = useMemo(
     () => {
-      const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+      const cutoff = new Date(Date.now() - CHECKED_EXTRAS_WINDOW_MS);
       return extrasForTopSection.filter(
-        (e) => e.checked && new Date(e.updatedAt) >= fiveDaysAgo,
+        (e) => e.checked && new Date(e.updatedAt) >= cutoff,
       );
     },
     [extrasForTopSection],
