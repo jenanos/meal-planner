@@ -1,5 +1,5 @@
 import { prisma } from "@repo/database";
-import { router, publicProcedure } from "../trpc.js";
+import { router, protectedProcedure } from "../trpc.js";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { RecipeCreate, RecipeListQuery, RecipeUpdate, Category } from "../schemas.js";
@@ -33,7 +33,7 @@ function toDecimalInput(value: unknown) {
 }
 
 export const recipeRouter = router({
-  list: publicProcedure
+  list: protectedProcedure
     .input(RecipeListQuery)
     .query(async ({ input }) => {
       const { page = 1, pageSize = 20, category, search } = input;
@@ -54,7 +54,7 @@ export const recipeRouter = router({
       return { total, page, pageSize, items: items.map(toDTO) };
     }),
 
-  getById: publicProcedure
+  getById: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ input }) => {
       const r = await prisma.recipe.findUnique({
@@ -65,7 +65,7 @@ export const recipeRouter = router({
       return toDTO(r);
     }),
 
-  create: publicProcedure
+  create: protectedProcedure
     .input(RecipeCreate)
     .mutation(async ({ input }) => {
       try {
@@ -94,7 +94,7 @@ export const recipeRouter = router({
       }
     }),
 
-  update: publicProcedure
+  update: protectedProcedure
     .input(RecipeUpdate)
     .mutation(async ({ input }) => {
       const { id, ingredients, ...fields } = input;
@@ -132,7 +132,7 @@ export const recipeRouter = router({
       return toDTO(updated);
     }),
 
-  delete: publicProcedure
+  delete: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input }) => {
       try {
@@ -143,7 +143,7 @@ export const recipeRouter = router({
       }
     }),
 
-  markUsed: publicProcedure
+  markUsed: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input }) => {
       const r = await prisma.recipe.update({
@@ -153,7 +153,7 @@ export const recipeRouter = router({
       return { id: r.id, usageCount: r.usageCount, lastUsed: r.lastUsed };
     }),
 
-  patchField: publicProcedure
+  patchField: protectedProcedure
     .input(z.object({
       id: z.string().uuid(),
       category: Category.optional(),

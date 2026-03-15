@@ -1,5 +1,5 @@
 import { prisma } from "@repo/database";
-import { router, publicProcedure } from "../trpc.js";
+import { router, protectedProcedure } from "../trpc.js";
 import { IngredientById, IngredientCreate, IngredientCategory, IngredientListQuery, IngredientUpdate } from "../schemas.js";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -47,7 +47,7 @@ function normalizeIngredientCategory(category: string): z.infer<typeof Ingredien
 }
 
 export const ingredientRouter = router({
-    list: publicProcedure
+    list: protectedProcedure
         .input(IngredientListQuery.optional())
         .output(z.array(IngredientListItem))
         .query(async ({ input }) => {
@@ -69,7 +69,7 @@ export const ingredientRouter = router({
             }));
         }),
 
-    listWithoutUnit: publicProcedure
+    listWithoutUnit: protectedProcedure
         .output(z.array(IngredientListItem))
         .query(async () => {
             const items = await prisma.ingredient.findMany({
@@ -87,7 +87,7 @@ export const ingredientRouter = router({
             }));
         }),
 
-    listPotentialDuplicates: publicProcedure
+    listPotentialDuplicates: protectedProcedure
         .output(z.array(z.array(IngredientListItem)))
         .query(async () => {
             const allIngredients = await prisma.ingredient.findMany({
@@ -146,7 +146,7 @@ export const ingredientRouter = router({
             return duplicateGroups;
         }),
 
-    bulkUpdateUnits: publicProcedure
+    bulkUpdateUnits: protectedProcedure
         .input(z.object({
             updates: z.array(z.object({
                 id: z.string().uuid(),
@@ -173,7 +173,7 @@ export const ingredientRouter = router({
             return { count };
         }),
 
-    listWithoutCategory: publicProcedure
+    listWithoutCategory: protectedProcedure
         .output(z.array(IngredientListItem))
         .query(async () => {
             const items = await prisma.ingredient.findMany({
@@ -192,7 +192,7 @@ export const ingredientRouter = router({
                 .filter((i) => i.category === "ANNET");
         }),
 
-    bulkUpdateCategories: publicProcedure
+    bulkUpdateCategories: protectedProcedure
         .input(z.object({
             updates: z.array(z.object({
                 id: z.string().uuid(),
@@ -218,7 +218,7 @@ export const ingredientRouter = router({
             return { count };
         }),
 
-    create: publicProcedure
+    create: protectedProcedure
         .input(IngredientCreate)
         .output(z.object({ id: z.string().uuid(), name: z.string(), unit: z.string().optional(), isPantryItem: z.boolean(), category: IngredientCategory }))
         .mutation(async ({ input }) => {
@@ -244,7 +244,7 @@ export const ingredientRouter = router({
             }
         }),
 
-    update: publicProcedure
+    update: protectedProcedure
         .input(IngredientUpdate)
         .output(z.object({ id: z.string().uuid(), name: z.string(), unit: z.string().optional(), isPantryItem: z.boolean(), category: IngredientCategory }))
         .mutation(async ({ input }) => {
@@ -268,7 +268,7 @@ export const ingredientRouter = router({
             }
         }),
 
-    getWithRecipes: publicProcedure
+    getWithRecipes: protectedProcedure
         .input(IngredientById)
         .output(IngredientWithRecipes)
         .query(async ({ input }) => {
