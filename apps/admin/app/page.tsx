@@ -9,10 +9,12 @@ import { RecipesEverydayBoard } from "./components/RecipesEverydayBoard";
 import { RecipesCategoryBoard } from "./components/RecipesCategoryBoard";
 import { ExtraItemsCategoryBoard } from "./components/ExtraItemsCategoryBoard";
 import { ExtraItemsDuplicateBoard } from "./components/ExtraItemsDuplicateBoard";
+import { IngredientsPantryToggle } from "./components/IngredientsPantryToggle";
 
 const VIEWS = [
   { key: "ing-unit", label: "Ingredienser → Enhet" },
   { key: "ing-cat", label: "Ingredienser → Kategori" },
+  { key: "ing-pantry", label: "Ingredienser → Basisvarer" },
   { key: "ing-dup", label: "Ingredienser → Duplikater" },
   { key: "extra-cat", label: "Egne elementer → Kategori" },
   { key: "extra-dup", label: "Egne elementer → Duplikater" },
@@ -44,11 +46,14 @@ export default function AdminPage() {
         ))}
       </nav>
       <p className="text-xs text-muted-foreground">
-        Dra elementer mellom kolonnene for å endre verdier. Endringer lagres automatisk.
+        {view === "ing-pantry"
+          ? "Bruk bryterne for å markere ingredienser som basisvarer. Endringer lagres automatisk."
+          : "Dra elementer mellom kolonnene for å endre verdier. Endringer lagres automatisk."}
       </p>
       <div className="mt-2">
         {view === "ing-unit" && <IngredientsUnitBoard />}
         {view === "ing-cat" && <IngredientsCategoryBoard />}
+        {view === "ing-pantry" && <IngredientsPantryToggle />}
         {view === "ing-dup" && <IngredientsDuplicateBoard />}
         {view === "extra-cat" && <ExtraItemsCategoryBoard />}
         {view === "extra-dup" && <ExtraItemsDuplicateBoard />}

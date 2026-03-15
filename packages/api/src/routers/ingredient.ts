@@ -218,6 +218,32 @@ export const ingredientRouter = router({
             return { count };
         }),
 
+    bulkUpdatePantryItems: publicProcedure
+        .input(z.object({
+            updates: z.array(z.object({
+                id: z.string().uuid(),
+                isPantryItem: z.boolean(),
+            })),
+        }))
+        .output(z.object({ count: z.number().int() }))
+        .mutation(async ({ input }) => {
+            let count = 0;
+
+            for (const update of input.updates) {
+                try {
+                    await prisma.ingredient.update({
+                        where: { id: update.id },
+                        data: { isPantryItem: update.isPantryItem },
+                    });
+                    count++;
+                } catch (e: unknown) {
+                    // Skip ingredients that don't exist or other errors
+                }
+            }
+
+            return { count };
+        }),
+
     create: publicProcedure
         .input(IngredientCreate)
         .output(z.object({ id: z.string().uuid(), name: z.string(), unit: z.string().optional(), isPantryItem: z.boolean(), category: IngredientCategory }))
