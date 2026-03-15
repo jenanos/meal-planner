@@ -1,4 +1,4 @@
-import { prisma } from "@repo/database";
+import { prisma, Prisma } from "@repo/database";
 import { router, publicProcedure } from "../trpc.js";
 import { IngredientById, IngredientCreate, IngredientCategory, IngredientListQuery, IngredientUpdate } from "../schemas.js";
 import { TRPCError } from "@trpc/server";
@@ -297,5 +297,74 @@ export const ingredientRouter = router({
                     healthScore: ri.recipe.healthScore,
                 })),
             };
+        }),
+
+    merge: publicProcedure
+        .input(z.object({
+            keepId: z.string().uuid(),
+            mergeIds: z.array(z.string().uuid()).min(1),
+        }))
+        .output(z.object({ mergedCount: z.number().int(), updatedRecipes: z.number().int() }))
+        .mutation(async ({ input }) => {
+            const { keepId, mergeIds } = input;
+            const uniqueMergeIds = [...new Set(mergeIds.filter((id) => id !== keepId))];
+            if (uniqueMergeIds.length === 0) {
+                throw new TRPCError({ code: "BAD_REQUEST", message: "No ingredients to merge" });
+            }
+
+            // Verify the keep ingredient exists
+            const keep = await prisma.ingredient.findUnique({ where: { id: keepId } });
+            if (!keep) {
+                throw new TRPCError({ code: "NOT_FOUND", message: "Keep ingredient not found" });
+            }
+
+            let updatedRecipes = 0;
+
+            await prisma.$transaction(async (tx) => {
+                // Find all recipe-ingredient links for the ingredients being merged
+                const mergeLinks = await tx.recipeIngredient.findMany({
+                    where: { ingredientId: { in: uniqueMergeIds } },
+                });
+
+                // Find existing links for the keep ingredient to avoid duplicates
+                const keepLinks = await tx.recipeIngredient.findMany({
+                    where: { ingredientId: keepId },
+                });
+                const keepRecipeIds = new Set(keepLinks.map((l) => l.recipeId));
+
+                for (const link of mergeLinks) {
+                    if (keepRecipeIds.has(link.recipeId)) {
+                        // Recipe already has the keep ingredient — delete the duplicate link
+                        await tx.recipeIngredient.delete({
+                            where: {
+                                recipeId_ingredientId: {
+                                    recipeId: link.recipeId,
+                                    ingredientId: link.ingredientId,
+                                },
+                            },
+                        });
+                    } else {
+                        // Re-point the link to the keep ingredient
+                        await tx.recipeIngredient.update({
+                            where: {
+                                recipeId_ingredientId: {
+                                    recipeId: link.recipeId,
+                                    ingredientId: link.ingredientId,
+                                },
+                            },
+                            data: { ingredientId: keepId },
+                        });
+                        keepRecipeIds.add(link.recipeId);
+                        updatedRecipes++;
+                    }
+                }
+
+                // Delete the merged ingredients
+                await tx.ingredient.deleteMany({
+                    where: { id: { in: uniqueMergeIds } },
+                });
+            });
+
+            return { mergedCount: uniqueMergeIds.length, updatedRecipes };
         }),
 });
