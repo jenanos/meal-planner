@@ -30,16 +30,15 @@ import {
   DialogTrigger,
   Input,
 } from "@repo/ui";
-import { GripVertical, X } from "lucide-react";
+import { GripVertical, LogOut, X } from "lucide-react";
 import { trpc } from "../../lib/trpcClient";
-import { getOrCreateDeviceId } from "../../lib/device-id";
+import { signOut } from "../../lib/auth-client";
+import { useAuth } from "../components/AuthGuard";
 import {
   DEFAULT_VISIBLE_DAY_INDICES,
   STANDARD_STORE_CATEGORY_ORDER,
   ingredientCategoryLabel,
   normalizeCategoryOrder,
-  shoppingRoleLabel,
-  type ShoppingUserRole,
   type ShoppingViewMode,
 } from "../../lib/shopping";
 import { ALL_DAY_NAMES } from "../planner/utils";
@@ -51,8 +50,7 @@ type ShoppingStore = {
   isDefault: boolean;
 };
 
-type RoleSettings = {
-  role: ShoppingUserRole;
+type UserSettings = {
   defaultViewMode: ShoppingViewMode;
   startDay: number;
   includeNextWeek: boolean;
@@ -91,29 +89,14 @@ function SortableCategoryItem({ category }: { category: string }) {
 }
 
 export default function SettingsPage() {
-  const [deviceId, setDeviceId] = useState<string | null>(null);
-  const [selectedRole, setSelectedRole] = useState<ShoppingUserRole>("JENS");
-  const [roleSettingsByRole, setRoleSettingsByRole] = useState<
-    Record<ShoppingUserRole, RoleSettings>
-  >({
-    INGVILD: {
-      role: "INGVILD",
-      defaultViewMode: "by-day",
-      startDay: 0,
-      includeNextWeek: false,
-      showPantryWithIngredients: false,
-      visibleDayIndices: [...DEFAULT_VISIBLE_DAY_INDICES],
-      defaultStoreId: null,
-    },
-    JENS: {
-      role: "JENS",
-      defaultViewMode: "by-day",
-      startDay: 0,
-      includeNextWeek: false,
-      showPantryWithIngredients: false,
-      visibleDayIndices: [...DEFAULT_VISIBLE_DAY_INDICES],
-      defaultStoreId: null,
-    },
+  const { user } = useAuth();
+  const [settings, setSettings] = useState<UserSettings>({
+    defaultViewMode: "by-day",
+    startDay: 0,
+    includeNextWeek: false,
+    showPantryWithIngredients: false,
+    visibleDayIndices: [...DEFAULT_VISIBLE_DAY_INDICES],
+    defaultStoreId: null,
   });
   const [stores, setStores] = useState<ShoppingStore[]>([]);
   const [isStoreModalOpen, setIsStoreModalOpen] = useState(false);
@@ -128,26 +111,20 @@ export default function SettingsPage() {
     }),
   );
 
-  useEffect(() => {
-    setDeviceId(getOrCreateDeviceId());
-  }, []);
-
   const settingsQuery = trpc.planner.shoppingSettings.useQuery(
-    { deviceId: deviceId ?? "" } as any,
-    { enabled: Boolean(deviceId), staleTime: 30_000 },
+    undefined,
+    { staleTime: 30_000 },
   );
-  const setRoleMutation = trpc.planner.setShoppingDeviceRole.useMutation();
-  const updateRoleSettingsMutation =
-    trpc.planner.updateShoppingRoleSettings.useMutation();
+  const updateSettingsMutation =
+    trpc.planner.updateShoppingSettings.useMutation();
   const createStoreMutation = trpc.planner.createShoppingStore.useMutation();
 
   useEffect(() => {
     const data = settingsQuery.data as
       | {
-        activeRole: ShoppingUserRole;
-        stores: ShoppingStore[];
-        roles: RoleSettings[];
-      }
+          settings: UserSettings;
+          stores: ShoppingStore[];
+        }
       | undefined;
     if (!data) return;
 
@@ -156,19 +133,13 @@ export default function SettingsPage() {
       categoryOrder: normalizeCategoryOrder(store.categoryOrder),
     }));
     setStores(nextStores);
-    setSelectedRole(data.activeRole ?? "JENS");
 
-    setRoleSettingsByRole((prev) => {
-      const next = { ...prev };
-      for (const roleSettings of data.roles ?? []) {
-        next[roleSettings.role] = {
-          ...roleSettings,
-          visibleDayIndices: Array.from(
-            new Set(roleSettings.visibleDayIndices),
-          ).sort((a, b) => a - b),
-        };
-      }
-      return next;
+    const s = data.settings;
+    setSettings({
+      ...s,
+      visibleDayIndices: Array.from(
+        new Set(s.visibleDayIndices),
+      ).sort((a, b) => a - b),
     });
   }, [settingsQuery.data]);
 
@@ -179,54 +150,38 @@ export default function SettingsPage() {
     }
   }, [isStoreModalOpen]);
 
-  const selectedRoleSettings = roleSettingsByRole[selectedRole];
   const defaultStoreId =
-    selectedRoleSettings.defaultStoreId ??
+    settings.defaultStoreId ??
     stores.find((store) => store.isDefault)?.id ??
     stores[0]?.id ??
     null;
 
-  async function handleSelectRole(role: ShoppingUserRole) {
-    if (!deviceId) return;
-    setSelectedRole(role);
-    await setRoleMutation.mutateAsync({ deviceId, role } as any);
-    settingsQuery.refetch().catch(() => undefined);
-  }
-
-  function patchSelectedRoleSettings(patch: Partial<RoleSettings>) {
-    setRoleSettingsByRole((prev) => ({
-      ...prev,
-      [selectedRole]: {
-        ...prev[selectedRole],
-        ...patch,
-      },
-    }));
+  function patchSettings(patch: Partial<UserSettings>) {
+    setSettings((prev) => ({ ...prev, ...patch }));
   }
 
   function toggleVisibleDay(dayIndex: number) {
-    const set = new Set(selectedRoleSettings.visibleDayIndices);
+    const set = new Set(settings.visibleDayIndices);
     if (set.has(dayIndex)) {
       if (set.size <= 1) return;
       set.delete(dayIndex);
     } else {
       set.add(dayIndex);
     }
-    patchSelectedRoleSettings({
+    patchSettings({
       visibleDayIndices: Array.from(set).sort((a, b) => a - b),
     });
   }
 
-  async function saveRoleSettings() {
-    const payload = roleSettingsByRole[selectedRole];
-    await updateRoleSettingsMutation.mutateAsync({
-      role: selectedRole,
-      defaultViewMode: payload.defaultViewMode,
-      startDay: payload.startDay,
-      includeNextWeek: payload.includeNextWeek,
-      showPantryWithIngredients: payload.showPantryWithIngredients,
-      visibleDayIndices: payload.visibleDayIndices,
+  async function saveSettings() {
+    await updateSettingsMutation.mutateAsync({
+      defaultViewMode: settings.defaultViewMode,
+      startDay: settings.startDay,
+      includeNextWeek: settings.includeNextWeek,
+      showPantryWithIngredients: settings.showPantryWithIngredients,
+      visibleDayIndices: settings.visibleDayIndices,
       defaultStoreId:
-        payload.defaultStoreId ??
+        settings.defaultStoreId ??
         stores.find((store) => store.isDefault)?.id ??
         null,
     } as any);
@@ -253,10 +208,14 @@ export default function SettingsPage() {
     settingsQuery.refetch().catch(() => undefined);
   }
 
+  async function handleSignOut() {
+    await signOut();
+    window.location.href = "/login";
+  }
+
   const isBusy =
     settingsQuery.isLoading ||
-    setRoleMutation.isPending ||
-    updateRoleSettingsMutation.isPending;
+    updateSettingsMutation.isPending;
 
   const currentStore = useMemo(
     () => stores.find((store) => store.id === defaultStoreId) ?? null,
@@ -267,38 +226,44 @@ export default function SettingsPage() {
     <div className="mx-auto max-w-3xl space-y-6">
       <h1 className="hidden text-xl font-bold text-center md:block">Innstillinger</h1>
 
-      {!deviceId ? (
-        <p className="text-sm text-muted-foreground">Klargjør enhets-ID…</p>
-      ) : null}
-
+      {/* User profile section */}
       <section className="rounded-2xl border border-sky-200/60 bg-sky-50/40 p-4 space-y-4">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold">Hvem bruker denne enheten?</h2>
-          {deviceId ? (
-            <span className="text-[11px] text-muted-foreground">
-              Enhet: {deviceId.slice(0, 8)}
-            </span>
-          ) : null}
+          <h2 className="text-sm font-semibold">Bruker</h2>
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          {(["INGVILD", "JENS"] as const).map((role) => (
-            <Button
-              key={role}
-              type="button"
-              variant={selectedRole === role ? "default" : "outline"}
-              onClick={() => handleSelectRole(role)}
-              disabled={!deviceId || setRoleMutation.isPending}
-            >
-              {shoppingRoleLabel(role)}
-            </Button>
-          ))}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            {user?.image ? (
+              <img
+                src={user.image}
+                alt=""
+                className="h-10 w-10 rounded-full"
+              />
+            ) : (
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-sky-200 text-sky-700 font-bold">
+                {(user?.name ?? "?").charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div>
+              <p className="text-sm font-medium">{user?.name ?? "Ukjent"}</p>
+              <p className="text-xs text-muted-foreground">{user?.email}</p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSignOut}
+          >
+            <LogOut className="mr-1.5 h-3.5 w-3.5" />
+            Logg ut
+          </Button>
         </div>
       </section>
 
       <section className="rounded-2xl border border-orange-200/60 bg-orange-50/40 p-4 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold">
-            Default handleliste for {shoppingRoleLabel(selectedRole)}
+            Handleliste-innstillinger
           </h2>
           {currentStore ? (
             <Badge variant="secondary" className="text-[11px]">
@@ -321,13 +286,13 @@ export default function SettingsPage() {
                 key={option.id}
                 type="button"
                 variant={
-                  selectedRoleSettings.defaultViewMode === option.id
+                  settings.defaultViewMode === option.id
                     ? "default"
                     : "outline"
                 }
                 size="sm"
                 onClick={() =>
-                  patchSelectedRoleSettings({
+                  patchSettings({
                     defaultViewMode: option.id as ShoppingViewMode,
                   })
                 }
@@ -348,9 +313,9 @@ export default function SettingsPage() {
                 key={name}
                 type="button"
                 size="sm"
-                variant={selectedRoleSettings.startDay === index ? "default" : "outline"}
+                variant={settings.startDay === index ? "default" : "outline"}
                 className="h-7 px-0 text-[10px] w-full"
-                onClick={() => patchSelectedRoleSettings({ startDay: index })}
+                onClick={() => patchSettings({ startDay: index })}
               >
                 {name.slice(0, 3)}
               </Button>
@@ -366,18 +331,18 @@ export default function SettingsPage() {
             <label className="flex items-center justify-between border rounded-lg p-2.5 cursor-pointer hover:bg-accent">
               <span className="text-sm">Inkluder neste uke</span>
               <Checkbox
-                checked={selectedRoleSettings.includeNextWeek}
+                checked={settings.includeNextWeek}
                 onCheckedChange={(checked) =>
-                  patchSelectedRoleSettings({ includeNextWeek: Boolean(checked) })
+                  patchSettings({ includeNextWeek: Boolean(checked) })
                 }
               />
             </label>
             <label className="flex items-center justify-between border rounded-lg p-2.5 cursor-pointer hover:bg-accent">
               <span className="text-sm">Vis basisvarer med ingredienser</span>
               <Checkbox
-                checked={selectedRoleSettings.showPantryWithIngredients}
+                checked={settings.showPantryWithIngredients}
                 onCheckedChange={(checked) =>
-                  patchSelectedRoleSettings({
+                  patchSettings({
                     showPantryWithIngredients: Boolean(checked),
                   })
                 }
@@ -392,7 +357,7 @@ export default function SettingsPage() {
           </h3>
           <div className="grid grid-cols-7 gap-1">
             {ALL_DAY_NAMES.map((name, index) => {
-              const selected = selectedRoleSettings.visibleDayIndices.includes(index);
+              const selected = settings.visibleDayIndices.includes(index);
               return (
                 <Button
                   key={name}
@@ -416,7 +381,7 @@ export default function SettingsPage() {
           <select
             value={defaultStoreId ?? stores[0]?.id}
             onChange={(event) =>
-              patchSelectedRoleSettings({ defaultStoreId: event.target.value })
+              patchSettings({ defaultStoreId: event.target.value })
             }
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           >
@@ -429,8 +394,8 @@ export default function SettingsPage() {
         </div>
 
         <div className="flex justify-end">
-          <Button type="button" onClick={saveRoleSettings} disabled={isBusy}>
-            Lagre default-innstillinger
+          <Button type="button" onClick={saveSettings} disabled={isBusy}>
+            Lagre innstillinger
           </Button>
         </div>
       </section>

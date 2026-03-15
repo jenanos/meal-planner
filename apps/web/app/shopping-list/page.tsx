@@ -34,7 +34,6 @@ import { WeekSelector } from "../planner/components/WeekSelector";
 import { deriveWeekLabel, startOfWeekISO } from "../../lib/week";
 import type { TimelineWeekEntry } from "../planner/types";
 import type { MockWeekTimelineResult } from "../../lib/mock/store";
-import { getOrCreateDeviceId } from "../../lib/device-id";
 import {
   DEFAULT_VISIBLE_DAY_INDICES,
   ingredientCategoryLabel,
@@ -54,8 +53,7 @@ type ShoppingStore = {
   isDefault: boolean;
 };
 
-type ShoppingRoleSettings = {
-  role: "INGVILD" | "JENS";
+type ShoppingUserSettings = {
   defaultViewMode: ShoppingViewMode;
   startDay: number;
   includeNextWeek: boolean;
@@ -64,8 +62,7 @@ type ShoppingRoleSettings = {
   defaultStoreId: string | null;
 };
 
-const DEFAULT_ROLE_SETTINGS: ShoppingRoleSettings = {
-  role: "JENS",
+const DEFAULT_USER_SETTINGS: ShoppingUserSettings = {
   defaultViewMode: "by-day",
   startDay: 0,
   includeNextWeek: false,
@@ -96,7 +93,6 @@ function toDayOffset(
 export default function ShoppingListPage() {
   const currentWeekStart = useMemo(() => startOfWeekISO(), []);
   const [activeWeekStart, setActiveWeekStart] = useState(currentWeekStart);
-  const [deviceId, setDeviceId] = useState<string | null>(null);
   const [includeNextWeek, setIncludeNextWeek] = useState(false);
   const [startDay, setStartDay] = useState(0);
   const [isDisplayModalOpen, setIsDisplayModalOpen] = useState(false);
@@ -106,8 +102,8 @@ export default function ShoppingListPage() {
     useState(false);
   const [stores, setStores] = useState<ShoppingStore[]>([]);
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
-  const [activeRoleSettings, setActiveRoleSettings] =
-    useState<ShoppingRoleSettings>(DEFAULT_ROLE_SETTINGS);
+  const [activeSettings, setActiveSettings] =
+    useState<ShoppingUserSettings>(DEFAULT_USER_SETTINGS);
   const [defaultsHydrated, setDefaultsHydrated] = useState(false);
   const [checkedByOccurrence, setCheckedByOccurrence] = useState<
     Record<string, boolean>
@@ -126,14 +122,9 @@ export default function ShoppingListPage() {
 
   const lookaheadWeeks = includeNextWeek ? (startDay > 0 ? 2 : 1) : 0;
 
-  useEffect(() => {
-    setDeviceId(getOrCreateDeviceId());
-  }, []);
-
   const shoppingSettingsQuery = trpc.planner.shoppingSettings.useQuery(
-    { deviceId: deviceId ?? "" } as any,
+    undefined,
     {
-      enabled: Boolean(deviceId),
       staleTime: 60_000,
     },
   );
@@ -141,10 +132,9 @@ export default function ShoppingListPage() {
   useEffect(() => {
     const data = shoppingSettingsQuery.data as
       | {
-        activeRole: "INGVILD" | "JENS";
-        stores: ShoppingStore[];
-        roles: ShoppingRoleSettings[];
-      }
+          settings: ShoppingUserSettings;
+          stores: ShoppingStore[];
+        }
       | undefined;
     if (!data) return;
 
@@ -154,25 +144,22 @@ export default function ShoppingListPage() {
     }));
     setStores(nextStores);
 
-    const activeRole = data.activeRole ?? "JENS";
-    const roleSettings =
-      data.roles?.find((candidate) => candidate.role === activeRole) ??
-      DEFAULT_ROLE_SETTINGS;
-    setActiveRoleSettings(roleSettings);
+    const userSettings = data.settings ?? DEFAULT_USER_SETTINGS;
+    setActiveSettings(userSettings);
 
     const fallbackStoreId =
-      roleSettings.defaultStoreId ??
+      userSettings.defaultStoreId ??
       nextStores.find((store) => store.isDefault)?.id ??
       nextStores[0]?.id ??
       null;
     setSelectedStoreId(fallbackStoreId);
 
     if (!defaultsHydrated) {
-      setViewMode(roleSettings.defaultViewMode ?? "by-day");
-      setStartDay(roleSettings.startDay ?? 0);
-      setIncludeNextWeek(Boolean(roleSettings.includeNextWeek));
+      setViewMode(userSettings.defaultViewMode ?? "by-day");
+      setStartDay(userSettings.startDay ?? 0);
+      setIncludeNextWeek(Boolean(userSettings.includeNextWeek));
       setShowPantryWithIngredients(
-        Boolean(roleSettings.showPantryWithIngredients),
+        Boolean(userSettings.showPantryWithIngredients),
       );
       setVisibleDayKeys([]);
       setDefaultsHydrated(true);
@@ -387,7 +374,7 @@ export default function ShoppingListPage() {
       if (prev.length === 0) {
         if (defaultsHydrated) {
           const preferred = new Set(
-            (activeRoleSettings.visibleDayIndices ?? []).map((day) =>
+            (activeSettings.visibleDayIndices ?? []).map((day) =>
               Number(day),
             ),
           );
@@ -419,7 +406,7 @@ export default function ShoppingListPage() {
       return filtered;
     });
     previousOptionKeysRef.current = optionKeys;
-  }, [occurrenceOptions, defaultsHydrated, activeRoleSettings.visibleDayIndices]);
+  }, [occurrenceOptions, defaultsHydrated, activeSettings.visibleDayIndices]);
 
   const visibleDayKeySet = useMemo(
     () => new Set(visibleDayKeys),
