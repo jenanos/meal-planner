@@ -1,4 +1,4 @@
-import { prisma, Prisma } from "@repo/database";
+import { prisma } from "@repo/database";
 import { router, publicProcedure } from "../trpc.js";
 import { IngredientById, IngredientCreate, IngredientCategory, IngredientListQuery, IngredientUpdate } from "../schemas.js";
 import { TRPCError } from "@trpc/server";

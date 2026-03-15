@@ -1711,17 +1711,17 @@ export const plannerRouter = router({
         const keepLinks = await tx.extraShoppingItem.findMany({
           where: { catalogItemId: keepId },
         });
-        const keepWeeks = new Set(keepLinks.map((l) => l.weekStart.toISOString()));
+        const keepWeeks = new Set(keepLinks.map((l) => l.weekStart.getTime()));
 
         for (const link of mergeLinks) {
-          if (keepWeeks.has(link.weekStart.toISOString())) {
+          if (keepWeeks.has(link.weekStart.getTime())) {
             await tx.extraShoppingItem.delete({ where: { id: link.id } });
           } else {
             await tx.extraShoppingItem.update({
               where: { id: link.id },
               data: { catalogItemId: keepId },
             });
-            keepWeeks.add(link.weekStart.toISOString());
+            keepWeeks.add(link.weekStart.getTime());
             updatedItems++;
           }
         }
