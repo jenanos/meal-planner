@@ -76,9 +76,11 @@ export function IngredientsUnitBoard() {
 
   // Reconcile column order when data-derived keys change
   useEffect(() => {
+    const unitKeySet = new Set(unitKeys);
+
     setColumnOrder((prev) => {
       const newKeys = unitKeys.filter((k) => !prev.includes(k));
-      const validPrev = prev.filter((k) => unitKeys.includes(k));
+      const validPrev = prev.filter((k) => unitKeySet.has(k));
       const next = [...validPrev, ...newKeys];
       if (
         next.length === prev.length &&
@@ -99,7 +101,7 @@ export function IngredientsUnitBoard() {
       }
       // Remove keys that no longer exist
       Array.from(next).forEach((k) => {
-        if (!unitKeys.includes(k)) {
+        if (!unitKeySet.has(k)) {
           next.delete(k);
           changed = true;
         }
