@@ -18,9 +18,6 @@ export const IngredientCategory = z.enum([
 ]);
 export type IngredientCategory = z.infer<typeof IngredientCategory>;
 
-export const ShoppingUserRole = z.enum(["INGVILD", "JENS"]);
-export type ShoppingUserRole = z.infer<typeof ShoppingUserRole>;
-
 export const ShoppingViewMode = z.enum([
   "by-day",
   "alphabetical",
@@ -166,21 +163,9 @@ export const ExtraShoppingRemove = z.object({
 });
 export type ExtraShoppingRemove = z.infer<typeof ExtraShoppingRemove>;
 
-export const ShoppingSettingsGetInput = z.object({
-  deviceId: z.string().trim().min(8).max(128),
-});
-export type ShoppingSettingsGetInput = z.infer<typeof ShoppingSettingsGetInput>;
+// ─── User preference schemas (replaces device/role-based schemas) ───
 
-export const ShoppingDeviceRoleUpsert = z.object({
-  deviceId: z.string().trim().min(8).max(128),
-  role: ShoppingUserRole,
-});
-export type ShoppingDeviceRoleUpsert = z.infer<
-  typeof ShoppingDeviceRoleUpsert
->;
-
-export const ShoppingRoleSettingsUpdate = z.object({
-  role: ShoppingUserRole,
+export const UserPreferenceUpdate = z.object({
   defaultViewMode: ShoppingViewMode,
   startDay: z.number().int().min(0).max(6),
   includeNextWeek: z.boolean(),
@@ -191,9 +176,7 @@ export const ShoppingRoleSettingsUpdate = z.object({
     .max(7),
   defaultStoreId: z.string().uuid().nullable().optional(),
 });
-export type ShoppingRoleSettingsUpdate = z.infer<
-  typeof ShoppingRoleSettingsUpdate
->;
+export type UserPreferenceUpdate = z.infer<typeof UserPreferenceUpdate>;
 
 export const ShoppingStoreCreate = z.object({
   name: z.string().trim().min(1).max(80),
