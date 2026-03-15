@@ -136,7 +136,6 @@ const INGREDIENT_CATEGORIES = [
 ] as const;
 
 type IngredientCategory = (typeof INGREDIENT_CATEGORIES)[number];
-type ShoppingRole = "INGVILD" | "JENS";
 type ShoppingViewMode = "by-day" | "alphabetical" | "by-category";
 
 const STANDARD_STORE_NAME = "Standard butikk";
@@ -256,8 +255,7 @@ type ShoppingStoreRecord = {
   isDefault: boolean;
 };
 
-type ShoppingRoleSettingsRecord = {
-  role: ShoppingRole;
+type ShoppingUserSettingsRecord = {
   defaultViewMode: ShoppingViewMode;
   startDay: number;
   includeNextWeek: boolean;
@@ -277,8 +275,7 @@ type MockState = {
   shoppingFirstChecked: Map<string, number>;
   extrasByWeek: Map<string, Map<string, ExtraEntryRecord>>;
   shoppingStores: Map<string, ShoppingStoreRecord>;
-  shoppingRoleSettings: Map<ShoppingRole, ShoppingRoleSettingsRecord>;
-  deviceRoles: Map<string, ShoppingRole>;
+  userSettings: ShoppingUserSettingsRecord;
 };
 
 function createInitialState(): MockState {
@@ -382,18 +379,14 @@ function createInitialState(): MockState {
     isDefault: true,
   });
 
-  const shoppingRoleSettings = new Map<ShoppingRole, ShoppingRoleSettingsRecord>();
-  (["INGVILD", "JENS"] as const).forEach((role) => {
-    shoppingRoleSettings.set(role, {
-      role,
-      defaultViewMode: "by-day",
-      startDay: 0,
-      includeNextWeek: false,
-      showPantryWithIngredients: false,
-      visibleDayIndices: [...DEFAULT_VISIBLE_DAY_INDICES],
-      defaultStoreId: standardStoreId,
-    });
-  });
+  const userSettings: ShoppingUserSettingsRecord = {
+    defaultViewMode: "by-day",
+    startDay: 0,
+    includeNextWeek: false,
+    showPantryWithIngredients: false,
+    visibleDayIndices: [...DEFAULT_VISIBLE_DAY_INDICES],
+    defaultStoreId: standardStoreId,
+  };
 
   return {
     ingredientsById,
@@ -406,8 +399,7 @@ function createInitialState(): MockState {
     shoppingFirstChecked: new Map<string, number>(),
     extrasByWeek: new Map<string, Map<string, ExtraEntryRecord>>(),
     shoppingStores,
-    shoppingRoleSettings,
-    deviceRoles: new Map<string, ShoppingRole>(),
+    userSettings,
   };
 }
 
@@ -1193,10 +1185,6 @@ async function handleExtraSuggest(input: any) {
     .map((item) => ({ id: item.id, name: item.name }));
 }
 
-function resolveRole(value: unknown): ShoppingRole {
-  return value === "INGVILD" ? "INGVILD" : "JENS";
-}
-
 function serializeShoppingStore(store: ShoppingStoreRecord) {
   return {
     id: store.id,
@@ -1206,9 +1194,8 @@ function serializeShoppingStore(store: ShoppingStoreRecord) {
   };
 }
 
-function serializeShoppingRoleSettings(settings: ShoppingRoleSettingsRecord, fallbackStoreId: string | null) {
+function serializeUserSettings(settings: ShoppingUserSettingsRecord, fallbackStoreId: string | null) {
   return {
-    role: settings.role,
     defaultViewMode: settings.defaultViewMode,
     startDay: Math.max(MIN_DAY_INDEX, Math.min(MAX_DAY_INDEX, settings.startDay)),
     includeNextWeek: settings.includeNextWeek,
@@ -1218,16 +1205,7 @@ function serializeShoppingRoleSettings(settings: ShoppingRoleSettingsRecord, fal
   };
 }
 
-async function handleShoppingSettings(input: any) {
-  const deviceId = String(input?.deviceId ?? "").trim();
-  if (!deviceId) throw new Error("deviceId mangler");
-
-  let activeRole = state.deviceRoles.get(deviceId);
-  if (!activeRole) {
-    activeRole = "JENS";
-    state.deviceRoles.set(deviceId, activeRole);
-  }
-
+async function handleShoppingSettings() {
   const stores = Array.from(state.shoppingStores.values())
     .sort((a, b) => {
       if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1;
@@ -1237,49 +1215,21 @@ async function handleShoppingSettings(input: any) {
 
   const fallbackStoreId = stores.find((store) => store.isDefault)?.id ?? stores[0]?.id ?? null;
 
-  const roles = (["INGVILD", "JENS"] as const).map((role) => {
-    const settings = state.shoppingRoleSettings.get(role);
-    if (!settings) {
-      return {
-        role,
-        defaultViewMode: "by-day" as const,
-        startDay: 0,
-        includeNextWeek: false,
-        showPantryWithIngredients: false,
-        visibleDayIndices: [...DEFAULT_VISIBLE_DAY_INDICES],
-        defaultStoreId: fallbackStoreId,
-      };
-    }
-    return serializeShoppingRoleSettings(settings, fallbackStoreId);
-  });
-
   return {
-    deviceId,
-    activeRole,
-    roles,
+    settings: serializeUserSettings(state.userSettings, fallbackStoreId),
     stores,
   };
 }
 
-async function handleSetShoppingDeviceRole(input: any) {
-  const deviceId = String(input?.deviceId ?? "").trim();
-  if (!deviceId) throw new Error("deviceId mangler");
-  const role = resolveRole(input?.role);
-  state.deviceRoles.set(deviceId, role);
-  return { deviceId, role };
-}
-
-async function handleUpdateShoppingRoleSettings(input: any) {
-  const role = resolveRole(input?.role);
+async function handleUpdateShoppingSettings(input: any) {
   const defaultStoreIdInput = typeof input?.defaultStoreId === "string" ? input.defaultStoreId : null;
   const defaultStoreId =
     defaultStoreIdInput && state.shoppingStores.has(defaultStoreIdInput)
       ? defaultStoreIdInput
       : Array.from(state.shoppingStores.values()).find((store) => store.isDefault)?.id ?? null;
 
-  const existing = state.shoppingRoleSettings.get(role);
-  const next: ShoppingRoleSettingsRecord = {
-    role,
+  const existing = state.userSettings;
+  const next: ShoppingUserSettingsRecord = {
     defaultViewMode:
       input?.defaultViewMode === "alphabetical" || input?.defaultViewMode === "by-category"
         ? input.defaultViewMode
@@ -1299,8 +1249,8 @@ async function handleUpdateShoppingRoleSettings(input: any) {
     visibleDayIndices: sanitizeDayIndices(input?.visibleDayIndices),
     defaultStoreId,
   };
-  state.shoppingRoleSettings.set(role, next);
-  return serializeShoppingRoleSettings(next, defaultStoreId);
+  state.userSettings = next;
+  return serializeUserSettings(next, defaultStoreId);
 }
 
 async function handleCreateShoppingStore(input: any) {
@@ -1349,7 +1299,7 @@ export async function handleMockQuery(path: string, input: unknown) {
     case "planner.shoppingList":
       return handleShoppingList(input);
     case "planner.shoppingSettings":
-      return handleShoppingSettings(input);
+      return handleShoppingSettings();
     case "planner.extraSuggest":
       return handleExtraSuggest(input);
     default:
@@ -1371,10 +1321,8 @@ export async function handleMockMutation(path: string, input: unknown) {
       return handleSaveWeekPlan(input);
     case "planner.updateShoppingItem":
       return handleUpdateShoppingItem(input);
-    case "planner.setShoppingDeviceRole":
-      return handleSetShoppingDeviceRole(input);
-    case "planner.updateShoppingRoleSettings":
-      return handleUpdateShoppingRoleSettings(input);
+    case "planner.updateShoppingSettings":
+      return handleUpdateShoppingSettings(input);
     case "planner.createShoppingStore":
       return handleCreateShoppingStore(input);
     case "planner.extraAdd":

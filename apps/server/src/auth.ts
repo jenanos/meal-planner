@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
+import { magicLink } from "better-auth/plugins/magic-link";
 import { prisma } from "@repo/database";
 
 const STANDARD_STORE_CATEGORY_ORDER = [
@@ -56,6 +57,14 @@ export const auth = betterAuth({
   trustedOrigins: (process.env.AUTH_TRUSTED_ORIGINS ?? "http://localhost:3000")
     .split(",")
     .map((s) => s.trim()),
+  plugins: [
+    magicLink({
+      sendMagicLink: async ({ email, url }) => {
+        // TODO: Replace with real email service (e.g. Resend, Postmark)
+        console.log(`[Auth] Magic link for ${email}: ${url}`);
+      },
+    }),
+  ],
   databaseHooks: {
     user: {
       create: {
