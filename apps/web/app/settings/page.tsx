@@ -210,7 +210,9 @@ export default function SettingsPage() {
 
   async function handleSignOut() {
     await signOut();
-    window.location.href = "/login";
+    if (typeof globalThis !== "undefined" && "location" in globalThis) {
+      (globalThis as any).location.href = "/login";
+    }
   }
 
   const isBusy =
@@ -234,7 +236,7 @@ export default function SettingsPage() {
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             {user?.image ? (
-              <img
+              <img // eslint-disable-line @next/next/no-img-element
                 src={user.image}
                 alt=""
                 className="h-10 w-10 rounded-full"
