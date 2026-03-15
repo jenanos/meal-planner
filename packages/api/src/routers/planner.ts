@@ -475,7 +475,14 @@ function serializeShoppingStore(store: {
 }
 
 function serializeUserPreference(
-  preference: any,
+  preference: {
+    defaultViewMode: string | null;
+    startDay: number;
+    includeNextWeek: boolean;
+    showPantryWithIngredients: boolean;
+    visibleDayIndices: number[];
+    defaultStoreId: string | null;
+  },
   fallbackStoreId: string | null,
 ) {
   return {
