@@ -61,7 +61,9 @@ export const auth = betterAuth({
     magicLink({
       sendMagicLink: async ({ email, url }) => {
         // TODO: Replace with real email service (e.g. Resend, Postmark)
+      if (process.env.NODE_ENV !== "production") {
         console.log(`[Auth] Magic link for ${email}: ${url}`);
+      }
       },
     }),
   ],
