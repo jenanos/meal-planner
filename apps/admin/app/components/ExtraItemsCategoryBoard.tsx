@@ -1,19 +1,26 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   DndContext,
   DragEndEvent,
+  DragStartEvent,
   MouseSensor,
   TouchSensor,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  horizontalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { trpc } from "../../lib/trpcClient";
-import { BoardColumn } from "./BoardColumn";
+import { SortableBoardColumn } from "./SortableBoardColumn";
 import { BoardCard } from "./BoardCard";
 import { DragOverlayCard } from "./DragOverlayCard";
 import { ingredientCategoryLabel } from "./labels";
+import { ColumnFilter } from "./ColumnFilter";
 
 const INGREDIENT_CATEGORIES = [
   "FRUKT_OG_GRONT",
@@ -67,6 +74,13 @@ export function ExtraItemsCategoryBoard() {
   });
 
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [isDraggingItem, setIsDraggingItem] = useState(false);
+  const [columnOrder, setColumnOrder] = useState<CategoryColumn[]>([
+    ...CATEGORY_COLUMNS,
+  ]);
+  const [visibleColumns, setVisibleColumns] = useState<Set<CategoryColumn>>(
+    () => new Set(CATEGORY_COLUMNS),
+  );
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
@@ -93,62 +107,126 @@ export function ExtraItemsCategoryBoard() {
     ? extraItems.find((item) => item.id === activeId)
     : null;
 
-  function handleDragEnd(event: DragEndEvent) {
-    setActiveId(null);
-    const { active, over } = event;
-    if (!over) return;
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    const id = String(event.active.id);
+    if (id.startsWith("col:")) {
+      setIsDraggingItem(false);
+      setActiveId(null);
+    } else {
+      setIsDraggingItem(true);
+      setActiveId(id);
+    }
+  }, []);
 
-    const extraItemId = active.id as string;
-    const targetColumn = over.id as CategoryColumn;
-    const item = extraItems.find((candidate) => candidate.id === extraItemId);
-    if (!item) return;
-    if (toColumn(item.category) === targetColumn) return;
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      setActiveId(null);
+      setIsDraggingItem(false);
+      const { active, over } = event;
+      if (!over) return;
 
-    const nextCategory =
-      targetColumn === "UKATEGORISERT" ? null : targetColumn;
+      const activeStr = String(active.id);
+      const overStr = String(over.id);
 
-    bulkUpdate.mutate({
-      updates: [{ id: extraItemId, category: nextCategory }],
+      if (activeStr.startsWith("col:")) {
+        if (overStr.startsWith("col:")) {
+          const fromCol = activeStr.slice(4);
+          const toCol = overStr.slice(4);
+          if (fromCol !== toCol) {
+            setColumnOrder((prev) => {
+              const oldIndex = prev.indexOf(fromCol as CategoryColumn);
+              const newIndex = prev.indexOf(toCol as CategoryColumn);
+              return arrayMove(prev, oldIndex, newIndex);
+            });
+          }
+        }
+        return;
+      }
+
+      const targetColumn = (
+        overStr.startsWith("col:") ? overStr.slice(4) : overStr
+      ) as CategoryColumn;
+      const extraItemId = activeStr;
+      const item = extraItems.find((candidate) => candidate.id === extraItemId);
+      if (!item) return;
+      if (toColumn(item.category) === targetColumn) return;
+
+      const nextCategory =
+        targetColumn === "UKATEGORISERT" ? null : targetColumn;
+
+      bulkUpdate.mutate({
+        updates: [{ id: extraItemId, category: nextCategory }],
+      });
+    },
+    [extraItems, bulkUpdate],
+  );
+
+  const toggleColumn = useCallback((col: CategoryColumn) => {
+    setVisibleColumns((prev) => {
+      const next = new Set(prev);
+      if (next.has(col)) {
+        if (next.size > 1) next.delete(col);
+      } else {
+        next.add(col);
+      }
+      return next;
     });
-  }
+  }, []);
 
   if (isLoading) {
     return <p className="p-4 text-muted-foreground">Laster egne elementer…</p>;
   }
 
+  const visibleOrder = columnOrder.filter((col) => visibleColumns.has(col));
+  const sortableIds = visibleOrder.map((col) => `col:${col}`);
+
   return (
-    <DndContext
-      sensors={sensors}
-      onDragStart={({ active }) => setActiveId(active.id as string)}
-      onDragEnd={handleDragEnd}
-    >
-      <div className="grid grid-cols-1 gap-3 pb-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-        {CATEGORY_COLUMNS.map((column) => {
-          const items = columns.get(column) ?? [];
-          return (
-            <BoardColumn
-              key={column}
-              id={column}
-              title={columnLabel(column)}
-              count={items.length}
-            >
-              {items.map((item) => (
-                <BoardCard key={item.id} id={item.id}>
-                  <span className="font-medium">{item.name}</span>
-                  {item.usageCount > 0 ? (
-                    <span className="ml-1 text-xs text-muted-foreground">
-                      ({item.usageCount})
-                    </span>
-                  ) : null}
-                </BoardCard>
-              ))}
-            </BoardColumn>
-          );
-        })}
-      </div>
-      <DragOverlayCard>
-        {activeItem ? <span>{activeItem.name}</span> : null}
-      </DragOverlayCard>
-    </DndContext>
+    <div className="flex flex-col gap-3">
+      <ColumnFilter
+        columns={CATEGORY_COLUMNS}
+        visible={visibleColumns}
+        onToggle={toggleColumn}
+        getLabel={columnLabel}
+      />
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext
+          items={sortableIds}
+          strategy={horizontalListSortingStrategy}
+        >
+          <div className="flex gap-3 overflow-x-auto pb-4">
+            {visibleOrder.map((column) => {
+              const items = columns.get(column) ?? [];
+              return (
+                <SortableBoardColumn
+                  key={column}
+                  id={column}
+                  title={columnLabel(column)}
+                  count={items.length}
+                  isDraggingItem={isDraggingItem}
+                >
+                  {items.map((item) => (
+                    <BoardCard key={item.id} id={item.id}>
+                      <span className="font-medium">{item.name}</span>
+                      {item.usageCount > 0 ? (
+                        <span className="ml-1 text-xs text-muted-foreground">
+                          ({item.usageCount})
+                        </span>
+                      ) : null}
+                    </BoardCard>
+                  ))}
+                </SortableBoardColumn>
+              );
+            })}
+          </div>
+        </SortableContext>
+        <DragOverlayCard>
+          {activeItem ? <span>{activeItem.name}</span> : null}
+        </DragOverlayCard>
+      </DndContext>
+    </div>
   );
 }
