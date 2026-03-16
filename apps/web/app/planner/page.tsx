@@ -48,6 +48,7 @@ import {
 } from "./utils";
 import { DisplayOptions } from "./components/DisplayOptions";
 import { addWeeksISO, addDays } from "../../lib/week";
+import { Button } from "@repo/ui";
 
 // Custom drop animation for smoother feel
 const dropAnimationConfig: DropAnimation = {
@@ -117,6 +118,7 @@ export default function PlannerPage() {
   });
 
   const saveWeek = trpc.planner.saveWeekPlan.useMutation();
+  const generateWeekMutation = trpc.planner.generateWeekPlan.useMutation();
 
   const recipeDialogItems = useMemo<RecipeListItem[]>(() => {
     const map = new Map<string, RecipeDTO>();
@@ -314,6 +316,17 @@ export default function PlannerPage() {
       offset === 1 ? nextWeekStart : activeWeekStart,
     [activeWeekStart, nextWeekStart],
   );
+
+  const handleGenerate = useCallback(async () => {
+    try {
+      const result = await generateWeekMutation.mutateAsync({
+        weekStart: activeWeekStart,
+      });
+      applyWeekData(result);
+    } catch (error) {
+      console.error("Failed to generate week plan:", error);
+    }
+  }, [activeWeekStart, generateWeekMutation, applyWeekData]);
 
   const handleDragStart = useCallback(
     (event: any) => {
@@ -617,13 +630,24 @@ export default function PlannerPage() {
         onSelectWeek={handleSelectWeek}
       />
 
-      <div className="flex justify-end">
+      <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-row sm:items-center sm:justify-between">
         <DisplayOptions
           startDay={startDay}
           onStartDayChange={setStartDay}
           showNextWeek={showNextWeek}
           onShowNextWeekChange={setShowNextWeek}
         />
+        <div className="w-full justify-self-end sm:w-auto sm:justify-self-end sm:ml-auto">
+          <Button
+            type="button"
+            size="sm"
+            className="w-full sm:w-auto bg-emerald-500 text-white hover:bg-emerald-600 focus-visible:ring-emerald-600"
+            onClick={handleGenerate}
+            disabled={generateWeekMutation.isPending}
+          >
+            {generateWeekMutation.isPending ? "Genererer…" : "Generer ukesplan"}
+          </Button>
+        </div>
       </div>
 
       <RecipeFormDialog
