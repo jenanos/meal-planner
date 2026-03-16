@@ -526,19 +526,36 @@ function buildSuggestionBuckets(excludeIds: string[]) {
 }
 
 function generateWeekEntries(): WeekPlanEntryRecord[] {
-  const exclude = new Set<string>();
-  const longGap = getSuggestionRecords("longGap", { limit: 14, exclude });
-  const frequent = getSuggestionRecords("frequent", { limit: 14, exclude });
   const all = getAllRecipes();
-  const pool = longGap.length ? longGap : frequent.length ? frequent : all;
-
-  if (!pool.length) {
+  if (!all.length) {
     return Array.from({ length: 7 }, () => ({ type: "EMPTY" } as WeekPlanEntryRecord));
   }
 
-  return Array.from({ length: 7 }, (_, idx) => ({
+  // Fisher-Yates shuffle for unbiased randomness
+  const pool = [...all];
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+
+  const selected: string[] = [];
+  const usedIds = new Set<string>();
+
+  for (let day = 0; day < 7; day++) {
+    // Pick a recipe not yet used this week
+    const candidate = pool.find((r) => !usedIds.has(r.id));
+    if (candidate) {
+      selected.push(candidate.id);
+      usedIds.add(candidate.id);
+    } else {
+      // Fallback: pick random from pool
+      selected.push(pool[day % pool.length].id);
+    }
+  }
+
+  return selected.map((recipeId) => ({
     type: "RECIPE",
-    recipeId: pool[idx % pool.length].id,
+    recipeId,
   }));
 }
 
@@ -548,7 +565,7 @@ function ensureWeekPlan(weekStart: string) {
   if (!plan) {
     plan = {
       weekStart: key,
-      entries: generateWeekEntries(),
+      entries: Array.from({ length: 7 }, () => ({ type: "EMPTY" } as WeekPlanEntryRecord)),
       updatedAt: new Date().toISOString(),
     };
     state.weekPlans.set(key, plan);

@@ -690,36 +690,61 @@ function scoreRecipe(
   cfg: ReturnType<typeof resolveConstraints>,
   usedIngredients: Set<string>,
   target: Record<MealCategoryKey, number>,
+  previousWeekRecipeIds: Set<string>,
+  selectedSoFar: RecipeDTO[],
 ) {
-  const meta = getDayMeta(dayIndex);
-  void meta;
-
   let s = 0;
-  const isMonWed = dayIndex <= 2;
-  const isThuSat = dayIndex >= 3 && dayIndex <= 5;
 
-  if (isMonWed) {
-    s += (4 - Math.min(r.everydayScore, 4)) * 2;
-    s += r.healthScore >= 4 ? 2 : 0;
-  } else if (isThuSat) {
-    s += r.everydayScore >= 4 ? 2 : 0;
-    s += r.healthScore >= 3 ? 1 : 0;
+  // Day-based scoring: Friday(4) and Saturday(5) want high everydayScore (weekend food)
+  const isFriSat = dayIndex === 4 || dayIndex === 5;
+  const isMonThu = dayIndex <= 3;
+
+  if (isFriSat) {
+    // Weekend: prefer high everyday score (comfort/indulgent food)
+    s += r.everydayScore >= 4 ? 4 : r.everydayScore >= 3 ? 1 : -2;
+  } else if (isMonThu) {
+    // Weekdays Mon-Thu: prefer healthy food
+    s += r.healthScore >= 4 ? 3 : r.healthScore >= 3 ? 1 : -1;
+    // Slightly prefer simpler everyday food on weekdays
+    s += r.everydayScore <= 3 ? 1 : 0;
   } else {
-    s += 1;
+    // Sunday: open, slight preference for balanced meals
+    s += r.healthScore >= 3 ? 1 : 0;
+    s += r.everydayScore >= 3 ? 1 : 0;
   }
 
+  // Ingredient overlap bonus (reduces shopping complexity)
   const overlap = r.ingredients.reduce(
     (acc, ingredient) =>
       acc + (usedIngredients.has(ingredient.ingredientId) ? 1 : 0),
     0,
   );
-  s += overlap * 1.5;
+  s += overlap * 1.0;
 
+  // Recency: prefer recipes not used recently
   const ds = daysSince(r.lastUsed);
-  if (ds >= cfg.preferRecentGapDays) s += 2;
-  else if (ds < 7) s -= 2;
+  if (ds >= cfg.preferRecentGapDays) s += 3;
+  else if (ds >= 14) s += 1;
+  else if (ds < 7) s -= 3;
 
-  if (target[r.category] <= 0 && r.category !== "ANNET") s -= 5;
+  // Category target: penalize recipes whose category quota is already filled
+  if (target[r.category] <= 0 && r.category !== "ANNET") s -= 6;
+  // Bonus for categories that still need filling
+  if (target[r.category] > 0) s += 2;
+
+  // Penalize repeats from previous week
+  if (previousWeekRecipeIds.has(r.id)) s -= 4;
+
+  // Penalize same recipe as the day before (no back-to-back)
+  if (selectedSoFar.length > 0) {
+    const prev = selectedSoFar[selectedSoFar.length - 1];
+    if (prev && prev.id === r.id) s -= 10;
+    // Also penalize same category as previous day (more variety)
+    if (prev && prev.category === r.category) s -= 2;
+  }
+
+  // Randomness factor to ensure different plans on regeneration
+  s += Math.random() * 3;
 
   return s;
 }
@@ -727,8 +752,8 @@ function scoreRecipe(
 function resolveConstraints(input?: z.infer<typeof PlannerConstraints>) {
   return {
     fish: input?.fish ?? 2,
-    vegetarian: input?.vegetarian ?? 2,
-    chicken: input?.chicken ?? 2,
+    vegetarian: input?.vegetarian ?? 1,
+    chicken: input?.chicken ?? 1,
     beef: input?.beef ?? 1,
     preferRecentGapDays: input?.preferRecentGapDays ?? 21,
   };
@@ -744,15 +769,45 @@ function makeTargetMap(cfg: PlannerConfig): Record<MealCategoryKey, number> {
   };
 }
 
-function pickWeekRecipes(pool: RecipeDTO[], cfg: PlannerConfig) {
+function pickWeekRecipes(
+  pool: RecipeDTO[],
+  cfg: PlannerConfig,
+  previousWeekRecipeIds?: Set<string>,
+) {
   const usedIngredients = new Set<string>();
   const selected: RecipeDTO[] = [];
   const target = makeTargetMap(cfg);
+  const prevIds = previousWeekRecipeIds ?? new Set<string>();
+  const usedRecipeIds = new Set<string>();
 
   for (const dayIndex of DAYS) {
-    const available = pool;
+    // Exclude already-selected recipes from pool for this day
+    const available = pool.filter((r) => !usedRecipeIds.has(r.id));
     if (!available.length) {
-      throw new Error("No recipes available for planner selection");
+      // Fallback: allow duplicates if pool is too small
+      if (!pool.length) {
+        throw new Error("No recipes available for planner selection");
+      }
+      const candidates = pool.map((recipe) => ({
+        recipe,
+        score: scoreRecipe(
+          recipe,
+          dayIndex,
+          cfg,
+          usedIngredients,
+          target,
+          prevIds,
+          selected,
+        ),
+      }));
+      const pick = candidates.sort((a, b) => b.score - a.score)[0]?.recipe;
+      if (!pick) throw new Error("Failed to select recipe for day");
+      selected.push(pick);
+      target[pick.category] = Math.max(0, target[pick.category] - 1);
+      pick.ingredients.forEach((ingredient) =>
+        usedIngredients.add(ingredient.ingredientId),
+      );
+      continue;
     }
 
     const wantsCategory = (recipe: RecipeDTO) =>
@@ -762,7 +817,15 @@ function pickWeekRecipes(pool: RecipeDTO[], cfg: PlannerConfig) {
     const candidates = (prioritized.length ? prioritized : available).map(
       (recipe) => ({
         recipe,
-        score: scoreRecipe(recipe, dayIndex, cfg, usedIngredients, target),
+        score: scoreRecipe(
+          recipe,
+          dayIndex,
+          cfg,
+          usedIngredients,
+          target,
+          prevIds,
+          selected,
+        ),
       }),
     );
 
@@ -772,6 +835,7 @@ function pickWeekRecipes(pool: RecipeDTO[], cfg: PlannerConfig) {
     }
 
     selected.push(pick);
+    usedRecipeIds.add(pick.id);
     target[pick.category] = Math.max(0, target[pick.category] - 1);
     pick.ingredients.forEach((ingredient) =>
       usedIngredients.add(ingredient.ingredientId),
@@ -851,22 +915,8 @@ async function ensureWeekPlanResponse(
     fetchAllRecipes(),
   ]);
 
-  let entries = planWithEntries?.entries ?? [];
-  let updatedAt = planWithEntries?.updatedAt ?? null;
-
-  if (!planWithEntries) {
-    if (pool.length) {
-      const cfg = resolveConstraints();
-      const selected = pickWeekRecipes(pool, cfg);
-      const days = selected.map((recipe) => ({
-        type: "RECIPE" as const,
-        recipeId: recipe.id,
-      }));
-      const persisted = await writeWeekPlan(weekStart, days);
-      entries = persisted.entries;
-      updatedAt = persisted.plan.updatedAt;
-    }
-  }
+  const entries = planWithEntries?.entries ?? [];
+  const updatedAt = planWithEntries?.updatedAt ?? null;
 
   const suggestions = buildSuggestionBuckets(pool, []);
 
@@ -893,8 +943,25 @@ export const plannerRouter = router({
       enforceFutureLimit(weekStart);
       const cfg = resolveConstraints(input?.constraints);
 
-      const pool = await fetchAllRecipes();
-      const selected = pickWeekRecipes(pool, cfg);
+      // Fetch the previous week's plan to avoid repetition
+      const prevWeekStart = addWeeks(weekStart, -1);
+      const [pool, prevPlan] = await Promise.all([
+        fetchAllRecipes(),
+        prisma.weekPlan.findUnique({
+          where: { weekStart: prevWeekStart },
+          include: {
+            entries: { select: { recipeId: true } },
+          },
+        }),
+      ]);
+
+      const previousWeekRecipeIds = new Set(
+        (prevPlan?.entries ?? [])
+          .map((e) => e.recipeId)
+          .filter((id): id is string => id != null),
+      );
+
+      const selected = pickWeekRecipes(pool, cfg, previousWeekRecipeIds);
       const days = selected.map((recipe) => ({
         type: "RECIPE" as const,
         recipeId: recipe.id,
