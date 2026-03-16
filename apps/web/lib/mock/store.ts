@@ -531,8 +531,13 @@ function generateWeekEntries(): WeekPlanEntryRecord[] {
     return Array.from({ length: 7 }, () => ({ type: "EMPTY" } as WeekPlanEntryRecord));
   }
 
-  // Shuffle pool for randomness on each call
-  const pool = [...all].sort(() => Math.random() - 0.5);
+  // Fisher-Yates shuffle for unbiased randomness
+  const pool = [...all];
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+
   const selected: string[] = [];
   const usedIds = new Set<string>();
 

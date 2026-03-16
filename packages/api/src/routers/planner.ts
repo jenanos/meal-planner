@@ -785,11 +785,10 @@ function pickWeekRecipes(
     const available = pool.filter((r) => !usedRecipeIds.has(r.id));
     if (!available.length) {
       // Fallback: allow duplicates if pool is too small
-      const fallback = pool;
-      if (!fallback.length) {
+      if (!pool.length) {
         throw new Error("No recipes available for planner selection");
       }
-      const candidates = fallback.map((recipe) => ({
+      const candidates = pool.map((recipe) => ({
         recipe,
         score: scoreRecipe(
           recipe,
