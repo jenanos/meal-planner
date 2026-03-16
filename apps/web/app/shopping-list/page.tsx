@@ -290,10 +290,14 @@ export default function ShoppingListPage() {
     }
     return Array.from(byName.values());
   }, [extrasAll]);
-  const categorizedExtras = useMemo(
-    () => extras.filter((e) => Boolean(e.category)),
-    [extras],
-  );
+  const categorizedExtras = useMemo(() => {
+    const cutoff = new Date(Date.now() - CHECKED_EXTRAS_WINDOW_MS);
+    return extras.filter(
+      (e) =>
+        Boolean(e.category) &&
+        (!e.checked || new Date(e.updatedAt) >= cutoff),
+    );
+  }, [extras]);
   const extrasForTopSection = useMemo(
     () =>
       viewMode === "by-category"
