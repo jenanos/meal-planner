@@ -226,6 +226,13 @@ export default function ShoppingListPage() {
     { enabled: debouncedExtra.trim().length > 0, staleTime: 5_000 },
   );
 
+  const packageSuggest = trpc.planner.packageSuggest.useQuery(
+    { search: debouncedExtra.trim() || undefined } as any,
+    { enabled: debouncedExtra.trim().length > 0, staleTime: 5_000 },
+  );
+
+  const packageExpand = trpc.planner.packageExpand.useMutation();
+
   const includedWeeksSignature = useMemo(
     () =>
       (
@@ -986,6 +993,20 @@ export default function ShoppingListPage() {
     );
   }
 
+  async function addPackageToList(packageId: string) {
+    try {
+      await packageExpand.mutateAsync({
+        packageId,
+        weekStart: activeWeekStart,
+      } as any);
+      setExtraInput("");
+      setIsAddExtraOpen(false);
+      shoppingQuery.refetch().catch(() => undefined);
+    } catch (_) {
+      // ignore errors
+    }
+  }
+
   async function addOrToggleExtra(name: string) {
     const clean = name.trim();
     if (!clean) return;
@@ -1254,7 +1275,8 @@ export default function ShoppingListPage() {
                     />
                     {extraInput.trim().length > 0 && (
                       <div className="min-h-6">
-                        {extraSuggest.isLoading ? (
+                        {extraSuggest.isLoading &&
+                        packageSuggest.isLoading ? (
                           <p className="text-xs text-muted-foreground">
                             Søker…
                           </p>
@@ -1266,13 +1288,35 @@ export default function ShoppingListPage() {
                               name: string;
                               hasCategory: boolean;
                             }>;
+                            const pkgSuggestions = (packageSuggest.data ??
+                              []) as Array<{
+                              id: string;
+                              name: string;
+                              itemCount: number;
+                            }>;
                             const exists = suggestions.some(
                               (s) =>
                                 s.name.toLowerCase() ===
                                 extraInput.trim().toLowerCase(),
+                            ) || pkgSuggestions.some(
+                              (p) =>
+                                p.name.toLowerCase() ===
+                                extraInput.trim().toLowerCase(),
                             );
                             return (
                               <div className="flex flex-wrap gap-2">
+                                {pkgSuggestions.map((p) => (
+                                  <Badge
+                                    key={`pkg-${p.id}`}
+                                    className="cursor-pointer border border-blue-500 bg-blue-500 text-white hover:bg-blue-600"
+                                    onClick={() => addPackageToList(p.id)}
+                                  >
+                                    {p.name}{" "}
+                                    <span className="ml-1 opacity-75 text-[10px]">
+                                      ({p.itemCount})
+                                    </span>
+                                  </Badge>
+                                ))}
                                 {suggestions.map((s) => (
                                   <Badge
                                     key={s.id}

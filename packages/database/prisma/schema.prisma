@@ -71,6 +71,7 @@ model Ingredient {
   category IngredientCategory @default(ANNET)
 
   recipes RecipeIngredient[]
+  packageItems ShoppingPackageItem[]
 
   @@index([category])
 }
@@ -143,6 +144,7 @@ model ExtraItemCatalog {
   updatedAt DateTime @updatedAt
 
   extras ExtraShoppingItem[]
+  packageItems ShoppingPackageItem[]
 
   @@index([category])
 }
@@ -196,4 +198,37 @@ model DevicePreference {
   role       ShoppingUserRole
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
+}
+
+// A shopping package groups multiple items under one name (e.g. "Pålegg" = ham, cheese, liver pâté)
+model ShoppingPackage {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique @db.Citext
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items ShoppingPackageItem[]
+}
+
+// Items belonging to a shopping package – can reference ExtraItemCatalog or Ingredient
+model ShoppingPackageItem {
+  id        String @id @default(uuid()) @db.Uuid
+  packageId String @db.Uuid
+
+  // Exactly one of these should be set
+  extraItemCatalogId String? @db.Uuid
+  ingredientId       String? @db.Uuid
+
+  // Denormalized name for display (resolved from the referenced item)
+  displayName String @db.Citext
+
+  createdAt DateTime @default(now())
+
+  package          ShoppingPackage   @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  extraItemCatalog ExtraItemCatalog? @relation(fields: [extraItemCatalogId], references: [id], onDelete: Cascade)
+  ingredient       Ingredient?       @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+
+  @@unique([packageId, extraItemCatalogId])
+  @@unique([packageId, ingredientId])
+  @@index([packageId])
 }

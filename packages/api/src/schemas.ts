@@ -195,6 +195,44 @@ export type ShoppingRoleSettingsUpdate = z.infer<
   typeof ShoppingRoleSettingsUpdate
 >;
 
+// Shopping packages
+export const ShoppingPackageCreate = z.object({
+  name: z.string().trim().min(1),
+  items: z.array(
+    z.object({
+      displayName: z.string().trim().min(1),
+      extraItemCatalogId: z.string().uuid().optional(),
+      ingredientId: z.string().uuid().optional(),
+    }),
+  ),
+});
+export type ShoppingPackageCreate = z.infer<typeof ShoppingPackageCreate>;
+
+export const ShoppingPackageUpdate = z.object({
+  id: z.string().uuid(),
+  name: z.string().trim().min(1).optional(),
+  items: z
+    .array(
+      z.object({
+        displayName: z.string().trim().min(1),
+        extraItemCatalogId: z.string().uuid().optional(),
+        ingredientId: z.string().uuid().optional(),
+      }),
+    )
+    .optional(),
+});
+export type ShoppingPackageUpdate = z.infer<typeof ShoppingPackageUpdate>;
+
+export const ShoppingPackageById = z.object({
+  id: z.string().uuid(),
+});
+export type ShoppingPackageById = z.infer<typeof ShoppingPackageById>;
+
+export const ShoppingPackageSuggest = z.object({
+  search: z.string().optional(),
+});
+export type ShoppingPackageSuggest = z.infer<typeof ShoppingPackageSuggest>;
+
 export const ShoppingStoreCreate = z.object({
   name: z.string().trim().min(1).max(80),
   categoryOrder: z.array(IngredientCategory).length(IngredientCategory.options.length),

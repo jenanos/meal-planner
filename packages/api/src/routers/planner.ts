@@ -13,6 +13,10 @@ import {
   ShoppingDeviceRoleUpsert,
   ShoppingRoleSettingsUpdate,
   ShoppingStoreCreate,
+  ShoppingPackageCreate,
+  ShoppingPackageUpdate,
+  ShoppingPackageById,
+  ShoppingPackageSuggest,
 } from "../schemas.js";
 import { z } from "zod";
 
@@ -1903,5 +1907,200 @@ export const plannerRouter = router({
         where: { catalogItemId: catalog.id },
       });
       return { ok: true };
+    }),
+
+  // ─── Shopping Packages ─────────────────────────────────────────────
+
+  // List all packages
+  packageList: publicProcedure.query(async () => {
+    const packages = await prisma.shoppingPackage.findMany({
+      orderBy: { name: "asc" },
+      include: {
+        items: {
+          orderBy: { displayName: "asc" },
+        },
+      },
+    });
+    return packages.map((pkg) => ({
+      id: pkg.id,
+      name: pkg.name,
+      items: pkg.items.map((item) => ({
+        id: item.id,
+        displayName: item.displayName,
+        extraItemCatalogId: item.extraItemCatalogId,
+        ingredientId: item.ingredientId,
+      })),
+    }));
+  }),
+
+  // Get a single package by ID
+  packageGet: publicProcedure
+    .input(ShoppingPackageById)
+    .query(async ({ input }) => {
+      const pkg = await prisma.shoppingPackage.findUnique({
+        where: { id: input.id },
+        include: { items: { orderBy: { displayName: "asc" } } },
+      });
+      if (!pkg) throw new TRPCError({ code: "NOT_FOUND" });
+      return {
+        id: pkg.id,
+        name: pkg.name,
+        items: pkg.items.map((item) => ({
+          id: item.id,
+          displayName: item.displayName,
+          extraItemCatalogId: item.extraItemCatalogId,
+          ingredientId: item.ingredientId,
+        })),
+      };
+    }),
+
+  // Create a package
+  packageCreate: publicProcedure
+    .input(ShoppingPackageCreate)
+    .mutation(async ({ input }) => {
+      const pkg = await prisma.shoppingPackage.create({
+        data: {
+          name: input.name.trim(),
+          items: {
+            create: input.items.map((item) => ({
+              displayName: item.displayName.trim(),
+              extraItemCatalogId: item.extraItemCatalogId ?? null,
+              ingredientId: item.ingredientId ?? null,
+            })),
+          },
+        },
+        include: { items: true },
+      });
+      return { id: pkg.id, name: pkg.name, itemCount: pkg.items.length };
+    }),
+
+  // Update a package (name and/or items)
+  packageUpdate: publicProcedure
+    .input(ShoppingPackageUpdate)
+    .mutation(async ({ input }) => {
+      const existing = await prisma.shoppingPackage.findUnique({
+        where: { id: input.id },
+      });
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND" });
+
+      await prisma.$transaction(async (tx) => {
+        if (input.name) {
+          await tx.shoppingPackage.update({
+            where: { id: input.id },
+            data: { name: input.name.trim() },
+          });
+        }
+        if (input.items) {
+          // Replace all items
+          await tx.shoppingPackageItem.deleteMany({
+            where: { packageId: input.id },
+          });
+          if (input.items.length > 0) {
+            await tx.shoppingPackageItem.createMany({
+              data: input.items.map((item) => ({
+                packageId: input.id,
+                displayName: item.displayName.trim(),
+                extraItemCatalogId: item.extraItemCatalogId ?? null,
+                ingredientId: item.ingredientId ?? null,
+              })),
+            });
+          }
+        }
+      });
+
+      return { ok: true };
+    }),
+
+  // Delete a package
+  packageDelete: publicProcedure
+    .input(ShoppingPackageById)
+    .mutation(async ({ input }) => {
+      await prisma.shoppingPackage.delete({ where: { id: input.id } }).catch(() => {
+        // Already deleted or doesn't exist
+      });
+      return { ok: true };
+    }),
+
+  // Suggest packages matching a search string (for the shopping list dialog)
+  packageSuggest: publicProcedure
+    .input(ShoppingPackageSuggest.optional())
+    .query(async ({ input }) => {
+      const q = (input?.search ?? "").trim();
+      if (!q) return [] as { id: string; name: string; itemCount: number }[];
+      const packages = await prisma.shoppingPackage.findMany({
+        where: { name: { contains: q } },
+        orderBy: { name: "asc" },
+        take: 10,
+        include: { _count: { select: { items: true } } },
+      });
+      return packages.map((pkg) => ({
+        id: pkg.id,
+        name: pkg.name,
+        itemCount: pkg._count.items,
+      }));
+    }),
+
+  // Expand a package: add all its items to the shopping list as extras
+  packageExpand: publicProcedure
+    .input(
+      z.object({
+        packageId: z.string().uuid(),
+        weekStart: z.string().min(1),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const pkg = await prisma.shoppingPackage.findUnique({
+        where: { id: input.packageId },
+        include: { items: true },
+      });
+      if (!pkg) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const addedNames: string[] = [];
+
+      for (const item of pkg.items) {
+        const name = item.displayName.trim();
+        // Ensure item is in catalog
+        const catalog = await prisma.extraItemCatalog.upsert({
+          where: { name },
+          update: {},
+          create: { name },
+        });
+        // Add to the week (unchecked)
+        await prisma.$transaction(async (tx) => {
+          await tx.extraShoppingItem.upsert({
+            where: {
+              weekStart_catalogItemId: {
+                weekStart: GLOBAL_EXTRA_WEEK_START,
+                catalogItemId: catalog.id,
+              },
+            },
+            create: {
+              weekStart: GLOBAL_EXTRA_WEEK_START,
+              catalogItemId: catalog.id,
+              checked: false,
+            },
+            update: { checked: false },
+          });
+          // Also ensure a week-specific row exists for display
+          await tx.extraShoppingItem.upsert({
+            where: {
+              weekStart_catalogItemId: {
+                weekStart: new Date(input.weekStart),
+                catalogItemId: catalog.id,
+              },
+            },
+            create: {
+              weekStart: new Date(input.weekStart),
+              catalogItemId: catalog.id,
+              checked: false,
+            },
+            update: {},
+          });
+        });
+
+        addedNames.push(name);
+      }
+
+      return { addedNames };
     }),
 });
