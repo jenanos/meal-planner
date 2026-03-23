@@ -177,13 +177,18 @@ function PackageEditor({
         <div className="flex flex-wrap gap-1.5 mt-1 min-h-[32px]">
           {items.map((item, idx) => (
             <Badge
+              asChild
               key={idx}
               className="cursor-pointer border border-blue-500 bg-blue-500 text-white hover:bg-red-500 hover:border-red-500"
-              onClick={() =>
-                setItems((prev) => prev.filter((_, i) => i !== idx))
-              }
             >
-              {item.displayName} ×
+              <button
+                type="button"
+                onClick={() =>
+                  setItems((prev) => prev.filter((_, i) => i !== idx))
+                }
+              >
+                {item.displayName} ×
+              </button>
             </Badge>
           ))}
           {items.length === 0 && (
@@ -296,36 +301,51 @@ function ItemSuggestions({
     <div className="flex flex-wrap gap-1.5 mt-2">
       {filteredExtras.map((e) => (
         <Badge
+          asChild
           key={`extra-${e.id}`}
           className={`cursor-pointer border text-white ${
             e.hasCategory
               ? "border-emerald-500 bg-emerald-500 hover:bg-emerald-600"
               : "border-orange-500 bg-orange-500 hover:bg-orange-600"
           }`}
-          onClick={() =>
-            onAdd({ displayName: e.name, extraItemCatalogId: e.id })
-          }
         >
-          {e.name}
+          <button
+            type="button"
+            onClick={() =>
+              onAdd({ displayName: e.name, extraItemCatalogId: e.id })
+            }
+          >
+            {e.name}
+          </button>
         </Badge>
       ))}
       {filteredIngredients.map((ing) => (
         <Badge
+          asChild
           key={`ing-${ing.id}`}
           className="cursor-pointer border border-violet-500 bg-violet-500 text-white hover:bg-violet-600"
-          onClick={() =>
-            onAdd({ displayName: ing.name, ingredientId: ing.id })
-          }
         >
-          {ing.name}
+          <button
+            type="button"
+            onClick={() =>
+              onAdd({ displayName: ing.name, ingredientId: ing.id })
+            }
+          >
+            {ing.name}
+          </button>
         </Badge>
       ))}
       {!exactMatch && search.trim() && (
         <Badge
+          asChild
           className="cursor-pointer border border-orange-500 bg-orange-500 text-white hover:bg-orange-600"
-          onClick={() => onAdd({ displayName: search.trim() })}
         >
-          Legg til &quot;{search.trim()}&quot;
+          <button
+            type="button"
+            onClick={() => onAdd({ displayName: search.trim() })}
+          >
+            Legg til &quot;{search.trim()}&quot;
+          </button>
         </Badge>
       )}
     </div>

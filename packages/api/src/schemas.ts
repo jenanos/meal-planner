@@ -196,30 +196,31 @@ export type ShoppingRoleSettingsUpdate = z.infer<
 >;
 
 // Shopping packages
+const ShoppingPackageItemInput = z
+  .object({
+    displayName: z.string().trim().min(1),
+    extraItemCatalogId: z.string().uuid().optional(),
+    ingredientId: z.string().uuid().optional(),
+  })
+  .refine(
+    (item) => !(item.extraItemCatalogId && item.ingredientId),
+    {
+      message:
+        "Provide at most one of extraItemCatalogId or ingredientId",
+      path: ["extraItemCatalogId"],
+    },
+  );
+
 export const ShoppingPackageCreate = z.object({
   name: z.string().trim().min(1),
-  items: z.array(
-    z.object({
-      displayName: z.string().trim().min(1),
-      extraItemCatalogId: z.string().uuid().optional(),
-      ingredientId: z.string().uuid().optional(),
-    }),
-  ),
+  items: z.array(ShoppingPackageItemInput),
 });
 export type ShoppingPackageCreate = z.infer<typeof ShoppingPackageCreate>;
 
 export const ShoppingPackageUpdate = z.object({
   id: z.string().uuid(),
   name: z.string().trim().min(1).optional(),
-  items: z
-    .array(
-      z.object({
-        displayName: z.string().trim().min(1),
-        extraItemCatalogId: z.string().uuid().optional(),
-        ingredientId: z.string().uuid().optional(),
-      }),
-    )
-    .optional(),
+  items: z.array(ShoppingPackageItemInput).optional(),
 });
 export type ShoppingPackageUpdate = z.infer<typeof ShoppingPackageUpdate>;
 

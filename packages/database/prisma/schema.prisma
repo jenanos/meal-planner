@@ -215,7 +215,7 @@ model ShoppingPackageItem {
   id        String @id @default(uuid()) @db.Uuid
   packageId String @db.Uuid
 
-  // Exactly one of these should be set
+  // At most one of these should be set (both null = free-text item)
   extraItemCatalogId String? @db.Uuid
   ingredientId       String? @db.Uuid
 

@@ -1275,7 +1275,7 @@ export default function ShoppingListPage() {
                     />
                     {extraInput.trim().length > 0 && (
                       <div className="min-h-6">
-                        {extraSuggest.isLoading &&
+                        {extraSuggest.isLoading ||
                         packageSuggest.isLoading ? (
                           <p className="text-xs text-muted-foreground">
                             Søker…
@@ -1307,14 +1307,19 @@ export default function ShoppingListPage() {
                               <div className="flex flex-wrap gap-2">
                                 {pkgSuggestions.map((p) => (
                                   <Badge
+                                    asChild
                                     key={`pkg-${p.id}`}
                                     className="cursor-pointer border border-blue-500 bg-blue-500 text-white hover:bg-blue-600"
-                                    onClick={() => addPackageToList(p.id)}
                                   >
-                                    {p.name}{" "}
-                                    <span className="ml-1 opacity-75 text-[10px]">
-                                      ({p.itemCount})
-                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => addPackageToList(p.id)}
+                                    >
+                                      {p.name}{" "}
+                                      <span className="ml-1 opacity-75 text-[10px]">
+                                        ({p.itemCount})
+                                      </span>
+                                    </button>
                                   </Badge>
                                 ))}
                                 {suggestions.map((s) => (
