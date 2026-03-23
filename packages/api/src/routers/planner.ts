@@ -13,6 +13,10 @@ import {
   ShoppingDeviceRoleUpsert,
   ShoppingRoleSettingsUpdate,
   ShoppingStoreCreate,
+  ShoppingPackageCreate,
+  ShoppingPackageUpdate,
+  ShoppingPackageById,
+  ShoppingPackageSuggest,
 } from "../schemas.js";
 import { z } from "zod";
 
@@ -1793,6 +1797,30 @@ export const plannerRouter = router({
           }
         }
 
+        // Repoint package items referencing merged catalog entries
+        const mergePackageItems = await tx.shoppingPackageItem.findMany({
+          where: { extraItemCatalogId: { in: uniqueMergeIds } },
+        });
+        const keepPackageIds = new Set(
+          (
+            await tx.shoppingPackageItem.findMany({
+              where: { extraItemCatalogId: keepId },
+              select: { packageId: true },
+            })
+          ).map((p) => p.packageId),
+        );
+        for (const pi of mergePackageItems) {
+          if (keepPackageIds.has(pi.packageId)) {
+            await tx.shoppingPackageItem.delete({ where: { id: pi.id } });
+          } else {
+            await tx.shoppingPackageItem.update({
+              where: { id: pi.id },
+              data: { extraItemCatalogId: keepId, displayName: keep.name },
+            });
+            keepPackageIds.add(pi.packageId);
+          }
+        }
+
         await tx.extraItemCatalog.deleteMany({
           where: { id: { in: uniqueMergeIds } },
         });
@@ -1903,5 +1931,247 @@ export const plannerRouter = router({
         where: { catalogItemId: catalog.id },
       });
       return { ok: true };
+    }),
+
+  // ─── Shopping Packages ─────────────────────────────────────────────
+
+  // List all packages
+  packageList: publicProcedure.query(async () => {
+    const packages = await prisma.shoppingPackage.findMany({
+      orderBy: { name: "asc" },
+      include: {
+        items: {
+          orderBy: { displayName: "asc" },
+        },
+      },
+    });
+    return packages.map((pkg) => ({
+      id: pkg.id,
+      name: pkg.name,
+      items: pkg.items.map((item) => ({
+        id: item.id,
+        displayName: item.displayName,
+        extraItemCatalogId: item.extraItemCatalogId,
+        ingredientId: item.ingredientId,
+      })),
+    }));
+  }),
+
+  // Get a single package by ID
+  packageGet: publicProcedure
+    .input(ShoppingPackageById)
+    .query(async ({ input }) => {
+      const pkg = await prisma.shoppingPackage.findUnique({
+        where: { id: input.id },
+        include: { items: { orderBy: { displayName: "asc" } } },
+      });
+      if (!pkg) throw new TRPCError({ code: "NOT_FOUND" });
+      return {
+        id: pkg.id,
+        name: pkg.name,
+        items: pkg.items.map((item) => ({
+          id: item.id,
+          displayName: item.displayName,
+          extraItemCatalogId: item.extraItemCatalogId,
+          ingredientId: item.ingredientId,
+        })),
+      };
+    }),
+
+  // Create a package
+  packageCreate: publicProcedure
+    .input(ShoppingPackageCreate)
+    .mutation(async ({ input }) => {
+      const pkg = await prisma.shoppingPackage.create({
+        data: {
+          name: input.name.trim(),
+          items: {
+            create: input.items.map((item) => ({
+              displayName: item.displayName.trim(),
+              extraItemCatalogId: item.extraItemCatalogId ?? null,
+              ingredientId: item.ingredientId ?? null,
+            })),
+          },
+        },
+        include: { items: true },
+      });
+      return { id: pkg.id, name: pkg.name, itemCount: pkg.items.length };
+    }),
+
+  // Update a package (name and/or items)
+  packageUpdate: publicProcedure
+    .input(ShoppingPackageUpdate)
+    .mutation(async ({ input }) => {
+      const existing = await prisma.shoppingPackage.findUnique({
+        where: { id: input.id },
+      });
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND" });
+
+      await prisma.$transaction(async (tx) => {
+        if (input.name) {
+          await tx.shoppingPackage.update({
+            where: { id: input.id },
+            data: { name: input.name.trim() },
+          });
+        }
+        if (input.items) {
+          // Replace all items
+          await tx.shoppingPackageItem.deleteMany({
+            where: { packageId: input.id },
+          });
+          if (input.items.length > 0) {
+            await tx.shoppingPackageItem.createMany({
+              data: input.items.map((item) => ({
+                packageId: input.id,
+                displayName: item.displayName.trim(),
+                extraItemCatalogId: item.extraItemCatalogId ?? null,
+                ingredientId: item.ingredientId ?? null,
+              })),
+            });
+          }
+        }
+      });
+
+      return { ok: true };
+    }),
+
+  // Delete a package
+  packageDelete: publicProcedure
+    .input(ShoppingPackageById)
+    .mutation(async ({ input }) => {
+      try {
+        await prisma.shoppingPackage.delete({ where: { id: input.id } });
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === "P2025"
+        ) {
+          // Already deleted or doesn't exist — treat as success
+        } else {
+          throw error;
+        }
+      }
+      return { ok: true };
+    }),
+
+  // Suggest packages matching a search string (for the shopping list dialog)
+  packageSuggest: publicProcedure
+    .input(ShoppingPackageSuggest.optional())
+    .query(async ({ input }) => {
+      const q = (input?.search ?? "").trim();
+      if (!q) return [] as { id: string; name: string; itemCount: number }[];
+      const packages = await prisma.shoppingPackage.findMany({
+        where: { name: { contains: q } },
+        orderBy: { name: "asc" },
+        take: 10,
+        include: { _count: { select: { items: true } } },
+      });
+      return packages.map((pkg) => ({
+        id: pkg.id,
+        name: pkg.name,
+        itemCount: pkg._count.items,
+      }));
+    }),
+
+  // Expand a package: add all its items to the shopping list as extras
+  packageExpand: publicProcedure
+    .input(
+      z.object({
+        packageId: z.string().uuid(),
+        weekStart: z.string().min(1),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const pkg = await prisma.shoppingPackage.findUnique({
+        where: { id: input.packageId },
+        include: { items: true },
+      });
+      if (!pkg) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const weekStartDate = startOfWeek(input.weekStart);
+      const addedNames: string[] = [];
+      const names = pkg.items.map((item) => {
+        const name = item.displayName.trim();
+        addedNames.push(name);
+        return name;
+      });
+
+      const uniqueNames = Array.from(new Set(names));
+
+      if (uniqueNames.length > 0) {
+        // Resolve existing catalog entries
+        const existingCatalog = await prisma.extraItemCatalog.findMany({
+          where: { name: { in: uniqueNames } },
+        });
+        const existingNames = new Set(existingCatalog.map((c) => c.name));
+        const missingNames = uniqueNames.filter(
+          (name) => !existingNames.has(name),
+        );
+
+        // Insert missing catalog entries
+        if (missingNames.length > 0) {
+          await prisma.extraItemCatalog.createMany({
+            data: missingNames.map((name) => ({ name })),
+            skipDuplicates: true,
+          });
+        }
+
+        // Fetch all catalog entries for the involved names
+        const allCatalog = await prisma.extraItemCatalog.findMany({
+          where: { name: { in: uniqueNames } },
+        });
+        const catalogByName = new Map<string, string>(
+          allCatalog.map((c) => [c.name, c.id]),
+        );
+
+        // Batch all upserts in a single transaction
+        const txOps: Prisma.PrismaPromise<unknown>[] = [];
+        for (const name of uniqueNames) {
+          const catalogId = catalogByName.get(name);
+          if (!catalogId) continue;
+
+          // Global unchecked item
+          txOps.push(
+            prisma.extraShoppingItem.upsert({
+              where: {
+                weekStart_catalogItemId: {
+                  weekStart: GLOBAL_EXTRA_WEEK_START,
+                  catalogItemId: catalogId,
+                },
+              },
+              create: {
+                weekStart: GLOBAL_EXTRA_WEEK_START,
+                catalogItemId: catalogId,
+                checked: false,
+              },
+              update: { checked: false },
+            }),
+          );
+
+          // Week-specific row for display
+          txOps.push(
+            prisma.extraShoppingItem.upsert({
+              where: {
+                weekStart_catalogItemId: {
+                  weekStart: weekStartDate,
+                  catalogItemId: catalogId,
+                },
+              },
+              create: {
+                weekStart: weekStartDate,
+                catalogItemId: catalogId,
+                checked: false,
+              },
+              update: {},
+            }),
+          );
+        }
+
+        if (txOps.length > 0) {
+          await prisma.$transaction(txOps);
+        }
+      }
+
+      return { addedNames };
     }),
 });

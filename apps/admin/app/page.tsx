@@ -10,6 +10,7 @@ import { RecipesCategoryBoard } from "./components/RecipesCategoryBoard";
 import { ExtraItemsCategoryBoard } from "./components/ExtraItemsCategoryBoard";
 import { ExtraItemsDuplicateBoard } from "./components/ExtraItemsDuplicateBoard";
 import { IngredientsPantryToggle } from "./components/IngredientsPantryToggle";
+import { PackagesBoard } from "./components/PackagesBoard";
 
 const VIEWS = [
   { key: "ing-unit", label: "Ingredienser → Enhet" },
@@ -21,6 +22,7 @@ const VIEWS = [
   { key: "rec-health", label: "Oppskrifter → Helsescore" },
   { key: "rec-everyday", label: "Oppskrifter → Hverdagsscore" },
   { key: "rec-cat", label: "Oppskrifter → Kategori" },
+  { key: "packages", label: "Pakker" },
 ] as const;
 
 type ViewKey = (typeof VIEWS)[number]["key"];
@@ -48,7 +50,9 @@ export default function AdminPage() {
       <p className="text-xs text-muted-foreground">
         {view === "ing-pantry"
           ? "Bruk bryterne for å markere ingredienser som basisvarer. Endringer lagres automatisk."
-          : "Dra elementer mellom kolonnene for å endre verdier. Endringer lagres automatisk."}
+          : view === "packages"
+            ? "Opprett og rediger pakker. En pakke grupperer flere elementer under ett navn (f.eks. «Pålegg»)."
+            : "Dra elementer mellom kolonnene for å endre verdier. Endringer lagres automatisk."}
       </p>
       <div className="mt-2">
         {view === "ing-unit" && <IngredientsUnitBoard />}
@@ -60,6 +64,7 @@ export default function AdminPage() {
         {view === "rec-health" && <RecipesHealthBoard />}
         {view === "rec-everyday" && <RecipesEverydayBoard />}
         {view === "rec-cat" && <RecipesCategoryBoard />}
+        {view === "packages" && <PackagesBoard />}
       </div>
     </div>
   );

@@ -385,6 +385,30 @@ export const ingredientRouter = router({
                     }
                 }
 
+                // Repoint package items referencing merged ingredients
+                const mergePackageItems = await tx.shoppingPackageItem.findMany({
+                    where: { ingredientId: { in: uniqueMergeIds } },
+                });
+                const keepPackageIds = new Set(
+                    (
+                        await tx.shoppingPackageItem.findMany({
+                            where: { ingredientId: keepId },
+                            select: { packageId: true },
+                        })
+                    ).map((p) => p.packageId),
+                );
+                for (const pi of mergePackageItems) {
+                    if (keepPackageIds.has(pi.packageId)) {
+                        await tx.shoppingPackageItem.delete({ where: { id: pi.id } });
+                    } else {
+                        await tx.shoppingPackageItem.update({
+                            where: { id: pi.id },
+                            data: { ingredientId: keepId, displayName: keep.name },
+                        });
+                        keepPackageIds.add(pi.packageId);
+                    }
+                }
+
                 // Delete the merged ingredients
                 await tx.ingredient.deleteMany({
                     where: { id: { in: uniqueMergeIds } },
