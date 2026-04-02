@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { signIn } from "../../lib/auth-client";
 import { Button, Input } from "@repo/ui";
 
@@ -16,6 +16,32 @@ export default function LoginPage() {
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [devMagicLinkUrl, setDevMagicLinkUrl] = useState<string | null>(null);
+
+  // In dev mode, fetch the magic link URL after sending it so
+  // developers can log in with one click instead of checking email/console.
+  useEffect(() => {
+    if (!magicLinkSent || process.env.NODE_ENV === "production") return;
+
+    let cancelled = false;
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+
+    async function fetchDevLink() {
+      try {
+        const res = await fetch(`${baseUrl}/auth/dev/magic-link`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && data.url) {
+          setDevMagicLinkUrl(data.url);
+        }
+      } catch {
+        // Expected to fail in prod or if endpoint doesn't exist
+      }
+    }
+
+    fetchDevLink();
+    return () => { cancelled = true; };
+  }, [magicLinkSent]);
 
   async function handleSocialLogin(providerId: string) {
     setLoading(providerId);
@@ -54,7 +80,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm space-y-8">
         {/* Logo / App name */}
         <div className="text-center">
-          <h1 className="text-4xl font-bold tracking-tight">🍽️ Butta</h1>
+          <h1 className="text-4xl font-bold tracking-tight">Butta</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Måltidsplanlegger for hele familien
           </p>
@@ -103,17 +129,35 @@ export default function LoginPage() {
         {magicLinkSent ? (
           <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-center">
             <p className="text-sm font-medium text-green-800">
-              ✉️ Sjekk e-posten din!
+              Sjekk e-posten din!
             </p>
             <p className="mt-1 text-xs text-green-600">
               Vi har sendt en innloggingslenke til {email}
             </p>
+
+            {/* Dev-only: one-click magic link button */}
+            {devMagicLinkUrl && (
+              <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3">
+                <p className="text-xs font-medium text-amber-800">
+                  Utviklingsmodus
+                </p>
+                <Button
+                  className="mt-2 w-full"
+                  size="sm"
+                  onClick={() => { window.location.href = devMagicLinkUrl; }}
+                >
+                  Fortsett til innlogging
+                </Button>
+              </div>
+            )}
+
             <Button
               variant="ghost"
               size="sm"
               className="mt-3"
               onClick={() => {
                 setMagicLinkSent(false);
+                setDevMagicLinkUrl(null);
                 setEmail("");
               }}
             >

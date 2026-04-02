@@ -25,6 +25,9 @@ export function useAuth() {
 
 const PUBLIC_PATHS = ["/login"];
 
+// Mock mode is only safe in development. Even if the NEXT_PUBLIC_MOCK_MODE env
+// var accidentally leaks to a production build, NODE_ENV will be "production"
+// and the mock user will NOT be injected.
 const mockFlag = (
   process.env.NEXT_PUBLIC_MOCK_MODE ??
   process.env.MOCK_MODE ??
@@ -32,7 +35,9 @@ const mockFlag = (
 )
   .toString()
   .toLowerCase();
-const isMockMode = mockFlag === "true" || mockFlag === "1";
+const isMockMode =
+  process.env.NODE_ENV === "development" &&
+  (mockFlag === "true" || mockFlag === "1");
 
 const MOCK_USER: AuthContextValue["user"] = {
   id: "mock-user-id",
@@ -45,7 +50,8 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
 
-  // In mock mode, skip auth entirely and provide a mock user
+  // In mock mode (dev only), skip auth and provide a mock user so
+  // frontend-only development works without a running backend.
   if (isMockMode) {
     return (
       <AuthContext.Provider value={{ user: MOCK_USER, isLoading: false }}>
@@ -91,44 +97,31 @@ function AuthGuardInner({
     );
   }
 
-  // On public pages (login), show content regardless of auth state
+  const user = session?.user
+    ? {
+        id: session.user.id,
+        email: session.user.email,
+        name: session.user.name,
+        image: session.user.image,
+      }
+    : null;
+
+  // On public pages, show content regardless of auth state
   if (isPublic) {
     return (
-      <AuthContext.Provider
-        value={{
-          user: session?.user
-            ? {
-                id: session.user.id,
-                email: session.user.email,
-                name: session.user.name,
-                image: session.user.image,
-              }
-            : null,
-          isLoading: false,
-        }}
-      >
+      <AuthContext.Provider value={{ user, isLoading: false }}>
         {children}
       </AuthContext.Provider>
     );
   }
 
   // On protected pages, require auth
-  if (!session?.user) {
+  if (!user) {
     return null; // Will redirect in useEffect
   }
 
   return (
-    <AuthContext.Provider
-      value={{
-        user: {
-          id: session.user.id,
-          email: session.user.email,
-          name: session.user.name,
-          image: session.user.image,
-        },
-        isLoading: false,
-      }}
-    >
+    <AuthContext.Provider value={{ user, isLoading: false }}>
       {children}
     </AuthContext.Provider>
   );

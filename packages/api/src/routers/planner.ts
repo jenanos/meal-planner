@@ -1,6 +1,6 @@
 import { prisma, Prisma } from "@repo/database";
 import { TRPCError } from "@trpc/server";
-import { router, publicProcedure, protectedProcedure } from "../trpc.js";
+import { router, protectedProcedure } from "../trpc.js";
 import {
   PlannerConstraints,
   WeekPlanInput,
@@ -1653,7 +1653,7 @@ export const plannerRouter = router({
       return { count };
     }),
 
-  extraCatalogListPotentialDuplicates: publicProcedure
+  extraCatalogListPotentialDuplicates: protectedProcedure
     .output(z.array(z.array(z.object({
       id: z.string().uuid(),
       name: z.string(),
@@ -1709,7 +1709,7 @@ export const plannerRouter = router({
         );
     }),
 
-  extraCatalogMerge: publicProcedure
+  extraCatalogMerge: protectedProcedure
     .input(z.object({
       keepId: z.string().uuid(),
       mergeIds: z.array(z.string().uuid()).min(1),
@@ -1898,7 +1898,7 @@ export const plannerRouter = router({
   // ─── Shopping Packages ─────────────────────────────────────────────
 
   // List all packages
-  packageList: publicProcedure.query(async () => {
+  packageList: protectedProcedure.query(async () => {
     const packages = await prisma.shoppingPackage.findMany({
       orderBy: { name: "asc" },
       include: {
@@ -1920,7 +1920,7 @@ export const plannerRouter = router({
   }),
 
   // Get a single package by ID
-  packageGet: publicProcedure
+  packageGet: protectedProcedure
     .input(ShoppingPackageById)
     .query(async ({ input }) => {
       const pkg = await prisma.shoppingPackage.findUnique({
@@ -1941,7 +1941,7 @@ export const plannerRouter = router({
     }),
 
   // Create a package
-  packageCreate: publicProcedure
+  packageCreate: protectedProcedure
     .input(ShoppingPackageCreate)
     .mutation(async ({ input }) => {
       const pkg = await prisma.shoppingPackage.create({
@@ -1961,7 +1961,7 @@ export const plannerRouter = router({
     }),
 
   // Update a package (name and/or items)
-  packageUpdate: publicProcedure
+  packageUpdate: protectedProcedure
     .input(ShoppingPackageUpdate)
     .mutation(async ({ input }) => {
       const existing = await prisma.shoppingPackage.findUnique({
@@ -1998,7 +1998,7 @@ export const plannerRouter = router({
     }),
 
   // Delete a package
-  packageDelete: publicProcedure
+  packageDelete: protectedProcedure
     .input(ShoppingPackageById)
     .mutation(async ({ input }) => {
       try {
@@ -2017,7 +2017,7 @@ export const plannerRouter = router({
     }),
 
   // Suggest packages matching a search string (for the shopping list dialog)
-  packageSuggest: publicProcedure
+  packageSuggest: protectedProcedure
     .input(ShoppingPackageSuggest.optional())
     .query(async ({ input }) => {
       const q = (input?.search ?? "").trim();
@@ -2036,7 +2036,7 @@ export const plannerRouter = router({
     }),
 
   // Expand a package: add all its items to the shopping list as extras
-  packageExpand: publicProcedure
+  packageExpand: protectedProcedure
     .input(
       z.object({
         packageId: z.string().uuid(),

@@ -325,7 +325,7 @@ export const ingredientRouter = router({
             };
         }),
 
-    merge: publicProcedure
+    merge: protectedProcedure
         .input(z.object({
             keepId: z.string().uuid(),
             mergeIds: z.array(z.string().uuid()).min(1),

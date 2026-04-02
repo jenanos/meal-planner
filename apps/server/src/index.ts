@@ -1,5 +1,4 @@
 import 'dotenv/config';
-console.log('DATABASE_URL at runtime:', process.env.DATABASE_URL);
 
 import Fastify from "fastify";
 import cors from "@fastify/cors";
@@ -7,13 +6,22 @@ import { fastifyTRPCPlugin } from "@trpc/server/adapters/fastify";
 import { toNodeHandler } from "better-auth/node";
 import { appRouter } from "@repo/api";
 import { prisma } from "@repo/database";
-import { auth } from "./auth.js";
+import { auth, getDevMagicLinkUrl } from "./auth.js";
 import type { CreateContextOptions } from "@repo/api";
+
+const isDev = process.env.NODE_ENV !== "production";
+
+const trustedOrigins = (process.env.AUTH_TRUSTED_ORIGINS ?? "http://localhost:3000")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 const app = Fastify({ logger: true });
 
 await app.register(cors, {
-  origin: [/^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/],
+  origin: isDev
+    ? [/^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/]
+    : trustedOrigins,
   credentials: true,
 });
 
@@ -77,6 +85,15 @@ await app.register(fastifyTRPCPlugin, {
 });
 
 app.get("/health", async () => ({ ok: true }));
+
+// Dev-only: expose the latest magic link URL so the frontend can offer
+// a one-click login button instead of requiring email access.
+if (isDev) {
+  app.get("/auth/dev/magic-link", async () => {
+    const url = getDevMagicLinkUrl();
+    return { url };
+  });
+}
 
 // Readiness: ensure DB is migrated (check for User table existence)
 app.get("/ready", async () => {

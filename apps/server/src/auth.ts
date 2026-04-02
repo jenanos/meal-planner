@@ -3,6 +3,8 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { magicLink } from "better-auth/plugins/magic-link";
 import { prisma } from "@repo/database";
 
+const isDev = process.env.NODE_ENV !== "production";
+
 const STANDARD_STORE_CATEGORY_ORDER = [
   "FRUKT_OG_GRONT",
   "KJOTT",
@@ -15,6 +17,38 @@ const STANDARD_STORE_CATEGORY_ORDER = [
   "HUSHOLDNING",
   "ANNET",
 ] as const;
+
+// ─── Dev magic link store ───
+// In development, we store the most recent magic link URL on globalThis so
+// the frontend can offer a one-click login button (similar to the pattern
+// used in home-inventory). This never runs in production.
+
+type DevMagicLinkState = {
+  url: string;
+  createdAt: number;
+};
+
+const g = globalThis as unknown as {
+  __devMagicLinkState?: DevMagicLinkState | null;
+};
+
+function setDevMagicLinkUrl(url: string) {
+  if (!isDev) return;
+  g.__devMagicLinkState = { url, createdAt: Date.now() };
+}
+
+/** Returns the latest dev magic link URL if it's less than 10 minutes old. */
+export function getDevMagicLinkUrl(): string | null {
+  if (!isDev) return null;
+  const state = g.__devMagicLinkState;
+  if (!state) return null;
+  // Expire after 10 minutes
+  if (Date.now() - state.createdAt > 10 * 60_000) {
+    g.__devMagicLinkState = null;
+    return null;
+  }
+  return state.url;
+}
 
 export const auth = betterAuth({
   basePath: "/auth",
@@ -47,7 +81,7 @@ export const auth = betterAuth({
     enabled: false,
   },
   session: {
-    expiresIn: 60 * 60 * 24 * 180, // 6 months
+    expiresIn: 60 * 60 * 24 * 30, // 30 days
     updateAge: 60 * 60 * 24, // refresh session token every 24 hours
     cookieCache: {
       enabled: true,
@@ -60,10 +94,23 @@ export const auth = betterAuth({
   plugins: [
     magicLink({
       sendMagicLink: async ({ email, url }) => {
-        // TODO: Replace with real email service (e.g. Resend, Postmark)
-      if (process.env.NODE_ENV !== "production") {
-        console.log(`[Auth] Magic link for ${email}: ${url}`);
-      }
+        if (isDev) {
+          setDevMagicLinkUrl(url);
+          console.log("\n════════════════════════════════════════");
+          console.log(`  Magic link for ${email}:`);
+          console.log(`  ${url}`);
+          console.log("  (Also available via /auth/dev/magic-link)");
+          console.log("════════════════════════════════════════\n");
+          return;
+        }
+
+        // Production: fail loudly if no email service is configured.
+        // This prevents silent auth failures where users never receive
+        // their magic link.
+        throw new Error(
+          "Magic link email service not configured. " +
+          "Set up Resend, Postmark, or similar and update sendMagicLink in auth.ts.",
+        );
       },
     }),
   ],

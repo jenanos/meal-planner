@@ -1,5 +1,5 @@
 import { prisma } from "@repo/database";
-import { router, publicProcedure } from "../trpc.js";
+import { router, protectedProcedure } from "../trpc.js";
 import { FreezerItemUpsert, FreezerItemRemove, FreezerItemUpdateDates } from "../schemas.js";
 
 /** Default shelf life in months per recipe category */
@@ -41,7 +41,7 @@ const recipeSelect = { id: true, name: true, category: true } as const;
 
 export const freezerRouter = router({
   /** List all freezer items with their recipe details */
-  list: publicProcedure.query(async () => {
+  list: protectedProcedure.query(async () => {
     const items = await prisma.freezerItem.findMany({
       include: { recipe: { select: recipeSelect } },
       orderBy: { recipe: { name: "asc" } },
@@ -50,7 +50,7 @@ export const freezerRouter = router({
   }),
 
   /** Upsert a freezer item – set quantity for a recipe. If quantity is 0, removes the item. */
-  upsert: publicProcedure.input(FreezerItemUpsert).mutation(async ({ input }) => {
+  upsert: protectedProcedure.input(FreezerItemUpsert).mutation(async ({ input }) => {
     if (input.quantity <= 0) {
       await prisma.freezerItem.deleteMany({
         where: { recipeId: input.recipeId },
@@ -83,7 +83,7 @@ export const freezerRouter = router({
   }),
 
   /** Update dates on an existing freezer item */
-  updateDates: publicProcedure.input(FreezerItemUpdateDates).mutation(async ({ input }) => {
+  updateDates: protectedProcedure.input(FreezerItemUpdateDates).mutation(async ({ input }) => {
     const data: { frozenAt?: Date; expiresAt?: Date } = {};
     if (input.frozenAt != null) data.frozenAt = new Date(input.frozenAt);
     if (input.expiresAt != null) data.expiresAt = new Date(input.expiresAt);
@@ -97,7 +97,7 @@ export const freezerRouter = router({
   }),
 
   /** Remove a freezer item entirely */
-  remove: publicProcedure.input(FreezerItemRemove).mutation(async ({ input }) => {
+  remove: protectedProcedure.input(FreezerItemRemove).mutation(async ({ input }) => {
     await prisma.freezerItem.deleteMany({
       where: { recipeId: input.recipeId },
     });
@@ -105,7 +105,7 @@ export const freezerRouter = router({
   }),
 
   /** Decrement quantity by 1 (used when picking from freezer for weekly plan) */
-  decrement: publicProcedure.input(FreezerItemRemove).mutation(async ({ input }) => {
+  decrement: protectedProcedure.input(FreezerItemRemove).mutation(async ({ input }) => {
     return prisma.$transaction(async (tx) => {
       // If quantity is exactly 1, delete the item
       const deleteResult = await tx.freezerItem.deleteMany({
@@ -129,7 +129,7 @@ export const freezerRouter = router({
   }),
 
   /** Increment quantity by 1 (used when removing a freezer meal from weekly plan) */
-  increment: publicProcedure.input(FreezerItemRemove).mutation(async ({ input }) => {
+  increment: protectedProcedure.input(FreezerItemRemove).mutation(async ({ input }) => {
     // Look up recipe to compute default expiry for potential new item
     const recipe = await prisma.recipe.findUniqueOrThrow({
       where: { id: input.recipeId },
