@@ -103,7 +103,7 @@ type RecipeDTO = {
   }[];
 };
 
-type WeekEntryType = "RECIPE" | "TAKEAWAY" | "EMPTY";
+type WeekEntryType = "RECIPE" | "TAKEAWAY" | "FREEZER" | "EMPTY";
 
 type WeekPlanSuggestionBuckets = {
   longGap: RecipeDTO[];
@@ -124,6 +124,7 @@ type WeekPlanResponse = {
 type WeekPlanDayEntryInput =
   | { type: "RECIPE"; recipeId: string }
   | { type: "TAKEAWAY" }
+  | { type: "FREEZER"; recipeId: string }
   | { type: "EMPTY" };
 
 type PlannerConfig = ReturnType<typeof resolveConstraints>;
@@ -596,6 +597,17 @@ async function writeWeekPlan(weekStart: Date, days: WeekPlanDayEntryInput[]) {
             dayIndex: i,
             recipeId: null,
             entryType: "TAKEAWAY",
+          },
+        });
+      } else if (dayEntry.type === "FREEZER") {
+        await tx.weekPlanEntry.upsert({
+          where,
+          update: { recipeId: dayEntry.recipeId, entryType: "FREEZER" },
+          create: {
+            weekPlanId: plan.id,
+            dayIndex: i,
+            recipeId: dayEntry.recipeId,
+            entryType: "FREEZER",
           },
         });
       } else {
@@ -1320,6 +1332,8 @@ export const plannerRouter = router({
         const plan = planMap.get(week.getTime());
         for (const entry of plan?.entries ?? []) {
           if (!entry.recipe) continue;
+          // FREEZER entries have a recipe reference but should not add ingredients to the shopping list
+          if (entry.entryType === "FREEZER") continue;
           const recipe = toDTO(entry.recipe);
           for (const ingredient of recipe.ingredients) {
             const unit = ingredient.unit ?? null;
@@ -1402,7 +1416,7 @@ export const plannerRouter = router({
           const weekIso = week.toISOString();
           const dayIndex = entry.dayIndex ?? 0;
           const entryType = entry.entryType ?? (entry.recipe ? "RECIPE" : "EMPTY");
-          if (entryType === "RECIPE" || entryType === "TAKEAWAY") {
+          if (entryType === "RECIPE" || entryType === "TAKEAWAY" || entryType === "FREEZER") {
             const recipeName = entry.recipe ? toDTO(entry.recipe).name : null;
             const labels = describeOccurrence(weekIso, dayIndex);
             plannedDays.push({

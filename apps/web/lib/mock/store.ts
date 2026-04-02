@@ -243,6 +243,7 @@ type WeekPlanRecord = {
 type WeekPlanEntryRecord =
   | { type: "RECIPE"; recipeId: string }
   | { type: "TAKEAWAY" }
+  | { type: "FREEZER"; recipeId: string }
   | { type: "EMPTY" };
 
 type ExtraCatalogRecord = { id: string; name: string };
@@ -279,6 +280,7 @@ type MockState = {
   shoppingStores: Map<string, ShoppingStoreRecord>;
   shoppingRoleSettings: Map<ShoppingRole, ShoppingRoleSettingsRecord>;
   deviceRoles: Map<string, ShoppingRole>;
+  freezerItems: Map<string, { id: string; recipeId: string; quantity: number }>;
 };
 
 function createInitialState(): MockState {
@@ -408,6 +410,7 @@ function createInitialState(): MockState {
     shoppingStores,
     shoppingRoleSettings,
     deviceRoles: new Map<string, ShoppingRole>(),
+    freezerItems: new Map<string, { id: string; recipeId: string; quantity: number }>(),
   };
 }
 
@@ -587,6 +590,13 @@ function serializeWeekPlan(plan: WeekPlanRecord) {
         dayIndex: index,
         entryType: "TAKEAWAY" as const,
         recipe: null,
+      };
+    }
+    if (entry.type === "FREEZER") {
+      return {
+        dayIndex: index,
+        entryType: "FREEZER" as const,
+        recipe: serializeRecipe(state.recipesById.get(entry.recipeId)!),
       };
     }
     return {
@@ -798,6 +808,16 @@ function aggregateShopping(weekStarts: string[]) {
           entryType: "TAKEAWAY",
           ...labels,
         });
+      } else if (entry.type === "FREEZER") {
+        const recipe = state.recipesById.get(entry.recipeId);
+        const labels = describeDay(week, dayIndex);
+        plannedDays.push({
+          weekStart: week,
+          dayIndex,
+          recipeName: recipe?.name ?? null,
+          entryType: "FREEZER",
+          ...labels,
+        });
       }
     });
   }
@@ -1005,6 +1025,9 @@ async function handleSaveWeekPlan(input: any) {
         }
         if (entry?.type === "TAKEAWAY") {
           return { type: "TAKEAWAY" };
+        }
+        if (entry?.type === "FREEZER" && typeof entry?.recipeId === "string") {
+          return { type: "FREEZER", recipeId: entry.recipeId };
         }
         return { type: "EMPTY" };
       })
@@ -1349,6 +1372,70 @@ async function handleCreateShoppingStore(input: any) {
   return serializeShoppingStore(store);
 }
 
+// --- Freezer mock handlers ---
+async function handleFreezerList() {
+  return Array.from(state.freezerItems.values()).map((item) => {
+    const recipe = state.recipesById.get(item.recipeId);
+    return {
+      id: item.id,
+      recipeId: item.recipeId,
+      recipeName: recipe?.name ?? "Ukjent",
+      recipeCategory: recipe?.category ?? "ANNET",
+      quantity: item.quantity,
+    };
+  }).sort((a, b) => a.recipeName.localeCompare(b.recipeName, "nb"));
+}
+
+async function handleFreezerUpsert(input: any) {
+  const recipeId = String(input?.recipeId ?? "");
+  const quantity = Number(input?.quantity ?? 0);
+  if (quantity <= 0) {
+    state.freezerItems.delete(recipeId);
+    return null;
+  }
+  const existing = state.freezerItems.get(recipeId);
+  const id = existing?.id ?? randomId("freezer");
+  state.freezerItems.set(recipeId, { id, recipeId, quantity });
+  const recipe = state.recipesById.get(recipeId);
+  return {
+    id,
+    recipeId,
+    recipeName: recipe?.name ?? "Ukjent",
+    recipeCategory: recipe?.category ?? "ANNET",
+    quantity,
+  };
+}
+
+async function handleFreezerRemove(input: any) {
+  const recipeId = String(input?.recipeId ?? "");
+  state.freezerItems.delete(recipeId);
+  return { success: true };
+}
+
+async function handleFreezerDecrement(input: any) {
+  const recipeId = String(input?.recipeId ?? "");
+  const item = state.freezerItems.get(recipeId);
+  if (!item || item.quantity <= 0) return null;
+  if (item.quantity === 1) {
+    state.freezerItems.delete(recipeId);
+    return null;
+  }
+  item.quantity -= 1;
+  return { id: item.id, recipeId: item.recipeId, quantity: item.quantity };
+}
+
+async function handleFreezerIncrement(input: any) {
+  const recipeId = String(input?.recipeId ?? "");
+  const existing = state.freezerItems.get(recipeId);
+  if (existing) {
+    existing.quantity += 1;
+    return { id: existing.id, recipeId: existing.recipeId, quantity: existing.quantity };
+  }
+  const id = randomId("freezer");
+  state.freezerItems.set(recipeId, { id, recipeId, quantity: 1 });
+  return { id, recipeId, quantity: 1 };
+}
+
 export async function handleMockQuery(path: string, input: unknown) {
   switch (path) {
     case "recipe.list":
@@ -1369,6 +1456,8 @@ export async function handleMockQuery(path: string, input: unknown) {
       return handleShoppingSettings(input);
     case "planner.extraSuggest":
       return handleExtraSuggest(input);
+    case "freezer.list":
+      return handleFreezerList();
     default:
       throw new Error(`Mock query mangler implementasjon: ${path}`);
   }
@@ -1400,6 +1489,14 @@ export async function handleMockMutation(path: string, input: unknown) {
       return handleExtraToggle(input);
     case "planner.extraRemove":
       return handleExtraRemove(input);
+    case "freezer.upsert":
+      return handleFreezerUpsert(input);
+    case "freezer.remove":
+      return handleFreezerRemove(input);
+    case "freezer.decrement":
+      return handleFreezerDecrement(input);
+    case "freezer.increment":
+      return handleFreezerIncrement(input);
     default:
       throw new Error(`Mock mutation mangler implementasjon: ${path}`);
   }

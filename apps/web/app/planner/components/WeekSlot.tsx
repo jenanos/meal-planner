@@ -18,8 +18,8 @@ type WeekSlotProps = {
 };
 
 export function WeekSlot({ index, dayName, dateLabel, entry, weekOffset = 0, onRecipeClick, onRequestChange, onSetTakeaway, onClearEntry }: WeekSlotProps & { dateLabel?: string }) {
-  const recipe = entry?.type === "RECIPE" ? entry.recipe : null;
-  const entryKey = entry?.type === "TAKEAWAY" ? "takeaway" : recipe?.id || "empty";
+  const recipe = entry?.type === "RECIPE" ? entry.recipe : (entry?.type === "FREEZER" ? entry.recipe : null);
+  const entryKey = entry?.type === "TAKEAWAY" ? "takeaway" : entry?.type === "FREEZER" ? `freezer-${recipe?.id}` : recipe?.id || "empty";
   // Use the same format as draggable IDs so parseDragId works
   const dropId = makeDragId({ source: "week", index, recipeId: entryKey, weekOffset });
   const { isOver, setNodeRef } = useDroppable({ id: dropId });
@@ -33,7 +33,7 @@ export function WeekSlot({ index, dayName, dateLabel, entry, weekOffset = 0, onR
     }
   };
 
-  if (!entry || entry.type === "TAKEAWAY") {
+  if (!entry || entry.type === "TAKEAWAY" || entry.type === "FREEZER") {
     return (
       <div ref={setNodeRef}>
         <WeekCard

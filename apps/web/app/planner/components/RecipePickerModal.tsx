@@ -14,6 +14,14 @@ import { trpc } from "../../../lib/trpcClient";
 import type { DayName, RecipeDTO, WeekEntry } from "../types";
 import { CategoryEmoji } from "../../components/CategoryEmoji";
 
+type FreezerListItem = {
+    id: string;
+    recipeId: string;
+    recipeName: string;
+    recipeCategory: string;
+    quantity: number;
+};
+
 export type RecipePickerModalProps = {
     open: boolean;
     onOpenChange: (open: boolean) => void;
@@ -26,10 +34,11 @@ export type RecipePickerModalProps = {
     onSelectRecipe: (recipe: RecipeDTO, dayIndex: number) => void;
     onViewRecipe: (recipe: RecipeDTO) => void;
     onSetTakeaway: (dayIndex: number) => void;
+    onSetFreezerMeal: (recipe: RecipeDTO, dayIndex: number) => void;
     onClearEntry: (dayIndex: number) => void;
 };
 
-type TabValue = "frequent" | "longGap" | "all";
+type TabValue = "frequent" | "longGap" | "all" | "freezer";
 
 export function RecipePickerModal({
     open,
@@ -43,6 +52,7 @@ export function RecipePickerModal({
     onSelectRecipe,
     onViewRecipe,
     onSetTakeaway,
+    onSetFreezerMeal,
     onClearEntry,
 }: RecipePickerModalProps) {
     const [activeTab, setActiveTab] = useState<TabValue>("frequent");
@@ -72,8 +82,15 @@ export function RecipePickerModal({
         { enabled: open && activeTab === "all" }
     );
 
-    const currentRecipe = currentEntry?.type === "RECIPE" ? currentEntry.recipe : null;
+    // Query freezer items
+    const freezerQuery = trpc.freezer.list.useQuery(undefined, {
+        enabled: open,
+    });
+    const freezerItems: FreezerListItem[] = freezerQuery.data ?? [];
+
+    const currentRecipe = currentEntry?.type === "RECIPE" ? currentEntry.recipe : (currentEntry?.type === "FREEZER" ? currentEntry.recipe : null);
     const isTakeaway = currentEntry?.type === "TAKEAWAY";
+    const isFreezer = currentEntry?.type === "FREEZER";
 
     const handleSelectRecipe = useCallback(
         (recipe: RecipeDTO) => {
@@ -99,7 +116,7 @@ export function RecipePickerModal({
         }
     }, [currentRecipe, onViewRecipe]);
 
-    // Get recipes based on active tab
+    // Get recipes based on active tab (not used for freezer tab)
     const displayRecipes = useMemo((): RecipeDTO[] => {
         switch (activeTab) {
             case "frequent":
@@ -113,10 +130,39 @@ export function RecipePickerModal({
         }
     }, [activeTab, frequent, longGap, allRecipesQuery.data]);
 
+    const handleSelectFreezerMeal = useCallback(
+        (item: FreezerListItem) => {
+            // Build a minimal RecipeDTO-like object from freezer item
+            const recipe = (allRecipesQuery.data?.items ?? []).find((r: any) => r.id === item.recipeId) as RecipeDTO | undefined;
+            if (recipe) {
+                onSetFreezerMeal(recipe, dayIndex);
+            } else {
+                // Fallback: create a minimal recipe object
+                onSetFreezerMeal(
+                    {
+                        id: item.recipeId,
+                        name: item.recipeName,
+                        description: undefined,
+                        category: item.recipeCategory,
+                        everydayScore: 3,
+                        healthScore: 3,
+                        ingredients: [],
+                        lastUsed: null,
+                        usageCount: 0,
+                    } as unknown as RecipeDTO,
+                    dayIndex,
+                );
+            }
+            onOpenChange(false);
+        },
+        [allRecipesQuery.data, onSetFreezerMeal, dayIndex, onOpenChange],
+    );
+
     const tabs: { value: TabValue; label: string }[] = [
         { value: "frequent", label: "Ofte brukt" },
         { value: "longGap", label: "Lenge siden" },
         { value: "all", label: "Alle oppskrifter" },
+        ...(freezerItems.length > 0 ? [{ value: "freezer" as TabValue, label: `Fryseren (${freezerItems.length})` }] : []),
     ];
 
     return (
@@ -135,6 +181,11 @@ export function RecipePickerModal({
                                 Nåværende: Takeaway
                             </span>
                         )}
+                        {isFreezer && currentRecipe && (
+                            <span className="block text-sm font-normal text-cyan-700 mt-1">
+                                Nåværende: {currentRecipe.name} (fra fryseren)
+                            </span>
+                        )}
                     </DialogTitle>
                 </DialogHeader>
 
@@ -150,7 +201,7 @@ export function RecipePickerModal({
                             Se oppskrift
                         </Button>
                     )}
-                    {!isTakeaway && (
+                    {!isTakeaway && !isFreezer && (
                         <Button
                             variant="outline"
                             size="sm"
@@ -160,7 +211,7 @@ export function RecipePickerModal({
                             Sett som takeaway
                         </Button>
                     )}
-                    {(currentRecipe || isTakeaway) && (
+                    {(currentRecipe || isTakeaway || isFreezer) && (
                         <Button
                             variant="outline"
                             size="sm"
@@ -204,7 +255,32 @@ export function RecipePickerModal({
                 {/* Recipe list */}
                 <ScrollArea className="flex-1 min-h-0">
                     <div className="p-4 space-y-2">
-                        {activeTab === "all" && allRecipesQuery.isLoading ? (
+                        {activeTab === "freezer" ? (
+                            freezerItems.length === 0 ? (
+                                <p className="text-center text-muted-foreground py-8">
+                                    Fryseren er tom
+                                </p>
+                            ) : (
+                                freezerItems.map((item) => (
+                                    <button
+                                        key={item.recipeId}
+                                        type="button"
+                                        className="w-full flex items-center gap-3 p-3 rounded-lg bg-cyan-50 hover:bg-cyan-100 transition-colors text-left"
+                                        onClick={() => handleSelectFreezerMeal(item)}
+                                    >
+                                        <div className="flex-1 min-w-0">
+                                            <div className="font-medium truncate">{item.recipeName}</div>
+                                            <div className="text-xs text-cyan-700">
+                                                {item.quantity} {item.quantity === 1 ? "porsjon" : "porsjoner"} i fryseren
+                                            </div>
+                                        </div>
+                                        {item.recipeCategory && (
+                                            <CategoryEmoji category={item.recipeCategory as any} />
+                                        )}
+                                    </button>
+                                ))
+                            )
+                        ) : activeTab === "all" && allRecipesQuery.isLoading ? (
                             <p className="text-center text-muted-foreground py-8">Laster oppskrifter...</p>
                         ) : displayRecipes.length === 0 ? (
                             <p className="text-center text-muted-foreground py-8">

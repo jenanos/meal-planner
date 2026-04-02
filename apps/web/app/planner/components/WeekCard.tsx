@@ -18,7 +18,7 @@ export type Props = {
         lastUsed: string | null;
         usageCount: number;
     } | null;
-    entryType?: "RECIPE" | "TAKEAWAY" | "EMPTY";
+    entryType?: "RECIPE" | "TAKEAWAY" | "FREEZER" | "EMPTY";
     isDraggingTarget?: boolean;
 
     // HTML5 DnD – gjør valgfrie
@@ -49,15 +49,16 @@ export function WeekCard({
     const baseHsl = dayBaseHsl[dayName];
     const dayGrad = dayHoverGradients[dayName];
     const isTakeaway = entryType === "TAKEAWAY";
+    const isFreezer = entryType === "FREEZER";
     const isEmpty = entryType === "EMPTY";
 
     return (
         <MagicCard
             className={`rounded-lg flex h-full w-full items-center justify-center text-center`}
-            style={{ ["--magic-card-bg" as any]: isTakeaway ? "36 100% 94%" : baseHsl }}
-            gradientFrom={isTakeaway ? "#FB923C" : dayGrad.from}
-            gradientTo={isTakeaway ? "#FDE68A" : dayGrad.to}
-            gradientColor={isTakeaway ? "#F97316" : dayGrad.color}
+            style={{ ["--magic-card-bg" as any]: isFreezer ? "200 80% 92%" : isTakeaway ? "36 100% 94%" : baseHsl }}
+            gradientFrom={isFreezer ? "#67E8F9" : isTakeaway ? "#FB923C" : dayGrad.from}
+            gradientTo={isFreezer ? "#A5F3FC" : isTakeaway ? "#FDE68A" : dayGrad.to}
+            gradientColor={isFreezer ? "#06B6D4" : isTakeaway ? "#F97316" : dayGrad.color}
             gradientOpacity={isDraggingTarget ? 0.7 : 0.5}
             gradientSize={320}
             draggable={!!onDragStart}
@@ -83,7 +84,13 @@ export function WeekCard({
                 <div className="text-[11px] text-muted-foreground sm:text-xs">
                     {dayName} {dateLabel && <span className="opacity-75 font-normal ml-0.5">{dateLabel}</span>}
                 </div>
-                {recipe ? (
+                {isFreezer && recipe ? (
+                    <div className="flex flex-col items-center justify-center space-y-0.5 sm:space-y-1.5">
+                        <div className="break-words text-sm font-medium leading-tight text-cyan-900">{recipe.name}</div>
+                        <div className="text-[11px] text-cyan-700">Fra fryseren</div>
+                        {recipe.category ? <CategoryEmoji category={recipe.category as any} /> : null}
+                    </div>
+                ) : recipe ? (
                     <div className="flex flex-col items-center justify-center space-y-0.5 sm:space-y-1.5">
                         <div className="break-words text-sm font-medium leading-tight">{recipe.name}</div>
                         {recipe.category ? <CategoryEmoji category={recipe.category as any} /> : null}
@@ -124,6 +131,18 @@ export function WeekCard({
                     <button
                         type="button"
                         className="mt-1 rounded-md border border-amber-400/70 bg-white/60 px-2 py-1 text-[10px] font-medium text-amber-900 hover:bg-white"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            onClearEntry();
+                        }}
+                    >
+                        Fjern
+                    </button>
+                ) : null}
+                {isFreezer && onClearEntry ? (
+                    <button
+                        type="button"
+                        className="mt-1 rounded-md border border-cyan-400/70 bg-white/60 px-2 py-1 text-[10px] font-medium text-cyan-900 hover:bg-white"
                         onClick={(event) => {
                             event.stopPropagation();
                             onClearEntry();

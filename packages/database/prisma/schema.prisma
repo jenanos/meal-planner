@@ -31,6 +31,7 @@ enum IngredientCategory {
 enum WeekPlanEntryType {
   RECIPE
   TAKEAWAY
+  FREEZER
 }
 
 enum ShoppingViewMode {
@@ -56,8 +57,9 @@ model Recipe {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
-  ingredients RecipeIngredient[]
-  weekEntries WeekPlanEntry[]
+  ingredients  RecipeIngredient[]
+  weekEntries  WeekPlanEntry[]
+  freezerItems FreezerItem[]
 
   @@index([category])
   @@index([lastUsed])
@@ -231,4 +233,17 @@ model ShoppingPackageItem {
   @@unique([packageId, extraItemCatalogId])
   @@unique([packageId, ingredientId])
   @@index([packageId])
+}
+
+// Freezer inventory – tracks how many portions of a recipe are stored in the freezer
+model FreezerItem {
+  id        String   @id @default(uuid()) @db.Uuid
+  recipeId  String   @db.Uuid
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@unique([recipeId])
 }
