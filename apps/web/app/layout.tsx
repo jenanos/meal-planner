@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { href: "/", label: "Ukesplan" },
   { href: "/recipes", label: "Oppskrifter" },
   { href: "/ingredients", label: "Ingredienser" },
+  { href: "/freezer", label: "Fryseren" },
   { href: "/shopping-list", label: "Handleliste" },
   { href: "/settings", label: "Innstillinger" },
 ];

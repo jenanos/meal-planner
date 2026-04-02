@@ -119,16 +119,18 @@ export default function PlannerPage() {
 
   const saveWeek = trpc.planner.saveWeekPlan.useMutation();
   const generateWeekMutation = trpc.planner.generateWeekPlan.useMutation();
+  const freezerDecrement = trpc.freezer.decrement.useMutation();
+  const freezerIncrement = trpc.freezer.increment.useMutation();
 
   const recipeDialogItems = useMemo<RecipeListItem[]>(() => {
     const map = new Map<string, RecipeDTO>();
     const baseWeek = previewWeek ?? week;
     baseWeek.forEach((entry) => {
-      if (entry?.type === "RECIPE") map.set(entry.recipe.id, entry.recipe);
+      if (entry?.type === "RECIPE" || entry?.type === "FREEZER") map.set(entry.recipe.id, entry.recipe);
     });
     const baseNextWeek = previewNextWeek ?? nextWeek;
     baseNextWeek.forEach((entry) => {
-      if (entry?.type === "RECIPE") map.set(entry.recipe.id, entry.recipe);
+      if (entry?.type === "RECIPE" || entry?.type === "FREEZER") map.set(entry.recipe.id, entry.recipe);
     });
     longGap.forEach((recipe) => {
       map.set(recipe.id, recipe);
@@ -227,6 +229,9 @@ export default function PlannerPage() {
         if (day.entryType === "TAKEAWAY") {
           return { type: "TAKEAWAY" } satisfies WeekEntry;
         }
+        if (day.entryType === "FREEZER" && day.recipe) {
+          return { type: "FREEZER", recipe: day.recipe } satisfies WeekEntry;
+        }
         if (day.recipe) {
           return { type: "RECIPE", recipe: day.recipe } satisfies WeekEntry;
         }
@@ -247,6 +252,9 @@ export default function PlannerPage() {
       const weekState = res.days.map((day) => {
         if (day.entryType === "TAKEAWAY") {
           return { type: "TAKEAWAY" } satisfies WeekEntry;
+        }
+        if (day.entryType === "FREEZER" && day.recipe) {
+          return { type: "FREEZER", recipe: day.recipe } satisfies WeekEntry;
         }
         if (day.recipe) {
           return { type: "RECIPE", recipe: day.recipe } satisfies WeekEntry;
@@ -273,7 +281,7 @@ export default function PlannerPage() {
   }, [nextWeekPlanQuery.data, applyNextWeekData]);
 
   const commitWeekPlan = useCallback(
-    async (newWeek: WeekState, weekStart: string = activeWeekStart) => {
+    async (newWeek: WeekState, weekStart: string = activeWeekStart): Promise<boolean> => {
       const isNext = weekStart !== activeWeekStart;
       if (isNext) {
         setNextWeek(newWeek);
@@ -286,6 +294,9 @@ export default function PlannerPage() {
         }
         if (entry?.type === "TAKEAWAY") {
           return { type: "TAKEAWAY" as const };
+        }
+        if (entry?.type === "FREEZER") {
+          return { type: "FREEZER" as const, recipeId: entry.recipe.id };
         }
         return { type: "EMPTY" as const };
       });
@@ -300,8 +311,10 @@ export default function PlannerPage() {
         } else {
           applyWeekData(payload);
         }
+        return true;
       } catch (error) {
         console.error("Failed to save week plan:", error);
+        return false;
       }
     },
     [activeWeekStart, saveWeek, applyWeekData, applyNextWeekData],
@@ -446,8 +459,13 @@ export default function PlannerPage() {
 
         if (recipe) {
           const targetWeek = [...getWeekForOffset(toOffset)];
+          const oldEntry = targetWeek[overPayload.index];
           targetWeek[overPayload.index] = { type: "RECIPE", recipe };
-          commitWeekPlan(targetWeek, getWeekStartForOffset(toOffset));
+          commitWeekPlan(targetWeek, getWeekStartForOffset(toOffset)).then((ok) => {
+            if (ok && oldEntry?.type === "FREEZER") {
+              freezerIncrement.mutate({ recipeId: oldEntry.recipe.id });
+            }
+          });
         }
       }
     },
@@ -460,6 +478,7 @@ export default function PlannerPage() {
       searchResults,
       getWeekForOffset,
       getWeekStartForOffset,
+      freezerIncrement,
     ],
   );
   const handlePickFromSource = useCallback(
@@ -475,24 +494,53 @@ export default function PlannerPage() {
     [week, commitWeekPlan],
   );
 
-  const handleSetTakeaway = useCallback(
-    (dayIndex: number, weekOffset: number = 0) => {
+  const handleSetFreezerMeal = useCallback(
+    async (recipe: RecipeDTO, dayIndex: number, weekOffset: number = 0) => {
       const sourceWeek = getWeekForOffset(weekOffset);
+      const oldEntry = sourceWeek[dayIndex];
+      const newWeek = [...sourceWeek];
+      newWeek[dayIndex] = { type: "FREEZER", recipe };
+      const ok = await commitWeekPlan(newWeek, getWeekStartForOffset(weekOffset));
+      if (ok) {
+        // Decrement freezer inventory for the newly assigned recipe
+        freezerDecrement.mutate({ recipeId: recipe.id });
+        // If replacing a previous FREEZER entry, restore that recipe's inventory
+        if (oldEntry?.type === "FREEZER") {
+          freezerIncrement.mutate({ recipeId: oldEntry.recipe.id });
+        }
+      }
+    },
+    [getWeekForOffset, getWeekStartForOffset, commitWeekPlan, freezerDecrement, freezerIncrement],
+  );
+
+  const handleSetTakeaway = useCallback(
+    async (dayIndex: number, weekOffset: number = 0) => {
+      const sourceWeek = getWeekForOffset(weekOffset);
+      const oldEntry = sourceWeek[dayIndex];
       const newWeek = [...sourceWeek];
       newWeek[dayIndex] = { type: "TAKEAWAY" };
-      commitWeekPlan(newWeek, getWeekStartForOffset(weekOffset));
+      const ok = await commitWeekPlan(newWeek, getWeekStartForOffset(weekOffset));
+      // Only restore freezer inventory if save succeeded
+      if (ok && oldEntry?.type === "FREEZER") {
+        freezerIncrement.mutate({ recipeId: oldEntry.recipe.id });
+      }
     },
-    [getWeekForOffset, getWeekStartForOffset, commitWeekPlan],
+    [getWeekForOffset, getWeekStartForOffset, commitWeekPlan, freezerIncrement],
   );
 
   const handleClearEntry = useCallback(
-    (dayIndex: number, weekOffset: number = 0) => {
+    async (dayIndex: number, weekOffset: number = 0) => {
       const sourceWeek = getWeekForOffset(weekOffset);
+      const oldEntry = sourceWeek[dayIndex];
       const newWeek = [...sourceWeek];
       newWeek[dayIndex] = null;
-      commitWeekPlan(newWeek, getWeekStartForOffset(weekOffset));
+      const ok = await commitWeekPlan(newWeek, getWeekStartForOffset(weekOffset));
+      // Only restore freezer inventory if save succeeded
+      if (ok && oldEntry?.type === "FREEZER") {
+        freezerIncrement.mutate({ recipeId: oldEntry.recipe.id });
+      }
     },
-    [getWeekForOffset, getWeekStartForOffset, commitWeekPlan],
+    [getWeekForOffset, getWeekStartForOffset, commitWeekPlan, freezerIncrement],
   );
 
   // Handler for opening recipe picker modal (mobile)
@@ -503,12 +551,25 @@ export default function PlannerPage() {
 
   // Handler for selecting recipe from modal
   const handleSelectRecipeFromModal = useCallback(
-    (recipe: RecipeDTO, dayIndex: number) => {
+    async (recipe: RecipeDTO, dayIndex: number) => {
+      const oldEntry = week[dayIndex];
       const newWeek = [...week];
       newWeek[dayIndex] = { type: "RECIPE", recipe };
-      commitWeekPlan(newWeek);
+      const ok = await commitWeekPlan(newWeek);
+      // Only restore freezer inventory if save succeeded
+      if (ok && oldEntry?.type === "FREEZER") {
+        freezerIncrement.mutate({ recipeId: oldEntry.recipe.id });
+      }
     },
-    [week, commitWeekPlan],
+    [week, commitWeekPlan, freezerIncrement],
+  );
+
+  // Handler for selecting a freezer meal from modal
+  const handleSetFreezerMealFromModal = useCallback(
+    (recipe: RecipeDTO, dayIndex: number) => {
+      handleSetFreezerMeal(recipe, dayIndex, editingWeekOffset);
+    },
+    [handleSetFreezerMeal, editingWeekOffset],
   );
 
   // Search logic with debouncing
@@ -776,6 +837,7 @@ export default function PlannerPage() {
             onSelectRecipe={handleSelectRecipeFromModal}
             onViewRecipe={handleRecipeClick}
             onSetTakeaway={(i) => handleSetTakeaway(i, editingWeekOffset)}
+            onSetFreezerMeal={handleSetFreezerMealFromModal}
             onClearEntry={(i) => handleClearEntry(i, editingWeekOffset)}
           />
 

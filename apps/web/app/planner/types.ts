@@ -6,7 +6,8 @@ export type WeekRecipe = WeekDay["recipe"];
 export type RecipeDTO = NonNullable<WeekRecipe>;
 export type WeekEntry =
   | { type: "RECIPE"; recipe: RecipeDTO }
-  | { type: "TAKEAWAY" };
+  | { type: "TAKEAWAY" }
+  | { type: "FREEZER"; recipe: RecipeDTO };
 export type WeekState = (WeekEntry | null)[];
 
 export type DragSource = "week" | "longGap" | "frequent" | "search";
