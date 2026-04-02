@@ -9,7 +9,21 @@ type FreezerItem = {
   recipeName: string;
   recipeCategory: string;
   quantity: number;
+  frozenAt: string;
+  expiresAt: string;
 };
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString("nb-NO", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function toInputDate(iso: string) {
+  return iso.slice(0, 10);
+}
 
 export function FreezerInventoryBoard() {
   const utils = trpc.useUtils();
@@ -21,10 +35,16 @@ export function FreezerInventoryBoard() {
   const removeMutation = trpc.freezer.remove.useMutation({
     onSuccess: () => utils.freezer.list.invalidate(),
   });
+  const updateDatesMutation = trpc.freezer.updateDates.useMutation({
+    onSuccess: () => utils.freezer.list.invalidate(),
+  });
 
   const [addSearch, setAddSearch] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [editingDatesFor, setEditingDatesFor] = useState<string | null>(null);
+  const [editFrozen, setEditFrozen] = useState("");
+  const [editExpires, setEditExpires] = useState("");
 
   const items: FreezerItem[] = freezerQuery.data ?? [];
   const existingRecipeIds = useMemo(
@@ -80,8 +100,25 @@ export function FreezerInventoryBoard() {
     [upsertMutation],
   );
 
+  const handleSaveDates = useCallback(
+    (recipeId: string) => {
+      updateDatesMutation.mutate({
+        recipeId,
+        frozenAt: new Date(editFrozen).toISOString(),
+        expiresAt: new Date(editExpires).toISOString(),
+      });
+      setEditingDatesFor(null);
+    },
+    [editFrozen, editExpires, updateDatesMutation],
+  );
+
   const totalPortions = useMemo(
     () => items.reduce((sum, i) => sum + i.quantity, 0),
+    [items],
+  );
+
+  const expiredCount = useMemo(
+    () => items.filter((i) => new Date(i.expiresAt) < new Date()).length,
     [items],
   );
 
@@ -95,74 +132,146 @@ export function FreezerInventoryBoard() {
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
           {items.length} oppskrifter, {totalPortions} porsjoner totalt
+          {expiredCount > 0 && (
+            <span className="text-red-600 ml-2">({expiredCount} utgått)</span>
+          )}
         </p>
       </div>
 
       {/* Inventory table */}
       <div className="space-y-1">
-        {items.map((item) => (
-          <div
-            key={item.recipeId}
-            className="flex items-center gap-3 rounded-lg border px-3 py-2 bg-card"
-          >
-            <div className="flex-1 min-w-0">
-              <span className="text-sm font-medium">{item.recipeName}</span>
-              <span className="ml-2 text-xs text-muted-foreground">
-                ({item.recipeCategory})
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                className="rounded border px-2 py-0.5 text-sm hover:bg-accent"
-                onClick={() => handleQuantityChange(item.recipeId, -1)}
-              >
-                -
-              </button>
-              {editingId === item.recipeId ? (
-                <input
-                  type="number"
-                  min={0}
-                  className="w-14 rounded border px-1 py-0.5 text-center text-sm"
-                  value={editValue}
-                  onChange={(e) => setEditValue(e.target.value)}
-                  onBlur={() => handleSetQuantity(item.recipeId)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleSetQuantity(item.recipeId);
-                    if (e.key === "Escape") setEditingId(null);
-                  }}
-                  autoFocus
-                />
-              ) : (
-                <button
-                  type="button"
-                  className="w-10 text-center font-mono text-sm hover:underline"
-                  onClick={() => {
-                    setEditingId(item.recipeId);
-                    setEditValue(String(item.quantity));
-                  }}
-                  title="Klikk for å redigere antall"
-                >
-                  {item.quantity}
-                </button>
+        {items.map((item) => {
+          const expired = new Date(item.expiresAt) < new Date();
+          const isEditingDates = editingDatesFor === item.recipeId;
+
+          return (
+            <div
+              key={item.recipeId}
+              className={`rounded-lg border px-3 py-2 bg-card ${expired ? "border-red-300 bg-red-50/50" : ""}`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-medium">{item.recipeName}</span>
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    ({item.recipeCategory})
+                  </span>
+                  <div className="flex flex-wrap gap-x-3 text-xs text-muted-foreground mt-0.5">
+                    <span>Frosset: {formatDate(item.frozenAt)}</span>
+                    <span className={expired ? "text-red-600 font-medium" : ""}>
+                      Utløper: {formatDate(item.expiresAt)}
+                      {expired && " (utgått)"}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    className="rounded border px-2 py-0.5 text-sm hover:bg-accent"
+                    onClick={() => handleQuantityChange(item.recipeId, -1)}
+                  >
+                    -
+                  </button>
+                  {editingId === item.recipeId ? (
+                    <input
+                      type="number"
+                      min={0}
+                      className="w-14 rounded border px-1 py-0.5 text-center text-sm"
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onBlur={() => handleSetQuantity(item.recipeId)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSetQuantity(item.recipeId);
+                        if (e.key === "Escape") setEditingId(null);
+                      }}
+                      autoFocus
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className="w-10 text-center font-mono text-sm hover:underline"
+                      onClick={() => {
+                        setEditingId(item.recipeId);
+                        setEditValue(String(item.quantity));
+                      }}
+                      title="Klikk for å redigere antall"
+                    >
+                      {item.quantity}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="rounded border px-2 py-0.5 text-sm hover:bg-accent"
+                    onClick={() => handleQuantityChange(item.recipeId, 1)}
+                  >
+                    +
+                  </button>
+                  <button
+                    type="button"
+                    className="ml-1 rounded border px-2 py-0.5 text-sm hover:bg-accent"
+                    onClick={() => {
+                      if (isEditingDates) {
+                        setEditingDatesFor(null);
+                      } else {
+                        setEditingDatesFor(item.recipeId);
+                        setEditFrozen(toInputDate(item.frozenAt));
+                        setEditExpires(toInputDate(item.expiresAt));
+                      }
+                    }}
+                  >
+                    Datoer
+                  </button>
+                  <button
+                    type="button"
+                    className="ml-1 rounded border border-red-200 px-2 py-0.5 text-sm text-red-600 hover:bg-red-50"
+                    onClick={() => removeMutation.mutate({ recipeId: item.recipeId })}
+                  >
+                    Fjern
+                  </button>
+                </div>
+              </div>
+
+              {/* Inline date editor */}
+              {isEditingDates && (
+                <div className="mt-2 flex flex-wrap items-end gap-3 border-t pt-2">
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Frosset dato</label>
+                    <input
+                      type="date"
+                      className="rounded border px-2 py-1 text-sm"
+                      value={editFrozen}
+                      onChange={(e) => setEditFrozen(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Utløpsdato</label>
+                    <input
+                      type="date"
+                      className="rounded border px-2 py-1 text-sm"
+                      value={editExpires}
+                      onChange={(e) => setEditExpires(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className="rounded border border-primary bg-primary px-3 py-1 text-sm text-primary-foreground hover:bg-primary/90"
+                      onClick={() => handleSaveDates(item.recipeId)}
+                    >
+                      Lagre
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded border px-3 py-1 text-sm hover:bg-accent"
+                      onClick={() => setEditingDatesFor(null)}
+                    >
+                      Avbryt
+                    </button>
+                  </div>
+                </div>
               )}
-              <button
-                type="button"
-                className="rounded border px-2 py-0.5 text-sm hover:bg-accent"
-                onClick={() => handleQuantityChange(item.recipeId, 1)}
-              >
-                +
-              </button>
-              <button
-                type="button"
-                className="ml-1 rounded border border-red-200 px-2 py-0.5 text-sm text-red-600 hover:bg-red-50"
-                onClick={() => removeMutation.mutate({ recipeId: item.recipeId })}
-              >
-                Fjern
-              </button>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {items.length === 0 && (
           <p className="py-4 text-center text-sm text-muted-foreground">
             Fryseren er tom. Legg til måltider nedenfor.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
 import { Button, Input, ScrollArea } from "@repo/ui";
 import { CategoryEmoji } from "../components/CategoryEmoji";
@@ -11,7 +11,31 @@ type FreezerListItem = {
   recipeName: string;
   recipeCategory: string;
   quantity: number;
+  frozenAt: string;
+  expiresAt: string;
 };
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString("nb-NO", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function toInputDate(iso: string) {
+  return iso.slice(0, 10);
+}
+
+function isExpired(expiresAt: string) {
+  return new Date(expiresAt) < new Date();
+}
+
+function isExpiringSoon(expiresAt: string) {
+  const twoWeeks = new Date();
+  twoWeeks.setDate(twoWeeks.getDate() + 14);
+  return new Date(expiresAt) < twoWeeks && !isExpired(expiresAt);
+}
 
 export default function FreezerPage() {
   const utils = trpc.useUtils();
@@ -25,11 +49,12 @@ export default function FreezerPage() {
   const removeMutation = trpc.freezer.remove.useMutation({
     onSuccess: () => utils.freezer.list.invalidate(),
   });
-  const upsertMutation = trpc.freezer.upsert.useMutation({
+  const updateDatesMutation = trpc.freezer.updateDates.useMutation({
     onSuccess: () => utils.freezer.list.invalidate(),
   });
 
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [editingDatesFor, setEditingDatesFor] = useState<string | null>(null);
 
   const items: FreezerListItem[] = freezerQuery.data ?? [];
   const totalPortions = useMemo(
@@ -37,25 +62,9 @@ export default function FreezerPage() {
     [items],
   );
 
-  const handleIncrement = useCallback(
-    (recipeId: string) => {
-      incrementMutation.mutate({ recipeId });
-    },
-    [incrementMutation],
-  );
-
-  const handleDecrement = useCallback(
-    (recipeId: string) => {
-      decrementMutation.mutate({ recipeId });
-    },
-    [decrementMutation],
-  );
-
-  const handleRemove = useCallback(
-    (recipeId: string) => {
-      removeMutation.mutate({ recipeId });
-    },
-    [removeMutation],
+  const expiredCount = useMemo(
+    () => items.filter((i) => isExpired(i.expiresAt)).length,
+    [items],
   );
 
   return (
@@ -65,6 +74,11 @@ export default function FreezerPage() {
           <h1 className="text-xl font-bold">Fryseren</h1>
           <p className="text-sm text-muted-foreground">
             {items.length} oppskrifter, {totalPortions} porsjoner totalt
+            {expiredCount > 0 && (
+              <span className="text-red-600 ml-2">
+                ({expiredCount} utgått)
+              </span>
+            )}
           </p>
         </div>
         <Button onClick={() => setShowAddDialog(true)}>Legg til</Button>
@@ -80,49 +94,93 @@ export default function FreezerPage() {
         </p>
       ) : (
         <div className="space-y-2">
-          {items.map((item) => (
-            <div
-              key={item.recipeId}
-              className="flex items-center gap-3 rounded-lg border p-3 bg-card"
-            >
-              <CategoryEmoji category={item.recipeCategory as any} />
-              <div className="flex-1 min-w-0">
-                <div className="font-medium truncate">{item.recipeName}</div>
+          {items.map((item) => {
+            const expired = isExpired(item.expiresAt);
+            const expiringSoon = isExpiringSoon(item.expiresAt);
+
+            return (
+              <div
+                key={item.recipeId}
+                className={`rounded-lg border p-3 bg-card ${expired ? "border-red-300 bg-red-50/50" : expiringSoon ? "border-amber-300 bg-amber-50/50" : ""}`}
+              >
+                <div className="flex items-center gap-3">
+                  <CategoryEmoji category={item.recipeCategory as any} />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate">{item.recipeName}</div>
+                    <div className="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+                      <span>Frosset: {formatDate(item.frozenAt)}</span>
+                      <span className={expired ? "text-red-600 font-medium" : expiringSoon ? "text-amber-600 font-medium" : ""}>
+                        Utløper: {formatDate(item.expiresAt)}
+                        {expired && " (utgått)"}
+                        {expiringSoon && " (snart)"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      aria-label={`Reduser antall ${item.recipeName}`}
+                      onClick={() => decrementMutation.mutate({ recipeId: item.recipeId })}
+                    >
+                      -
+                    </Button>
+                    <span className="w-8 text-center font-mono text-sm">
+                      {item.quantity}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      aria-label={`Øk antall ${item.recipeName}`}
+                      onClick={() => incrementMutation.mutate({ recipeId: item.recipeId })}
+                    >
+                      +
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 px-2 text-xs"
+                      onClick={() =>
+                        setEditingDatesFor(
+                          editingDatesFor === item.recipeId ? null : item.recipeId,
+                        )
+                      }
+                    >
+                      Datoer
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                      aria-label={`Fjern ${item.recipeName} fra fryseren`}
+                      onClick={() => removeMutation.mutate({ recipeId: item.recipeId })}
+                    >
+                      &times;
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Inline date editor */}
+                {editingDatesFor === item.recipeId && (
+                  <DateEditor
+                    frozenAt={item.frozenAt}
+                    expiresAt={item.expiresAt}
+                    onSave={(frozenAt, expiresAt) => {
+                      updateDatesMutation.mutate({
+                        recipeId: item.recipeId,
+                        frozenAt: new Date(frozenAt).toISOString(),
+                        expiresAt: new Date(expiresAt).toISOString(),
+                      });
+                      setEditingDatesFor(null);
+                    }}
+                    onCancel={() => setEditingDatesFor(null)}
+                  />
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 w-8 p-0"
-                  aria-label={`Reduser antall ${item.recipeName}`}
-                  onClick={() => handleDecrement(item.recipeId)}
-                >
-                  -
-                </Button>
-                <span className="w-8 text-center font-mono text-sm">
-                  {item.quantity}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 w-8 p-0"
-                  aria-label={`Øk antall ${item.recipeName}`}
-                  onClick={() => handleIncrement(item.recipeId)}
-                >
-                  +
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                  aria-label={`Fjern ${item.recipeName} fra fryseren`}
-                  onClick={() => handleRemove(item.recipeId)}
-                >
-                  &times;
-                </Button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -135,6 +193,52 @@ export default function FreezerPage() {
           onClose={() => setShowAddDialog(false)}
         />
       )}
+    </div>
+  );
+}
+
+function DateEditor({
+  frozenAt,
+  expiresAt,
+  onSave,
+  onCancel,
+}: {
+  frozenAt: string;
+  expiresAt: string;
+  onSave: (frozenAt: string, expiresAt: string) => void;
+  onCancel: () => void;
+}) {
+  const [localFrozen, setLocalFrozen] = useState(toInputDate(frozenAt));
+  const [localExpires, setLocalExpires] = useState(toInputDate(expiresAt));
+
+  return (
+    <div className="mt-2 flex flex-wrap items-end gap-3 border-t pt-2">
+      <div className="space-y-1">
+        <label className="text-xs text-muted-foreground">Frosset dato</label>
+        <input
+          type="date"
+          className="rounded border px-2 py-1 text-sm"
+          value={localFrozen}
+          onChange={(e) => setLocalFrozen(e.target.value)}
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs text-muted-foreground">Utløpsdato</label>
+        <input
+          type="date"
+          className="rounded border px-2 py-1 text-sm"
+          value={localExpires}
+          onChange={(e) => setLocalExpires(e.target.value)}
+        />
+      </div>
+      <div className="flex gap-2">
+        <Button size="sm" onClick={() => onSave(localFrozen, localExpires)}>
+          Lagre
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onCancel}>
+          Avbryt
+        </Button>
+      </div>
     </div>
   );
 }

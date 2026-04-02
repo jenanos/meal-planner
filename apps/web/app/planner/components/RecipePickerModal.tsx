@@ -20,6 +20,8 @@ type FreezerListItem = {
     recipeName: string;
     recipeCategory: string;
     quantity: number;
+    frozenAt: string;
+    expiresAt: string;
 };
 
 export type RecipePickerModalProps = {
@@ -277,7 +279,11 @@ export function RecipePickerModal({
                                         <div className="flex-1 min-w-0">
                                             <div className="font-medium truncate">{item.recipeName}</div>
                                             <div className="text-xs text-cyan-700">
-                                                {item.quantity} {item.quantity === 1 ? "porsjon" : "porsjoner"} i fryseren
+                                                {item.quantity} {item.quantity === 1 ? "porsjon" : "porsjoner"}
+                                                {" · "}Utløper {new Date(item.expiresAt).toLocaleDateString("nb-NO", { day: "numeric", month: "short" })}
+                                                {new Date(item.expiresAt) < new Date() && (
+                                                    <span className="text-red-600 font-medium ml-1">(utgått)</span>
+                                                )}
                                             </div>
                                         </div>
                                         {item.recipeCategory && (

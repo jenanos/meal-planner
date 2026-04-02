@@ -242,6 +242,8 @@ export type ShoppingPackageSuggest = z.infer<typeof ShoppingPackageSuggest>;
 export const FreezerItemUpsert = z.object({
   recipeId: z.string().uuid(),
   quantity: z.number().int().min(0),
+  frozenAt: z.string().datetime().optional(),
+  expiresAt: z.string().datetime().optional(),
 });
 export type FreezerItemUpsert = z.infer<typeof FreezerItemUpsert>;
 
@@ -249,6 +251,13 @@ export const FreezerItemRemove = z.object({
   recipeId: z.string().uuid(),
 });
 export type FreezerItemRemove = z.infer<typeof FreezerItemRemove>;
+
+export const FreezerItemUpdateDates = z.object({
+  recipeId: z.string().uuid(),
+  frozenAt: z.string().datetime().optional(),
+  expiresAt: z.string().datetime().optional(),
+});
+export type FreezerItemUpdateDates = z.infer<typeof FreezerItemUpdateDates>;
 
 export const ShoppingStoreCreate = z.object({
   name: z.string().trim().min(1).max(80),

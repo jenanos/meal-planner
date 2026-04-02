@@ -280,7 +280,7 @@ type MockState = {
   shoppingStores: Map<string, ShoppingStoreRecord>;
   shoppingRoleSettings: Map<ShoppingRole, ShoppingRoleSettingsRecord>;
   deviceRoles: Map<string, ShoppingRole>;
-  freezerItems: Map<string, { id: string; recipeId: string; quantity: number }>;
+  freezerItems: Map<string, { id: string; recipeId: string; quantity: number; frozenAt: string; expiresAt: string }>;
 };
 
 function createInitialState(): MockState {
@@ -410,7 +410,7 @@ function createInitialState(): MockState {
     shoppingStores,
     shoppingRoleSettings,
     deviceRoles: new Map<string, ShoppingRole>(),
-    freezerItems: new Map<string, { id: string; recipeId: string; quantity: number }>(),
+    freezerItems: new Map<string, { id: string; recipeId: string; quantity: number; frozenAt: string; expiresAt: string }>(),
   };
 }
 
@@ -1373,6 +1373,16 @@ async function handleCreateShoppingStore(input: any) {
 }
 
 // --- Freezer mock handlers ---
+const MOCK_EXPIRY_MONTHS: Record<string, number> = {
+  STORFE: 6, KYLLING: 4, FISK: 2, VEGETAR: 3, ANNET: 3,
+};
+
+function mockComputeExpiry(frozenAt: string, category: string): string {
+  const d = new Date(frozenAt);
+  d.setMonth(d.getMonth() + (MOCK_EXPIRY_MONTHS[category] ?? 3));
+  return d.toISOString();
+}
+
 async function handleFreezerList() {
   return Array.from(state.freezerItems.values()).map((item) => {
     const recipe = state.recipesById.get(item.recipeId);
@@ -1382,6 +1392,8 @@ async function handleFreezerList() {
       recipeName: recipe?.name ?? "Ukjent",
       recipeCategory: recipe?.category ?? "ANNET",
       quantity: item.quantity,
+      frozenAt: item.frozenAt,
+      expiresAt: item.expiresAt,
     };
   }).sort((a, b) => a.recipeName.localeCompare(b.recipeName, "nb"));
 }
@@ -1394,15 +1406,32 @@ async function handleFreezerUpsert(input: any) {
     return null;
   }
   const existing = state.freezerItems.get(recipeId);
+  const recipe = state.recipesById.get(recipeId);
+  const category = recipe?.category ?? "ANNET";
   const id = existing?.id ?? randomId("freezer");
-  state.freezerItems.set(recipeId, { id, recipeId, quantity });
+  const frozenAt = input?.frozenAt ?? existing?.frozenAt ?? new Date().toISOString();
+  const expiresAt = input?.expiresAt ?? existing?.expiresAt ?? mockComputeExpiry(frozenAt, category);
+  state.freezerItems.set(recipeId, { id, recipeId, quantity, frozenAt, expiresAt });
+  return {
+    id, recipeId,
+    recipeName: recipe?.name ?? "Ukjent",
+    recipeCategory: category,
+    quantity, frozenAt, expiresAt,
+  };
+}
+
+async function handleFreezerUpdateDates(input: any) {
+  const recipeId = String(input?.recipeId ?? "");
+  const item = state.freezerItems.get(recipeId);
+  if (!item) return null;
+  if (input?.frozenAt) item.frozenAt = input.frozenAt;
+  if (input?.expiresAt) item.expiresAt = input.expiresAt;
   const recipe = state.recipesById.get(recipeId);
   return {
-    id,
-    recipeId,
+    id: item.id, recipeId: item.recipeId,
     recipeName: recipe?.name ?? "Ukjent",
     recipeCategory: recipe?.category ?? "ANNET",
-    quantity,
+    quantity: item.quantity, frozenAt: item.frozenAt, expiresAt: item.expiresAt,
   };
 }
 
@@ -1431,8 +1460,12 @@ async function handleFreezerIncrement(input: any) {
     existing.quantity += 1;
     return { id: existing.id, recipeId: existing.recipeId, quantity: existing.quantity };
   }
+  const recipe = state.recipesById.get(recipeId);
+  const category = recipe?.category ?? "ANNET";
   const id = randomId("freezer");
-  state.freezerItems.set(recipeId, { id, recipeId, quantity: 1 });
+  const frozenAt = new Date().toISOString();
+  const expiresAt = mockComputeExpiry(frozenAt, category);
+  state.freezerItems.set(recipeId, { id, recipeId, quantity: 1, frozenAt, expiresAt });
   return { id, recipeId, quantity: 1 };
 }
 
@@ -1491,6 +1524,8 @@ export async function handleMockMutation(path: string, input: unknown) {
       return handleExtraRemove(input);
     case "freezer.upsert":
       return handleFreezerUpsert(input);
+    case "freezer.updateDates":
+      return handleFreezerUpdateDates(input);
     case "freezer.remove":
       return handleFreezerRemove(input);
     case "freezer.decrement":
