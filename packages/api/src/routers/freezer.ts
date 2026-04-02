@@ -63,21 +63,26 @@ export const freezerRouter = router({
 
   /** Decrement quantity by 1 (used when picking from freezer for weekly plan) */
   decrement: publicProcedure.input(FreezerItemRemove).mutation(async ({ input }) => {
-    const item = await prisma.freezerItem.findUnique({
-      where: { recipeId: input.recipeId },
-    });
-    if (!item || item.quantity <= 0) return null;
+    return prisma.$transaction(async (tx) => {
+      // If quantity is exactly 1, delete the item
+      const deleteResult = await tx.freezerItem.deleteMany({
+        where: { recipeId: input.recipeId, quantity: 1 },
+      });
+      if (deleteResult.count > 0) return null;
 
-    if (item.quantity === 1) {
-      await prisma.freezerItem.delete({ where: { recipeId: input.recipeId } });
-      return null;
-    }
+      // Otherwise, decrement quantity if > 1
+      const updateResult = await tx.freezerItem.updateMany({
+        where: { recipeId: input.recipeId, quantity: { gt: 1 } },
+        data: { quantity: { decrement: 1 } },
+      });
+      if (updateResult.count === 0) return null;
 
-    const updated = await prisma.freezerItem.update({
-      where: { recipeId: input.recipeId },
-      data: { quantity: { decrement: 1 } },
+      const updated = await tx.freezerItem.findUnique({
+        where: { recipeId: input.recipeId },
+      });
+      if (!updated) return null;
+      return { id: updated.id, recipeId: updated.recipeId, quantity: updated.quantity };
     });
-    return { id: updated.id, recipeId: updated.recipeId, quantity: updated.quantity };
   }),
 
   /** Increment quantity by 1 (used when removing a freezer meal from weekly plan) */

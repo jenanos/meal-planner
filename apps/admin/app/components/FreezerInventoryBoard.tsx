@@ -141,7 +141,7 @@ export function FreezerInventoryBoard() {
                     setEditingId(item.recipeId);
                     setEditValue(String(item.quantity));
                   }}
-                  title="Klikk for a redigere antall"
+                  title="Klikk for å redigere antall"
                 >
                   {item.quantity}
                 </button>
@@ -165,7 +165,7 @@ export function FreezerInventoryBoard() {
         ))}
         {items.length === 0 && (
           <p className="py-4 text-center text-sm text-muted-foreground">
-            Fryseren er tom. Legg til maltider nedenfor.
+            Fryseren er tom. Legg til måltider nedenfor.
           </p>
         )}
       </div>
@@ -175,7 +175,7 @@ export function FreezerInventoryBoard() {
         <h3 className="text-sm font-semibold">Legg til i fryseren</h3>
         <input
           type="text"
-          placeholder="Sok etter oppskrifter..."
+          placeholder="Søk etter oppskrifter..."
           className="w-full rounded-lg border px-3 py-2 text-sm"
           value={addSearch}
           onChange={(e) => setAddSearch(e.target.value)}

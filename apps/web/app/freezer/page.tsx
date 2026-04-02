@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
 import { Button, Input, ScrollArea } from "@repo/ui";
 import { CategoryEmoji } from "../components/CategoryEmoji";
@@ -16,10 +16,16 @@ type FreezerListItem = {
 export default function FreezerPage() {
   const utils = trpc.useUtils();
   const freezerQuery = trpc.freezer.list.useQuery();
-  const upsertMutation = trpc.freezer.upsert.useMutation({
+  const incrementMutation = trpc.freezer.increment.useMutation({
+    onSuccess: () => utils.freezer.list.invalidate(),
+  });
+  const decrementMutation = trpc.freezer.decrement.useMutation({
     onSuccess: () => utils.freezer.list.invalidate(),
   });
   const removeMutation = trpc.freezer.remove.useMutation({
+    onSuccess: () => utils.freezer.list.invalidate(),
+  });
+  const upsertMutation = trpc.freezer.upsert.useMutation({
     onSuccess: () => utils.freezer.list.invalidate(),
   });
 
@@ -31,17 +37,18 @@ export default function FreezerPage() {
     [items],
   );
 
-  const handleQuantityChange = useCallback(
-    (recipeId: string, delta: number) => {
-      const item = items.find((i) => i.recipeId === recipeId);
-      const newQty = (item?.quantity ?? 0) + delta;
-      if (newQty <= 0) {
-        removeMutation.mutate({ recipeId });
-      } else {
-        upsertMutation.mutate({ recipeId, quantity: newQty });
-      }
+  const handleIncrement = useCallback(
+    (recipeId: string) => {
+      incrementMutation.mutate({ recipeId });
     },
-    [items, upsertMutation, removeMutation],
+    [incrementMutation],
+  );
+
+  const handleDecrement = useCallback(
+    (recipeId: string) => {
+      decrementMutation.mutate({ recipeId });
+    },
+    [decrementMutation],
   );
 
   const handleRemove = useCallback(
@@ -69,7 +76,7 @@ export default function FreezerPage() {
         </p>
       ) : items.length === 0 ? (
         <p className="text-center text-muted-foreground py-8">
-          Fryseren er tom. Trykk &quot;Legg til&quot; for a legge til maltider.
+          Fryseren er tom. Trykk &quot;Legg til&quot; for å legge til måltider.
         </p>
       ) : (
         <div className="space-y-2">
@@ -87,7 +94,8 @@ export default function FreezerPage() {
                   variant="outline"
                   size="sm"
                   className="h-8 w-8 p-0"
-                  onClick={() => handleQuantityChange(item.recipeId, -1)}
+                  aria-label={`Reduser antall ${item.recipeName}`}
+                  onClick={() => handleDecrement(item.recipeId)}
                 >
                   -
                 </Button>
@@ -98,7 +106,8 @@ export default function FreezerPage() {
                   variant="outline"
                   size="sm"
                   className="h-8 w-8 p-0"
-                  onClick={() => handleQuantityChange(item.recipeId, 1)}
+                  aria-label={`Øk antall ${item.recipeName}`}
+                  onClick={() => handleIncrement(item.recipeId)}
                 >
                   +
                 </Button>
@@ -106,9 +115,10 @@ export default function FreezerPage() {
                   variant="ghost"
                   size="sm"
                   className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                  aria-label={`Fjern ${item.recipeName} fra fryseren`}
                   onClick={() => handleRemove(item.recipeId)}
                 >
-                  x
+                  &times;
                 </Button>
               </div>
             </div>
@@ -120,11 +130,7 @@ export default function FreezerPage() {
         <AddFreezerItemDialog
           existingRecipeIds={new Set(items.map((i) => i.recipeId))}
           onAdd={(recipeId) => {
-            const existing = items.find((i) => i.recipeId === recipeId);
-            upsertMutation.mutate({
-              recipeId,
-              quantity: (existing?.quantity ?? 0) + 1,
-            });
+            incrementMutation.mutate({ recipeId });
           }}
           onClose={() => setShowAddDialog(false)}
         />
@@ -145,24 +151,16 @@ function AddFreezerItemDialog({
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
-  // Debounce
-  useState(() => {
+  // Debounce search term with useEffect
+  useEffect(() => {
     const timeout = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(timeout);
-  });
+  }, [search]);
 
   const recipesQuery = trpc.recipe.list.useQuery({
     search: debouncedSearch || undefined,
     pageSize: 100,
   });
-
-  // Update debounced search on change
-  const handleSearchChange = useCallback((value: string) => {
-    setSearch(value);
-    // Simple immediate debounce for responsiveness
-    const timeout = setTimeout(() => setDebouncedSearch(value), 300);
-    return () => clearTimeout(timeout);
-  }, []);
 
   const recipes = recipesQuery.data?.items ?? [];
 
@@ -172,9 +170,9 @@ function AddFreezerItemDialog({
         <div className="p-4 border-b">
           <h2 className="text-lg font-semibold">Legg til i fryseren</h2>
           <Input
-            placeholder="Sok etter oppskrifter..."
+            placeholder="Søk etter oppskrifter..."
             value={search}
-            onChange={(e) => handleSearchChange(e.target.value)}
+            onChange={(e) => setSearch(e.target.value)}
             className="mt-2"
             autoFocus
           />

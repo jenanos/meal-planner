@@ -82,6 +82,12 @@ export function RecipePickerModal({
         { enabled: open && activeTab === "all" }
     );
 
+    // Query for all recipes when "freezer" tab is active (to get full RecipeDTO)
+    const freezerRecipesQuery = trpc.recipe.list.useQuery(
+        { pageSize: 1000 },
+        { enabled: open && activeTab === "freezer" }
+    );
+
     // Query freezer items
     const freezerQuery = trpc.freezer.list.useQuery(undefined, {
         enabled: open,
@@ -132,8 +138,8 @@ export function RecipePickerModal({
 
     const handleSelectFreezerMeal = useCallback(
         (item: FreezerListItem) => {
-            // Build a minimal RecipeDTO-like object from freezer item
-            const recipe = (allRecipesQuery.data?.items ?? []).find((r: any) => r.id === item.recipeId) as RecipeDTO | undefined;
+            // Look up full RecipeDTO from the freezer recipes query
+            const recipe = (freezerRecipesQuery.data?.items ?? []).find((r: any) => r.id === item.recipeId) as RecipeDTO | undefined;
             if (recipe) {
                 onSetFreezerMeal(recipe, dayIndex);
             } else {
@@ -155,7 +161,7 @@ export function RecipePickerModal({
             }
             onOpenChange(false);
         },
-        [allRecipesQuery.data, onSetFreezerMeal, dayIndex, onOpenChange],
+        [freezerRecipesQuery.data, onSetFreezerMeal, dayIndex, onOpenChange],
     );
 
     const tabs: { value: TabValue; label: string }[] = [

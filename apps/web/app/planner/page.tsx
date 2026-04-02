@@ -281,7 +281,7 @@ export default function PlannerPage() {
   }, [nextWeekPlanQuery.data, applyNextWeekData]);
 
   const commitWeekPlan = useCallback(
-    async (newWeek: WeekState, weekStart: string = activeWeekStart) => {
+    async (newWeek: WeekState, weekStart: string = activeWeekStart): Promise<boolean> => {
       const isNext = weekStart !== activeWeekStart;
       if (isNext) {
         setNextWeek(newWeek);
@@ -311,8 +311,10 @@ export default function PlannerPage() {
         } else {
           applyWeekData(payload);
         }
+        return true;
       } catch (error) {
         console.error("Failed to save week plan:", error);
+        return false;
       }
     },
     [activeWeekStart, saveWeek, applyWeekData, applyNextWeekData],
@@ -459,11 +461,11 @@ export default function PlannerPage() {
           const targetWeek = [...getWeekForOffset(toOffset)];
           const oldEntry = targetWeek[overPayload.index];
           targetWeek[overPayload.index] = { type: "RECIPE", recipe };
-          commitWeekPlan(targetWeek, getWeekStartForOffset(toOffset));
-          // If replacing a FREEZER entry, restore the freezer inventory
-          if (oldEntry?.type === "FREEZER") {
-            freezerIncrement.mutate({ recipeId: oldEntry.recipe.id });
-          }
+          commitWeekPlan(targetWeek, getWeekStartForOffset(toOffset)).then((ok) => {
+            if (ok && oldEntry?.type === "FREEZER") {
+              freezerIncrement.mutate({ recipeId: oldEntry.recipe.id });
+            }
+          });
         }
       }
     },
@@ -493,31 +495,33 @@ export default function PlannerPage() {
   );
 
   const handleSetFreezerMeal = useCallback(
-    (recipe: RecipeDTO, dayIndex: number, weekOffset: number = 0) => {
+    async (recipe: RecipeDTO, dayIndex: number, weekOffset: number = 0) => {
       const sourceWeek = getWeekForOffset(weekOffset);
       const oldEntry = sourceWeek[dayIndex];
       const newWeek = [...sourceWeek];
       newWeek[dayIndex] = { type: "FREEZER", recipe };
-      commitWeekPlan(newWeek, getWeekStartForOffset(weekOffset));
-      // Decrement freezer inventory for the newly assigned recipe
-      freezerDecrement.mutate({ recipeId: recipe.id });
-      // If replacing a previous FREEZER entry, restore that recipe's inventory
-      if (oldEntry?.type === "FREEZER") {
-        freezerIncrement.mutate({ recipeId: oldEntry.recipe.id });
+      const ok = await commitWeekPlan(newWeek, getWeekStartForOffset(weekOffset));
+      if (ok) {
+        // Decrement freezer inventory for the newly assigned recipe
+        freezerDecrement.mutate({ recipeId: recipe.id });
+        // If replacing a previous FREEZER entry, restore that recipe's inventory
+        if (oldEntry?.type === "FREEZER") {
+          freezerIncrement.mutate({ recipeId: oldEntry.recipe.id });
+        }
       }
     },
     [getWeekForOffset, getWeekStartForOffset, commitWeekPlan, freezerDecrement, freezerIncrement],
   );
 
   const handleSetTakeaway = useCallback(
-    (dayIndex: number, weekOffset: number = 0) => {
+    async (dayIndex: number, weekOffset: number = 0) => {
       const sourceWeek = getWeekForOffset(weekOffset);
       const oldEntry = sourceWeek[dayIndex];
       const newWeek = [...sourceWeek];
       newWeek[dayIndex] = { type: "TAKEAWAY" };
-      commitWeekPlan(newWeek, getWeekStartForOffset(weekOffset));
-      // If replacing a FREEZER entry, restore the freezer inventory
-      if (oldEntry?.type === "FREEZER") {
+      const ok = await commitWeekPlan(newWeek, getWeekStartForOffset(weekOffset));
+      // Only restore freezer inventory if save succeeded
+      if (ok && oldEntry?.type === "FREEZER") {
         freezerIncrement.mutate({ recipeId: oldEntry.recipe.id });
       }
     },
@@ -525,14 +529,14 @@ export default function PlannerPage() {
   );
 
   const handleClearEntry = useCallback(
-    (dayIndex: number, weekOffset: number = 0) => {
+    async (dayIndex: number, weekOffset: number = 0) => {
       const sourceWeek = getWeekForOffset(weekOffset);
       const oldEntry = sourceWeek[dayIndex];
       const newWeek = [...sourceWeek];
       newWeek[dayIndex] = null;
-      commitWeekPlan(newWeek, getWeekStartForOffset(weekOffset));
-      // If clearing a FREEZER entry, restore the freezer inventory
-      if (oldEntry?.type === "FREEZER") {
+      const ok = await commitWeekPlan(newWeek, getWeekStartForOffset(weekOffset));
+      // Only restore freezer inventory if save succeeded
+      if (ok && oldEntry?.type === "FREEZER") {
         freezerIncrement.mutate({ recipeId: oldEntry.recipe.id });
       }
     },
@@ -547,13 +551,13 @@ export default function PlannerPage() {
 
   // Handler for selecting recipe from modal
   const handleSelectRecipeFromModal = useCallback(
-    (recipe: RecipeDTO, dayIndex: number) => {
+    async (recipe: RecipeDTO, dayIndex: number) => {
       const oldEntry = week[dayIndex];
       const newWeek = [...week];
       newWeek[dayIndex] = { type: "RECIPE", recipe };
-      commitWeekPlan(newWeek);
-      // If replacing a FREEZER entry, restore the freezer inventory
-      if (oldEntry?.type === "FREEZER") {
+      const ok = await commitWeekPlan(newWeek);
+      // Only restore freezer inventory if save succeeded
+      if (ok && oldEntry?.type === "FREEZER") {
         freezerIncrement.mutate({ recipeId: oldEntry.recipe.id });
       }
     },
