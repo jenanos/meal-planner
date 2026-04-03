@@ -2043,7 +2043,8 @@ export const plannerRouter = router({
         weekStart: z.string().min(1),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const householdId = ctx.householdId;
       const pkg = await prisma.shoppingPackage.findUnique({
         where: { id: input.packageId },
         include: { items: true },
@@ -2061,26 +2062,26 @@ export const plannerRouter = router({
       const uniqueNames = Array.from(new Set(names));
 
       if (uniqueNames.length > 0) {
-        // Resolve existing catalog entries
+        // Resolve existing catalog entries scoped to this household
         const existingCatalog = await prisma.extraItemCatalog.findMany({
-          where: { name: { in: uniqueNames } },
+          where: { name: { in: uniqueNames }, householdId },
         });
         const existingNames = new Set(existingCatalog.map((c) => c.name));
         const missingNames = uniqueNames.filter(
           (name) => !existingNames.has(name),
         );
 
-        // Insert missing catalog entries
+        // Insert missing catalog entries for this household
         if (missingNames.length > 0) {
           await prisma.extraItemCatalog.createMany({
-            data: missingNames.map((name) => ({ name })),
+            data: missingNames.map((name) => ({ name, householdId })),
             skipDuplicates: true,
           });
         }
 
-        // Fetch all catalog entries for the involved names
+        // Fetch all catalog entries for the involved names in this household
         const allCatalog = await prisma.extraItemCatalog.findMany({
-          where: { name: { in: uniqueNames } },
+          where: { name: { in: uniqueNames }, householdId },
         });
         const catalogByName = new Map<string, string>(
           allCatalog.map((c) => [c.name, c.id]),
@@ -2096,14 +2097,16 @@ export const plannerRouter = router({
           txOps.push(
             prisma.extraShoppingItem.upsert({
               where: {
-                weekStart_catalogItemId: {
+                weekStart_catalogItemId_householdId: {
                   weekStart: GLOBAL_EXTRA_WEEK_START,
                   catalogItemId: catalogId,
+                  householdId,
                 },
               },
               create: {
                 weekStart: GLOBAL_EXTRA_WEEK_START,
                 catalogItemId: catalogId,
+                householdId,
                 checked: false,
               },
               update: { checked: false },
@@ -2114,14 +2117,16 @@ export const plannerRouter = router({
           txOps.push(
             prisma.extraShoppingItem.upsert({
               where: {
-                weekStart_catalogItemId: {
+                weekStart_catalogItemId_householdId: {
                   weekStart: weekStartDate,
                   catalogItemId: catalogId,
+                  householdId,
                 },
               },
               create: {
                 weekStart: weekStartDate,
                 catalogItemId: catalogId,
+                householdId,
                 checked: false,
               },
               update: {},

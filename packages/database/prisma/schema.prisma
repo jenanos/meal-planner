@@ -118,6 +118,7 @@ model Household {
   extraCatalog     ExtraItemCatalog[]
   extraItems       ExtraShoppingItem[]
   shoppingStores   ShoppingStore[]
+  freezerItems     FreezerItem[]
 }
 
 model HouseholdMember {
@@ -357,15 +358,17 @@ model ShoppingPackageItem {
 
 // Freezer inventory – tracks how many portions of a recipe are stored in the freezer
 model FreezerItem {
-  id        String   @id @default(uuid()) @db.Uuid
-  recipeId  String   @db.Uuid
-  quantity  Int      @default(1)
-  frozenAt  DateTime @default(now())
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(uuid()) @db.Uuid
+  recipeId    String   @db.Uuid
+  householdId String   @db.Uuid
+  quantity    Int      @default(1)
+  frozenAt    DateTime @default(now())
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  recipe    Recipe    @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
 
-  @@unique([recipeId])
+  @@unique([recipeId, householdId])
 }
