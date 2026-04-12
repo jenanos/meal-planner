@@ -1,5 +1,5 @@
 /** @type {import('next').NextConfig} */
-const API_ORIGIN = process.env.MEALS_API_INTERNAL_ORIGIN || 'http://meals-api:4000';
+const API_ORIGIN = process.env.MEALS_API_INTERNAL_ORIGIN || 'http://localhost:4000';
 const MOCK_MODE = process.env.NEXT_PUBLIC_MOCK_MODE === 'true';
 
 const nextConfig = {

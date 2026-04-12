@@ -1,9 +1,10 @@
 import 'dotenv/config';
 
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { Readable } from "node:stream";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { fastifyTRPCPlugin } from "@trpc/server/adapters/fastify";
-import { toNodeHandler } from "better-auth/node";
 import { appRouter } from "@repo/api";
 import { prisma } from "@repo/database";
 import { auth, getDevMagicLinkUrl } from "./auth.js";
@@ -15,6 +16,49 @@ const trustedOrigins = (process.env.AUTH_TRUSTED_ORIGINS ?? "http://localhost:30
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
+
+function isAllowedOrigin(origin: string | undefined) {
+  if (!origin) return false;
+  if (isDev) {
+    return (
+      /^http:\/\/localhost:\d+$/.test(origin) ||
+      /^http:\/\/127\.0\.0\.1:\d+$/.test(origin)
+    );
+  }
+  return trustedOrigins.includes(origin);
+}
+
+function toWebRequest(base: string, req: IncomingMessage) {
+  const method = req.method ?? "GET";
+  const hasBody = method !== "GET" && method !== "HEAD";
+
+  return new Request(`${base}${req.url ?? "/"}`, {
+    method,
+    headers: req.headers as HeadersInit,
+    body: hasBody ? (Readable.toWeb(req) as ReadableStream) : undefined,
+    duplex: hasBody ? "half" : undefined,
+  } as RequestInit & { duplex?: "half" });
+}
+
+async function sendWebResponse(res: ServerResponse, response: Response) {
+  for (const [key, value] of response.headers) {
+    if (key === "set-cookie") {
+      const setCookies =
+        "getSetCookie" in response.headers
+          ? response.headers.getSetCookie()
+          : [value];
+      res.setHeader(key, setCookies);
+      continue;
+    }
+
+    res.setHeader(key, value);
+  }
+
+  res.statusCode = response.status;
+  const body = response.body ? Buffer.from(await response.arrayBuffer()) : null;
+  res.writeHead(response.status);
+  res.end(body ?? undefined);
+}
 
 const app = Fastify({ logger: true });
 
@@ -34,11 +78,66 @@ await app.register(async (authApp) => {
     done(null);
   });
 
-  const handler = toNodeHandler(auth);
+  const handler = "handler" in auth ? auth.handler : auth;
 
   authApp.all("/auth/*", async (request, reply) => {
+    const originHeader =
+      typeof request.headers.origin === "string"
+        ? request.headers.origin
+        : undefined;
+    const allowedOrigin =
+      originHeader && isAllowedOrigin(originHeader) ? originHeader : null;
+
+    if (allowedOrigin) {
+      reply.raw.setHeader("Access-Control-Allow-Origin", allowedOrigin);
+      reply.raw.setHeader("Access-Control-Allow-Credentials", "true");
+      reply.raw.setHeader("Vary", "Origin");
+      reply.raw.setHeader(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Authorization",
+      );
+      reply.raw.setHeader(
+        "Access-Control-Allow-Methods",
+        "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+      );
+    }
+
+    if (request.method === "OPTIONS") {
+      reply.code(204).send();
+      return;
+    }
+
+    const base = `${
+      request.raw.headers["x-forwarded-proto"] ||
+      (
+        "encrypted" in request.raw.socket &&
+        Boolean(
+          (request.raw.socket as typeof request.raw.socket & { encrypted?: boolean })
+            .encrypted,
+        )
+          ? "https"
+          : "http"
+      )
+    }://${request.raw.headers[":authority"] || request.raw.headers.host}`;
+    const authRequest = toWebRequest(base, request.raw);
+    const response = await handler(authRequest);
+
+    if (allowedOrigin) {
+      response.headers.set("Access-Control-Allow-Origin", allowedOrigin);
+      response.headers.set("Access-Control-Allow-Credentials", "true");
+      response.headers.set("Vary", "Origin");
+      response.headers.set(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Authorization",
+      );
+      response.headers.set(
+        "Access-Control-Allow-Methods",
+        "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+      );
+    }
+
     reply.hijack();
-    await handler(request.raw, reply.raw);
+    await sendWebResponse(reply.raw, response);
   });
 });
 

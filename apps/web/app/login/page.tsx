@@ -4,13 +4,6 @@ import { useState, useEffect } from "react";
 import { signIn } from "../../lib/auth-client";
 import { Button, Input } from "@repo/ui";
 
-const PROVIDERS = [
-  { id: "google", label: "Google", icon: "🔵" },
-  { id: "github", label: "GitHub", icon: "🐙" },
-  { id: "microsoft", label: "Microsoft", icon: "🟦" },
-  { id: "apple", label: "Apple", icon: "🍎" },
-] as const;
-
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [magicLinkSent, setMagicLinkSent] = useState(false);
@@ -24,7 +17,7 @@ export default function LoginPage() {
     if (!magicLinkSent || process.env.NODE_ENV === "production") return;
 
     let cancelled = false;
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "/api";
 
     async function fetchDevLink() {
       try {
@@ -43,40 +36,44 @@ export default function LoginPage() {
     return () => { cancelled = true; };
   }, [magicLinkSent]);
 
-  async function handleSocialLogin(providerId: string) {
-    setLoading(providerId);
-    setError(null);
-    try {
-      await signIn.social({
-        provider: providerId as "google" | "github" | "microsoft" | "apple",
-        callbackURL: "/",
-      });
-    } catch {
-      setError("Innlogging feilet. Prøv igjen.");
-      setLoading(null);
-    }
-  }
-
   async function handleMagicLink(e: React.FormEvent) {
     e.preventDefault();
     if (!email.trim()) return;
     setLoading("magic-link");
     setError(null);
     try {
+      const callbackURL =
+        typeof window !== "undefined"
+          ? new URL("/", window.location.origin).toString()
+          : "/";
       const result = await signIn.magicLink({
         email: email.trim(),
-        callbackURL: "/",
+        callbackURL,
       });
       if (result.error) {
-        // Catch allowlist rejections from the server
-        setError(
-          "Denne e-postadressen har ikke tilgang. Kontakt administrator for å få tilgang."
-        );
+        const message =
+          typeof result.error.message === "string"
+            ? result.error.message
+            : "";
+        if (
+          message.toLowerCase().includes("tilgang") ||
+          message.toLowerCase().includes("allowlist")
+        ) {
+          setError(
+            "Denne e-postadressen har ikke tilgang. Kontakt administrator for å få tilgang.",
+          );
+        } else {
+          setError(
+            "Kunne ikke sende innloggingslenke akkurat nå. Sjekk at serveren kjører på localhost:4000 og prøv igjen.",
+          );
+        }
         return;
       }
       setMagicLinkSent(true);
     } catch {
-      setError("Kunne ikke sende innloggingslenke. Sjekk e-postadressen.");
+      setError(
+        "Kunne ikke sende innloggingslenke akkurat nå. Sjekk at serveren kjører på localhost:4000 og prøv igjen.",
+      );
     } finally {
       setLoading(null);
     }
@@ -98,39 +95,6 @@ export default function LoginPage() {
             {error}
           </div>
         )}
-
-        {/* Social login buttons */}
-        <div className="space-y-3">
-          <h2 className="text-center text-sm font-medium text-muted-foreground">
-            Logg inn med
-          </h2>
-          <div className="grid grid-cols-2 gap-2">
-            {PROVIDERS.map((provider) => (
-              <Button
-                key={provider.id}
-                variant="outline"
-                className="h-11"
-                disabled={loading !== null}
-                onClick={() => handleSocialLogin(provider.id)}
-              >
-                <span className="mr-2">{provider.icon}</span>
-                {provider.label}
-              </Button>
-            ))}
-          </div>
-        </div>
-
-        {/* Divider */}
-        <div className="relative">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t" />
-          </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-background px-2 text-muted-foreground">
-              eller
-            </span>
-          </div>
-        </div>
 
         {/* Magic link */}
         {magicLinkSent ? (

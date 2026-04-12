@@ -4,6 +4,20 @@ import { magicLink } from "better-auth/plugins/magic-link";
 import { prisma } from "@repo/database";
 
 const isDev = process.env.NODE_ENV !== "production";
+const authBaseURL =
+  process.env.BETTER_AUTH_URL ??
+  process.env.AUTH_BASE_URL ??
+  (isDev ? "http://localhost:4000" : undefined);
+const devTrustedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:3001",
+  "http://localhost:3002",
+  "http://localhost:3003",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:3001",
+  "http://127.0.0.1:3002",
+  "http://127.0.0.1:3003",
+];
 
 const STANDARD_STORE_CATEGORY_ORDER = [
   "FRUKT_OG_GRONT",
@@ -65,6 +79,7 @@ export function getDevMagicLinkUrl(): string | null {
 }
 
 export const auth = betterAuth({
+  ...(authBaseURL ? { baseURL: authBaseURL } : {}),
   basePath: "/auth",
   database: prismaAdapter(prisma, {
     provider: "postgresql",
@@ -102,9 +117,15 @@ export const auth = betterAuth({
       maxAge: 60 * 5, // 5-minute client-side cookie cache
     },
   },
-  trustedOrigins: (process.env.AUTH_TRUSTED_ORIGINS ?? "http://localhost:3000")
-    .split(",")
-    .map((s) => s.trim()),
+  trustedOrigins: Array.from(
+    new Set([
+      ...(process.env.AUTH_TRUSTED_ORIGINS ?? "http://localhost:3000")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+      ...(isDev ? devTrustedOrigins : []),
+    ]),
+  ),
   plugins: [
     magicLink({
       sendMagicLink: async ({ email, url }) => {

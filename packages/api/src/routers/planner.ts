@@ -932,14 +932,19 @@ export const plannerRouter = router({
       const [pool, prevPlan] = await Promise.all([
         fetchAllRecipes(),
         prisma.weekPlan.findUnique({
-          where: { weekStart: prevWeekStart },
+          where: {
+            weekStart_householdId: {
+              weekStart: prevWeekStart,
+              householdId,
+            },
+          },
           include: {
             entries: { select: { recipeId: true } },
           },
         }),
       ]);
 
-      const previousWeekRecipeIds = new Set(
+      const previousWeekRecipeIds = new Set<string>(
         (prevPlan?.entries ?? [])
           .map((e) => e.recipeId)
           .filter((id): id is string => id != null),

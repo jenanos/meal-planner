@@ -113,7 +113,7 @@ Key settings:
    ```
 3. **Apply migrations** (Prisma also regenerates the client automatically)
    ```bash
-   pnpm --filter @repo/database prisma migrate dev
+   pnpm --filter @repo/database db:migrate:dev
    ```
 4. **Seed demo data (optional but recommended)**
    ```bash
@@ -170,12 +170,12 @@ Deployments can set `NEXT_PUBLIC_MOCK_MODE=true` to ship the static frontend bac
 - **View data**: `pnpm --filter @repo/database studio` opens Prisma Studio.
 - **Reset dev database**:
   ```bash
-  pnpm --filter @repo/database prisma migrate reset -f
+  pnpm --filter @repo/database db:reset
   pnpm --filter @repo/database db:seed
   ```
 - **Force push schema (no migrations)**:
   ```bash
-  pnpm --filter @repo/database prisma db push --force-reset
+  pnpm --filter @repo/database exec prisma db push --force-reset
   pnpm --filter @repo/database db:seed
   ```
 

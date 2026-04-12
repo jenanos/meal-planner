@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "pnpm --filter @repo/database db:migrate:dev",
+    "predev": "pnpm --filter @repo/database db:migrate:deploy",
     "dev": "tsx src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js"
