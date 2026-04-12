@@ -47,6 +47,11 @@ enum HouseholdRole {
   MEMBER
 }
 
+enum AppRole {
+  USER
+  ADMIN
+}
+
 // ─── Auth models (managed by better-auth) ───
 
 model User {
@@ -55,6 +60,7 @@ model User {
   email         String    @unique
   emailVerified Boolean   @default(false)
   image         String?
+  role          AppRole   @default(USER)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -62,6 +68,15 @@ model User {
   accounts    Account[]
   memberships HouseholdMember[]
   preference  UserPreference?
+}
+
+/// Emails that are pre-approved to sign up / sign in.
+/// Only listed emails (case-insensitive) may authenticate.
+model AllowedEmail {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String   @unique @db.Citext
+  addedBy   String?
+  createdAt DateTime @default(now())
 }
 
 model Session {

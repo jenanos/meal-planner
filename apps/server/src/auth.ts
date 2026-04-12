@@ -18,6 +18,20 @@ const STANDARD_STORE_CATEGORY_ORDER = [
   "ANNET",
 ] as const;
 
+// ─── Allowlist helpers ───
+
+/**
+ * Check if an email is allowed to use the app.
+ * An email is allowed if it exists in the AllowedEmail table.
+ */
+async function isEmailAllowed(email: string): Promise<boolean> {
+  // citext comparison is case-insensitive
+  const entry = await prisma.allowedEmail.findUnique({
+    where: { email: email.toLowerCase() },
+  });
+  return entry !== null;
+}
+
 // ─── Dev magic link store ───
 // In development, we store the most recent magic link URL on globalThis so
 // the frontend can offer a one-click login button (similar to the pattern
@@ -94,6 +108,12 @@ export const auth = betterAuth({
   plugins: [
     magicLink({
       sendMagicLink: async ({ email, url }) => {
+        // ── Allowlist gate: reject magic-link requests from unknown emails ──
+        const allowed = await isEmailAllowed(email);
+        if (!allowed) {
+          throw new Error("E-postadressen har ikke tilgang til appen.");
+        }
+
         if (isDev) {
           setDevMagicLinkUrl(url);
           console.log("\n════════════════════════════════════════");
@@ -117,6 +137,18 @@ export const auth = betterAuth({
   databaseHooks: {
     user: {
       create: {
+        before: async (user) => {
+          // ── Allowlist gate: prevent account creation for non-approved emails ──
+          // This covers OAuth providers where the magic link gate doesn't apply.
+          const email = user.email;
+          if (!email) return false;
+
+          const allowed = await isEmailAllowed(email);
+          if (!allowed) {
+            return false;
+          }
+          return undefined; // allow creation
+        },
         after: async (user) => {
           // Automatically create a household for new users
           const household = await prisma.household.create({
