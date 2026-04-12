@@ -6,6 +6,40 @@ import { Button, Input } from "@repo/ui";
 import { Trash2, UserPlus, Shield, ShieldOff } from "lucide-react";
 import { trpc } from "../../lib/trpcClient";
 
+// ─── Types for admin queries ───
+
+type AllowedEmailEntry = {
+  id: string;
+  email: string;
+  addedBy: string | null;
+  createdAt: Date;
+};
+
+type UserEntry = {
+  id: string;
+  name: string;
+  email: string;
+  role: "USER" | "ADMIN";
+  createdAt: Date;
+  memberships: {
+    household: { id: string; name: string };
+    role: string;
+  }[];
+};
+
+type HouseholdMemberEntry = {
+  id: string;
+  role: string;
+  user: { id: string; name: string; email: string };
+};
+
+type HouseholdEntry = {
+  id: string;
+  name: string;
+  createdAt: Date;
+  members: HouseholdMemberEntry[];
+};
+
 // ─── Allowed Emails Tab ───
 
 function AllowedEmailsSection() {
@@ -57,7 +91,7 @@ function AllowedEmailsSection() {
         <p className="text-sm text-muted-foreground">Laster…</p>
       ) : (
         <ul className="divide-y rounded-lg border">
-          {emails?.map((entry) => (
+          {emails?.map((entry: AllowedEmailEntry) => (
             <li
               key={entry.id}
               className="flex items-center justify-between px-4 py-2.5"
@@ -112,7 +146,7 @@ function UsersSection() {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {users?.map((u) => (
+              {users?.map((u: UserEntry) => (
                 <tr key={u.id}>
                   <td className="px-4 py-2.5">{u.name}</td>
                   <td className="px-4 py-2.5 text-muted-foreground">
@@ -134,7 +168,7 @@ function UsersSection() {
                   </td>
                   <td className="px-4 py-2.5 text-muted-foreground">
                     {u.memberships
-                      .map((m) => m.household.name)
+                      .map((m: UserEntry["memberships"][number]) => m.household.name)
                       .join(", ") || "–"}
                   </td>
                   <td className="px-4 py-2.5 text-right">
@@ -236,7 +270,7 @@ function HouseholdsSection() {
         <p className="text-sm text-muted-foreground">Laster…</p>
       ) : (
         <div className="space-y-4">
-          {households?.map((h) => (
+          {households?.map((h: HouseholdEntry) => (
             <div key={h.id} className="rounded-lg border p-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-medium">{h.name}</h3>
@@ -277,10 +311,10 @@ function HouseholdsSection() {
                     <option value="">Velg bruker…</option>
                     {users
                       ?.filter(
-                        (u) =>
-                          !h.members.some((m) => m.user.id === u.id),
+                        (u: UserEntry) =>
+                          !h.members.some((m: HouseholdMemberEntry) => m.user.id === u.id),
                       )
-                      .map((u) => (
+                      .map((u: UserEntry) => (
                         <option key={u.id} value={u.id}>
                           {u.name} ({u.email})
                         </option>
@@ -302,7 +336,7 @@ function HouseholdsSection() {
               )}
 
               <ul className="mt-2 divide-y rounded-md border">
-                {h.members.map((m) => (
+                {h.members.map((m: HouseholdMemberEntry) => (
                   <li
                     key={m.id}
                     className="flex items-center justify-between px-3 py-2"
