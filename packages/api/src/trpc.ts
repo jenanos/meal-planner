@@ -5,6 +5,7 @@ export interface AuthUser {
   email: string;
   name: string;
   image?: string | null;
+  role: "USER" | "ADMIN";
 }
 
 export interface CreateContextOptions {
@@ -30,6 +31,44 @@ export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
       ...ctx,
       user: ctx.user,
       householdId: ctx.householdId,
+    },
+  });
+});
+
+/** Procedure that requires a valid session (no household needed, e.g. onboarding). */
+export const authenticatedProcedure = t.procedure.use(async ({ ctx, next }) => {
+  if (!ctx.user) {
+    throw new TRPCError({
+      code: "UNAUTHORIZED",
+      message: "Du må være logget inn for å bruke denne funksjonen.",
+    });
+  }
+  return next({
+    ctx: {
+      ...ctx,
+      user: ctx.user,
+    },
+  });
+});
+
+/** Procedure that requires an ADMIN role. */
+export const adminProcedure = t.procedure.use(async ({ ctx, next }) => {
+  if (!ctx.user) {
+    throw new TRPCError({
+      code: "UNAUTHORIZED",
+      message: "Du må være logget inn for å bruke denne funksjonen.",
+    });
+  }
+  if (ctx.user.role !== "ADMIN") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Du har ikke tilgang til denne funksjonen.",
+    });
+  }
+  return next({
+    ctx: {
+      ...ctx,
+      user: ctx.user,
     },
   });
 });

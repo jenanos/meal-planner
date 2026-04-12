@@ -58,7 +58,12 @@ async function createContext({ req }: { req: { headers: Record<string, string | 
     return { user: null, householdId: null };
   }
 
-  // Look up the user's first household membership
+  // Look up the user's role and first household membership
+  const dbUser = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { role: true },
+  });
+
   const membership = await prisma.householdMember.findFirst({
     where: { userId: session.user.id },
     orderBy: { createdAt: "asc" },
@@ -71,6 +76,7 @@ async function createContext({ req }: { req: { headers: Record<string, string | 
       email: session.user.email,
       name: session.user.name,
       image: session.user.image ?? null,
+      role: (dbUser?.role as "USER" | "ADMIN") ?? "USER",
     },
     householdId: membership?.householdId ?? null,
   };

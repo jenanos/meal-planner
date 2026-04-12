@@ -63,10 +63,17 @@ export default function LoginPage() {
     setLoading("magic-link");
     setError(null);
     try {
-      await signIn.magicLink({
+      const result = await signIn.magicLink({
         email: email.trim(),
         callbackURL: "/",
       });
+      if (result.error) {
+        // Catch allowlist rejections: the server throws "NOT_ALLOWED"
+        setError(
+          "Denne e-postadressen har ikke tilgang. Kontakt administrator for å få tilgang."
+        );
+        return;
+      }
       setMagicLinkSent(true);
     } catch {
       setError("Kunne ikke sende innloggingslenke. Sjekk e-postadressen.");
@@ -193,9 +200,9 @@ export default function LoginPage() {
         )}
 
         <p className="text-center text-xs text-muted-foreground">
-          Ved å logge inn godtar du bruk av appen.
+          Kun inviterte brukere har tilgang.
           <br />
-          Nye brukere blir automatisk registrert.
+          Kontakt administrator for å bli lagt til.
         </p>
       </div>
     </div>
