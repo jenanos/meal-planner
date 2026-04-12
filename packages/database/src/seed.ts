@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { Prisma, prisma } from "./client";
 import { EXTRA_CATALOG, INGREDIENTS, RECIPES } from "./seed-data";
 
@@ -88,10 +89,10 @@ async function seedDevUsers() {
       });
     }
 
-    // Upsert users (better-auth uses string IDs; we use email-based deterministic IDs for dev)
+    // Upsert users (better-auth uses string IDs; we use deterministic hash-based IDs for dev)
     const userIds: string[] = [];
     for (const member of household.members) {
-      const userId = `dev-${member.email.replace(/[@.]/g, "-")}`;
+      const userId = `dev-${createHash("sha256").update(member.email.toLowerCase()).digest("hex").slice(0, 24)}`;
       await prisma.user.upsert({
         where: { email: member.email.toLowerCase() },
         update: { name: member.name, role: member.role },

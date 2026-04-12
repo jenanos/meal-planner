@@ -114,13 +114,17 @@ function AuthGuardInner({
     );
   }
 
+  const rawRole = roleQuery.data?.role;
+  const role: "USER" | "ADMIN" | undefined =
+    rawRole === "ADMIN" ? "ADMIN" : rawRole === "USER" ? "USER" : undefined;
+
   const user = session?.user
     ? {
         id: session.user.id,
         email: session.user.email,
         name: session.user.name,
         image: session.user.image,
-        role: roleQuery.data?.role as "USER" | "ADMIN" | undefined,
+        role,
       }
     : null;
 

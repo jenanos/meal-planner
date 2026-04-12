@@ -68,7 +68,7 @@ export default function LoginPage() {
         callbackURL: "/",
       });
       if (result.error) {
-        // Catch allowlist rejections: the server throws "NOT_ALLOWED"
+        // Catch allowlist rejections from the server
         setError(
           "Denne e-postadressen har ikke tilgang. Kontakt administrator for å få tilgang."
         );

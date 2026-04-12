@@ -111,7 +111,7 @@ export const auth = betterAuth({
         // ── Allowlist gate: reject magic-link requests from unknown emails ──
         const allowed = await isEmailAllowed(email);
         if (!allowed) {
-          throw new Error("NOT_ALLOWED");
+          throw new Error("E-postadressen har ikke tilgang til appen.");
         }
 
         if (isDev) {
