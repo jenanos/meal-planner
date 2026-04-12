@@ -1619,7 +1619,8 @@ export const plannerRouter = router({
   extraCatalogBulkUpdateCategories: protectedProcedure
     .input(ExtraCatalogBulkCategoryUpdate)
     .output(z.object({ count: z.number().int() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const householdId = ctx.householdId;
       let count = 0;
 
       for (const update of input.updates) {
@@ -1633,6 +1634,7 @@ export const plannerRouter = router({
                   UPDATE "ExtraItemCatalog"
                   SET "category" = NULL
                   WHERE "id" = ${update.id}::uuid
+                    AND "householdId" = ${householdId}::uuid
                 `,
               )
               : await prisma.$executeRaw(
@@ -1640,6 +1642,7 @@ export const plannerRouter = router({
                   UPDATE "ExtraItemCatalog"
                   SET "category" = ${normalizedCategory}::"IngredientCategory"
                   WHERE "id" = ${update.id}::uuid
+                    AND "householdId" = ${householdId}::uuid
                 `,
               );
           if (Number(affectedRows) > 0) {
@@ -1660,8 +1663,10 @@ export const plannerRouter = router({
       usageCount: z.number().int(),
       category: z.string().nullable(),
     }))))
-    .query(async () => {
+    .query(async ({ ctx }) => {
+      const householdId = ctx.householdId;
       const allItems = await prisma.extraItemCatalog.findMany({
+        where: { householdId },
         orderBy: { name: "asc" },
         include: { _count: { select: { extras: true } } },
       });
@@ -1715,27 +1720,40 @@ export const plannerRouter = router({
       mergeIds: z.array(z.string().uuid()).min(1),
     }))
     .output(z.object({ mergedCount: z.number().int(), updatedItems: z.number().int() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const householdId = ctx.householdId;
       const { keepId, mergeIds } = input;
       const uniqueMergeIds = [...new Set(mergeIds.filter((id) => id !== keepId))];
       if (uniqueMergeIds.length === 0) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "No items to merge" });
       }
 
-      const keep = await prisma.extraItemCatalog.findUnique({ where: { id: keepId } });
+      const keep = await prisma.extraItemCatalog.findFirst({
+        where: { id: keepId, householdId },
+      });
       if (!keep) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Keep item not found" });
+      }
+
+      // Verify all merge items belong to this household
+      const verifiedMergeItems = await prisma.extraItemCatalog.findMany({
+        where: { id: { in: uniqueMergeIds }, householdId },
+        select: { id: true },
+      });
+      const verifiedMergeIds = verifiedMergeItems.map((item) => item.id);
+      if (verifiedMergeIds.length === 0) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "No valid items to merge" });
       }
 
       let updatedItems = 0;
 
       await prisma.$transaction(async (tx) => {
         const mergeLinks = await tx.extraShoppingItem.findMany({
-          where: { catalogItemId: { in: uniqueMergeIds } },
+          where: { catalogItemId: { in: verifiedMergeIds }, householdId },
         });
 
         const keepLinks = await tx.extraShoppingItem.findMany({
-          where: { catalogItemId: keepId },
+          where: { catalogItemId: keepId, householdId },
         });
         const keepWeeks = new Set(keepLinks.map((l) => l.weekStart.getTime()));
 
@@ -1777,11 +1795,11 @@ export const plannerRouter = router({
         }
 
         await tx.extraItemCatalog.deleteMany({
-          where: { id: { in: uniqueMergeIds } },
+          where: { id: { in: verifiedMergeIds }, householdId },
         });
       });
 
-      return { mergedCount: uniqueMergeIds.length, updatedItems };
+      return { mergedCount: verifiedMergeIds.length, updatedItems };
     }),
 
   // Suggest extra items by prefix
@@ -1898,8 +1916,10 @@ export const plannerRouter = router({
   // ─── Shopping Packages ─────────────────────────────────────────────
 
   // List all packages
-  packageList: protectedProcedure.query(async () => {
+  packageList: protectedProcedure.query(async ({ ctx }) => {
+    const householdId = ctx.householdId;
     const packages = await prisma.shoppingPackage.findMany({
+      where: { householdId },
       orderBy: { name: "asc" },
       include: {
         items: {
@@ -1922,9 +1942,10 @@ export const plannerRouter = router({
   // Get a single package by ID
   packageGet: protectedProcedure
     .input(ShoppingPackageById)
-    .query(async ({ input }) => {
-      const pkg = await prisma.shoppingPackage.findUnique({
-        where: { id: input.id },
+    .query(async ({ input, ctx }) => {
+      const householdId = ctx.householdId;
+      const pkg = await prisma.shoppingPackage.findFirst({
+        where: { id: input.id, householdId },
         include: { items: { orderBy: { displayName: "asc" } } },
       });
       if (!pkg) throw new TRPCError({ code: "NOT_FOUND" });
@@ -1943,10 +1964,12 @@ export const plannerRouter = router({
   // Create a package
   packageCreate: protectedProcedure
     .input(ShoppingPackageCreate)
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const householdId = ctx.householdId;
       const pkg = await prisma.shoppingPackage.create({
         data: {
           name: input.name.trim(),
+          householdId,
           items: {
             create: input.items.map((item) => ({
               displayName: item.displayName.trim(),
@@ -1963,9 +1986,10 @@ export const plannerRouter = router({
   // Update a package (name and/or items)
   packageUpdate: protectedProcedure
     .input(ShoppingPackageUpdate)
-    .mutation(async ({ input }) => {
-      const existing = await prisma.shoppingPackage.findUnique({
-        where: { id: input.id },
+    .mutation(async ({ input, ctx }) => {
+      const householdId = ctx.householdId;
+      const existing = await prisma.shoppingPackage.findFirst({
+        where: { id: input.id, householdId },
       });
       if (!existing) throw new TRPCError({ code: "NOT_FOUND" });
 
@@ -2000,30 +2024,25 @@ export const plannerRouter = router({
   // Delete a package
   packageDelete: protectedProcedure
     .input(ShoppingPackageById)
-    .mutation(async ({ input }) => {
-      try {
-        await prisma.shoppingPackage.delete({ where: { id: input.id } });
-      } catch (error) {
-        if (
-          error instanceof Prisma.PrismaClientKnownRequestError &&
-          error.code === "P2025"
-        ) {
-          // Already deleted or doesn't exist — treat as success
-        } else {
-          throw error;
-        }
-      }
+    .mutation(async ({ input, ctx }) => {
+      const householdId = ctx.householdId;
+      const existing = await prisma.shoppingPackage.findFirst({
+        where: { id: input.id, householdId },
+      });
+      if (!existing) return { ok: true };
+      await prisma.shoppingPackage.delete({ where: { id: existing.id } });
       return { ok: true };
     }),
 
   // Suggest packages matching a search string (for the shopping list dialog)
   packageSuggest: protectedProcedure
     .input(ShoppingPackageSuggest.optional())
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
+      const householdId = ctx.householdId;
       const q = (input?.search ?? "").trim();
       if (!q) return [] as { id: string; name: string; itemCount: number }[];
       const packages = await prisma.shoppingPackage.findMany({
-        where: { name: { contains: q } },
+        where: { name: { contains: q }, householdId },
         orderBy: { name: "asc" },
         take: 10,
         include: { _count: { select: { items: true } } },
@@ -2045,8 +2064,8 @@ export const plannerRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const householdId = ctx.householdId;
-      const pkg = await prisma.shoppingPackage.findUnique({
-        where: { id: input.packageId },
+      const pkg = await prisma.shoppingPackage.findFirst({
+        where: { id: input.packageId, householdId },
         include: { items: true },
       });
       if (!pkg) throw new TRPCError({ code: "NOT_FOUND" });

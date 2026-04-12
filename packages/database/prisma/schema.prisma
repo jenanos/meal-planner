@@ -110,14 +110,15 @@ model Household {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members     HouseholdMember[]
-  invitations HouseholdInvitation[]
-  weekPlans   WeekPlan[]
-  weekIndices WeekIndex[]
+  members          HouseholdMember[]
+  invitations      HouseholdInvitation[]
+  weekPlans        WeekPlan[]
+  weekIndices      WeekIndex[]
   shoppingStates   ShoppingState[]
   extraCatalog     ExtraItemCatalog[]
   extraItems       ExtraShoppingItem[]
   shoppingStores   ShoppingStore[]
+  shoppingPackages ShoppingPackage[]
   freezerItems     FreezerItem[]
 }
 
@@ -325,12 +326,16 @@ model ShoppingStore {
 
 // A shopping package groups multiple items under one name (e.g. "Pålegg" = ham, cheese, liver pâté)
 model ShoppingPackage {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String   @unique @db.Citext
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @db.Citext
+  householdId String   @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  items ShoppingPackageItem[]
+  items     ShoppingPackageItem[]
+  household Household             @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@unique([name, householdId])
 }
 
 // Items belonging to a shopping package – can reference ExtraItemCatalog or Ingredient
