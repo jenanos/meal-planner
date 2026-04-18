@@ -12,6 +12,7 @@
     "db:reset": "pnpm --filter @repo/database db:reset",
     "db:push": "turbo run db:push",
     "db:seed": "turbo run db:seed",
+    "db:seed:prod": "pnpm --filter @repo/database db:seed:prod",
     "db:studio": "pnpm --filter @repo/database studio",
     "dev": "turbo run dev",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",

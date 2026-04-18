@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import { Prisma, prisma } from "./client";
+import { importProdDump } from "./prod-dump-import";
 import { EXTRA_CATALOG, INGREDIENTS, RECIPES } from "./seed-data";
 
 function daysAgo(n: number) {
@@ -164,6 +165,13 @@ async function seedDevUsers() {
 }
 
 async function main() {
+  const prodDumpPath = process.env.PROD_DB_DUMP_PATH?.trim();
+  if (prodDumpPath) {
+    console.log(`PROD_DB_DUMP_PATH er satt. Importerer prod-dump fra ${prodDumpPath}`);
+    await importProdDump(prodDumpPath);
+    return;
+  }
+
   // ── Seed allowed emails & users ──
   await seedAdminFromEnv();
   await seedDevUsers();

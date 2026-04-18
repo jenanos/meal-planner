@@ -173,6 +173,12 @@ Deployments can set `NEXT_PUBLIC_MOCK_MODE=true` to ship the static frontend bac
   pnpm --filter @repo/database db:reset
   pnpm --filter @repo/database db:seed
   ```
+- **Seed dev from a plain prod dump**:
+  ```bash
+  pnpm db:push
+  pnpm db:seed:prod -- /absolute/path/to/plain-pg-dump.sql
+  ```
+  This replaces current dev data, imports the prod dump into the current schema, and creates local login users for the migrated household.
 - **Force push schema (no migrations)**:
   ```bash
   pnpm --filter @repo/database exec prisma db push --force-reset
