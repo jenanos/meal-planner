@@ -27,41 +27,9 @@ export function useAuth() {
 
 const PUBLIC_PATHS = ["/login"];
 
-// Mock mode is only safe in development. Even if the NEXT_PUBLIC_MOCK_MODE env
-// var accidentally leaks to a production build, NODE_ENV will be "production"
-// and the mock user will NOT be injected.
-const mockFlag = (
-  process.env.NEXT_PUBLIC_MOCK_MODE ??
-  process.env.MOCK_MODE ??
-  ""
-)
-  .toString()
-  .toLowerCase();
-const isMockMode =
-  process.env.NODE_ENV === "development" &&
-  (mockFlag === "true" || mockFlag === "1");
-
-const MOCK_USER: AuthContextValue["user"] = {
-  id: "mock-user-id",
-  email: "mock@example.com",
-  name: "Mock User",
-  image: null,
-  role: "ADMIN",
-};
-
 export function AuthGuard({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-
-  // In mock mode (dev only), skip auth and provide a mock user so
-  // frontend-only development works without a running backend.
-  if (isMockMode) {
-    return (
-      <AuthContext.Provider value={{ user: MOCK_USER, isLoading: false }}>
-        {children}
-      </AuthContext.Provider>
-    );
-  }
 
   return (
     <AuthGuardInner pathname={pathname} router={router}>

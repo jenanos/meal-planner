@@ -1,8 +1,8 @@
-import type { MockIngredientListResult, MockRecipeListResult } from "../../lib/mock/store";
+import type { RouterOutputs } from "../../lib/trpcTypes";
 
-export type RecipeListItem = MockRecipeListResult["items"][number];
+export type RecipeListItem = RouterOutputs["recipe"]["list"]["items"][number];
 
-export type IngredientSuggestion = MockIngredientListResult[number];
+export type IngredientSuggestion = RouterOutputs["ingredient"]["list"][number];
 
 export type FormIngredient = {
   id?: string;

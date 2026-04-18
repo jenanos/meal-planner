@@ -32,8 +32,7 @@ import { FALL_BADGE_PALETTE, formatQuantity } from "./utils";
 import type { ShoppingListItem, ShoppingListOccurrence } from "./types";
 import { WeekSelector } from "../planner/components/WeekSelector";
 import { deriveWeekLabel, startOfWeekISO } from "../../lib/week";
-import type { TimelineWeekEntry } from "../planner/types";
-import type { MockWeekTimelineResult } from "../../lib/mock/store";
+import type { TimelineWeekEntry, WeekTimelineResult } from "../planner/types";
 import {
   DEFAULT_VISIBLE_DAY_INDICES,
   ingredientCategoryLabel,
@@ -182,7 +181,7 @@ export default function ShoppingListPage() {
 
   const timelineWeeks = useMemo(() => {
     const rawWeeks = timelineQuery.data?.weeks ?? [];
-    const weeks = rawWeeks as MockWeekTimelineResult["weeks"];
+    const weeks = rawWeeks as WeekTimelineResult["weeks"];
     return weeks.map((week) => ({
       ...week,
       label: deriveWeekLabel(week.weekStart, currentWeekStart),

@@ -2,7 +2,7 @@
 
 [![Build and Push Docker Images](https://github.com/jenanos/meal-planner/actions/workflows/build-and-push.yml/badge.svg)](https://github.com/jenanos/meal-planner/actions/workflows/build-and-push.yml)
 
-Meal Planner is a pnpm-powered Turborepo monorepo for planning dinners, managing recipes and ingredients, and preparing weekly shopping lists. It contains a Fastify+tRPC API, a Prisma/PostgreSQL data layer, and a modern Next.js frontend that can run with real data or a mocked backend for lightweight demos.
+Meal Planner is a pnpm-powered Turborepo monorepo for planning dinners, managing recipes and ingredients, and preparing weekly shopping lists. It contains a Fastify+tRPC API, a Prisma/PostgreSQL data layer, and a modern Next.js frontend with real magic-link authentication.
 
 ---
 
@@ -62,7 +62,7 @@ This workspace is orchestrated by [Turborepo](https://turbo.build/repo), a high-
 
 | Package | Path | Purpose |
 | ------- | ---- | ------- |
-| **Frontend** | `apps/web` | Next.js App Router UI with Tailwind, tRPC React Query hooks, and mock mode for standalone deploys. |
+| **Frontend** | `apps/web` | Next.js App Router UI with Tailwind and tRPC React Query hooks. |
 | **API server** | `apps/server` | Fastify host that mounts the tRPC router from `@repo/api` and exposes health/readiness endpoints. |
 | **MCP server** | `apps/mcp-server` | Streamable HTTP MCP server that maps MCP tools to the Meal Planner tRPC API. |
 | **tRPC router** | `packages/api` | Shared types, routers (`planner`, `recipe`, `ingredient`), and Zod schemas used by both server and frontend. |
@@ -95,9 +95,9 @@ cp apps/web/.env.local.example apps/web/.env.local
 Key settings:
 
 - Root `.env` provides `POSTGRES_*` defaults that both Docker and Prisma use.
-- `apps/server/.env` supplies `DATABASE_URL` so the API can reach Postgres.
+- `apps/server/.env` supplies `DATABASE_URL`, `AUTH_SECRET`, `BETTER_AUTH_URL`, `AUTH_TRUSTED_ORIGINS`, `RESEND_API_KEY`, and `EMAIL_FROM`.
 - `MEALS_API_INTERNAL_ORIGIN` and `NEXT_PUBLIC_API_URL` control how the web app reaches the API (internal vs. browser).
-- `NEXT_PUBLIC_MOCK_MODE` (in `apps/web/.env.local`) toggles the mock backend for the frontend.
+- `ADMIN_EMAIL` optionally seeds an allowlisted admin email for bootstrap scenarios.
 
 ---
 
@@ -119,6 +119,7 @@ Key settings:
    ```bash
    pnpm --filter @repo/database db:seed
    ```
+   To test real auth locally, set `ADMIN_EMAIL`, `AUTH_SECRET`, `BETTER_AUTH_URL`, `RESEND_API_KEY`, and `EMAIL_FROM` in `apps/server/.env`.
 5. **Start the API server** – runs Fastify on port `4000` by default and wires up the tRPC router. The `predev` hook automatically applies the latest Prisma migrations.
    ```bash
    pnpm --filter server dev
@@ -146,22 +147,6 @@ Key settings:
 
 - `MEALS_API_INTERNAL_ORIGIN` – base URL for the Meal Planner API (e.g. `http://localhost:4000` or `http://meals-api:4000` in Docker).
 - `PORT` – port for the MCP server (default: `5050`).
-
----
-
-## 🧪 Mock-only frontend mode
-
-Run the UI without any backend or database – useful for quick demos or Vercel-style deployments:
-
-```bash
-# Development
-pnpm --filter web dev:mock
-
-# Build with mock data
-NEXT_PUBLIC_MOCK_MODE=true pnpm --filter web build
-```
-
-Deployments can set `NEXT_PUBLIC_MOCK_MODE=true` to ship the static frontend backed by in-memory seed data.
 
 ---
 
@@ -218,7 +203,7 @@ pnpm --filter web test:e2e   # Playwright end-to-end tests (headless)
 
 - **API not ready**: check `apps/server` logs; ensure migrations ran and Postgres is reachable.
 - **Frontend requests failing**: verify `NEXT_PUBLIC_API_URL` (browser) and `MEALS_API_INTERNAL_ORIGIN` (server-side) point to the API.
-- **Mock mode confusion**: remember to set `NEXT_PUBLIC_MOCK_MODE=false` when switching back to the real backend.
+- **Magic links are not sent**: verify `RESEND_API_KEY`, `EMAIL_FROM`, `BETTER_AUTH_URL`, and `AUTH_TRUSTED_ORIGINS` in `apps/server/.env`.
 
 ---
 

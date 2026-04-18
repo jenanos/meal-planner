@@ -4,10 +4,15 @@ import { magicLink } from "better-auth/plugins/magic-link";
 import { prisma } from "@repo/database";
 
 const isDev = process.env.NODE_ENV !== "production";
+const authSecret =
+  process.env.AUTH_SECRET?.trim() ?? process.env.BETTER_AUTH_SECRET?.trim();
 const authBaseURL =
   process.env.BETTER_AUTH_URL ??
   process.env.AUTH_BASE_URL ??
   (isDev ? "http://localhost:4000" : undefined);
+const resendApiKey = process.env.RESEND_API_KEY?.trim();
+const authEmailFrom =
+  process.env.AUTH_EMAIL_FROM?.trim() ?? process.env.EMAIL_FROM?.trim();
 const devTrustedOrigins = [
   "http://localhost:3000",
   "http://localhost:3001",
@@ -18,19 +23,6 @@ const devTrustedOrigins = [
   "http://127.0.0.1:3002",
   "http://127.0.0.1:3003",
 ];
-
-const STANDARD_STORE_CATEGORY_ORDER = [
-  "FRUKT_OG_GRONT",
-  "KJOTT",
-  "OST",
-  "BROD",
-  "MEIERI_OG_EGG",
-  "HERMETIKK",
-  "TORRVARER",
-  "BAKEVARER",
-  "HUSHOLDNING",
-  "ANNET",
-] as const;
 
 // ─── Allowlist helpers ───
 
@@ -46,39 +38,75 @@ async function isEmailAllowed(email: string): Promise<boolean> {
   return entry !== null;
 }
 
-// ─── Dev magic link store ───
-// In development, we store the most recent magic link URL on globalThis so
-// the frontend can offer a one-click login button (similar to the pattern
-// used in home-inventory). This never runs in production.
-
-type DevMagicLinkState = {
-  url: string;
-  createdAt: number;
-};
-
-const g = globalThis as unknown as {
-  __devMagicLinkState?: DevMagicLinkState | null;
-};
-
-function setDevMagicLinkUrl(url: string) {
-  if (!isDev) return;
-  g.__devMagicLinkState = { url, createdAt: Date.now() };
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
-/** Returns the latest dev magic link URL if it's less than 10 minutes old. */
-export function getDevMagicLinkUrl(): string | null {
-  if (!isDev) return null;
-  const state = g.__devMagicLinkState;
-  if (!state) return null;
-  // Expire after 10 minutes
-  if (Date.now() - state.createdAt > 10 * 60_000) {
-    g.__devMagicLinkState = null;
-    return null;
+function getRequiredEmailConfig() {
+  if (!resendApiKey) {
+    throw new Error(
+      "Magic link email sending requires RESEND_API_KEY to be set.",
+    );
   }
-  return state.url;
+
+  if (!authEmailFrom) {
+    throw new Error(
+      "Magic link email sending requires AUTH_EMAIL_FROM or EMAIL_FROM to be set.",
+    );
+  }
+
+  return {
+    resendApiKey,
+    authEmailFrom,
+  };
+}
+
+async function sendMagicLinkEmail(email: string, url: string) {
+  const { resendApiKey, authEmailFrom } = getRequiredEmailConfig();
+  const safeUrl = escapeHtml(url);
+  const safeEmail = escapeHtml(email);
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${resendApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: authEmailFrom,
+      to: [email],
+      subject: "Innloggingslenke til Butta",
+      text: [
+        "Klikk på lenken under for å logge inn i Butta:",
+        url,
+        "",
+        "Hvis du ikke ba om denne e-posten, kan du ignorere den.",
+      ].join("\n"),
+      html: [
+        "<p>Klikk på lenken under for å logge inn i Butta:</p>",
+        `<p><a href="${safeUrl}">${safeUrl}</a></p>`,
+        `<p>Denne lenken ble sendt til ${safeEmail}.</p>`,
+        "<p>Hvis du ikke ba om denne e-posten, kan du ignorere den.</p>",
+      ].join(""),
+    }),
+  });
+
+  if (response.ok) {
+    return;
+  }
+
+  const errorBody = await response.text();
+  throw new Error(
+    `Resend failed to send magic link (${response.status}): ${errorBody || "Unknown error"}`,
+  );
 }
 
 export const auth = betterAuth({
+  ...(authSecret ? { secret: authSecret } : {}),
   ...(authBaseURL ? { baseURL: authBaseURL } : {}),
   basePath: "/auth",
   database: prismaAdapter(prisma, {
@@ -135,23 +163,7 @@ export const auth = betterAuth({
           throw new Error("E-postadressen har ikke tilgang til appen.");
         }
 
-        if (isDev) {
-          setDevMagicLinkUrl(url);
-          console.log("\n════════════════════════════════════════");
-          console.log(`  Magic link for ${email}:`);
-          console.log(`  ${url}`);
-          console.log("  (Also available via /auth/dev/magic-link)");
-          console.log("════════════════════════════════════════\n");
-          return;
-        }
-
-        // Production: fail loudly if no email service is configured.
-        // This prevents silent auth failures where users never receive
-        // their magic link.
-        throw new Error(
-          "Magic link email service not configured. " +
-          "Set up Resend, Postmark, or similar and update sendMagicLink in auth.ts.",
-        );
+        await sendMagicLinkEmail(email, url);
       },
     }),
   ],
@@ -169,29 +181,6 @@ export const auth = betterAuth({
             return false;
           }
           return undefined; // allow creation
-        },
-        after: async (user) => {
-          // Automatically create a household for new users
-          const household = await prisma.household.create({
-            data: {
-              name: `${user.name ?? "Min"} husholdning`,
-              members: {
-                create: {
-                  userId: user.id,
-                  role: "OWNER",
-                },
-              },
-            },
-          });
-          // Create a default shopping store for the household
-          await prisma.shoppingStore.create({
-            data: {
-              name: "Standard butikk",
-              isDefault: true,
-              householdId: household.id,
-              categoryOrder: [...STANDARD_STORE_CATEGORY_ORDER],
-            },
-          });
         },
       },
     },

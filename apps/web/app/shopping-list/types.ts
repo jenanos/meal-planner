@@ -1,5 +1,5 @@
-import type { MockShoppingListResult } from "../../lib/mock/store";
+import type { RouterOutputs } from "../../lib/trpcTypes";
 
-export type ShoppingListResult = MockShoppingListResult;
+export type ShoppingListResult = RouterOutputs["planner"]["shoppingList"];
 export type ShoppingListItem = ShoppingListResult["items"][number];
 export type ShoppingListOccurrence = ShoppingListItem["occurrences"][number];
