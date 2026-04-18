@@ -1,19 +1,32 @@
 "use client";
 
 import { useMemo } from "react";
+import {
+  CalendarDays,
+  ShoppingCart,
+  BookOpen,
+  Carrot,
+  Snowflake,
+  Settings,
+  ShieldCheck,
+} from "lucide-react";
 import { useAuth } from "./AuthGuard";
 import ResponsiveNav, { type NavItem } from "./ResponsiveNav";
 
 const BASE_NAV_ITEMS: NavItem[] = [
-  { href: "/", label: "Ukesplan" },
-  { href: "/recipes", label: "Oppskrifter" },
-  { href: "/ingredients", label: "Ingredienser" },
-  { href: "/freezer", label: "Fryseren" },
-  { href: "/shopping-list", label: "Handleliste" },
-  { href: "/settings", label: "Innstillinger" },
+  { href: "/", label: "Ukesplan", icon: CalendarDays, primary: true },
+  { href: "/shopping-list", label: "Handleliste", icon: ShoppingCart, primary: true },
+  { href: "/recipes", label: "Oppskrifter", icon: BookOpen, primary: true },
+  { href: "/ingredients", label: "Ingredienser", icon: Carrot },
+  { href: "/freezer", label: "Fryseren", icon: Snowflake },
+  { href: "/settings", label: "Innstillinger", icon: Settings },
 ];
 
-const ADMIN_NAV_ITEM: NavItem = { href: "/admin", label: "Admin" };
+const ADMIN_NAV_ITEM: NavItem = {
+  href: "/admin",
+  label: "Admin",
+  icon: ShieldCheck,
+};
 
 export function DynamicNav() {
   const { user } = useAuth();

@@ -1777,7 +1777,7 @@ export const plannerRouter = router({
 
         // Repoint package items referencing merged catalog entries
         const mergePackageItems = await tx.shoppingPackageItem.findMany({
-          where: { extraItemCatalogId: { in: uniqueMergeIds } },
+          where: { extraItemCatalogId: { in: verifiedMergeIds } },
         });
         const keepPackageIds = new Set(
           (
