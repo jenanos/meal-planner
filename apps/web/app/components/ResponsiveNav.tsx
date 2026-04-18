@@ -2,12 +2,20 @@
 /* eslint-env browser */
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ComponentType, type SVGProps } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
 import { Luckiest_Guy } from "next/font/google";
+import { MoreHorizontal } from "lucide-react";
 
-export type NavItem = { href: string; label: string };
+export type NavIcon = ComponentType<SVGProps<SVGSVGElement> & { size?: number | string }>;
+
+export type NavItem = {
+    href: string;
+    label: string;
+    icon?: NavIcon;
+    primary?: boolean;
+};
 
 type Props = {
     items: NavItem[];
@@ -46,7 +54,16 @@ export function ResponsiveNav({ items }: Props) {
         }
     }, [open]);
 
-    const links = useMemo(
+    const primaryItems = useMemo(
+        () => items.filter((item) => item.primary),
+        [items]
+    );
+    const overflowItems = useMemo(
+        () => items.filter((item) => !item.primary),
+        [items]
+    );
+
+    const desktopLinks = useMemo(
         () =>
             items.map(({ href, label }) => (
                 <Link
@@ -60,6 +77,7 @@ export function ResponsiveNav({ items }: Props) {
             )),
         [items, pathname]
     );
+
     const activeLabel = useMemo(() => {
         const current = items.find(({ href }) => href === pathname);
         return current?.label ?? "Butta";
@@ -80,32 +98,62 @@ export function ResponsiveNav({ items }: Props) {
             {/* Desktop nav */}
             <div className="hidden items-center justify-between gap-6 md:flex">
                 {renderBrand()}
-                <div className="flex items-center gap-3">{links}</div>
+                <div className="flex items-center gap-3">{desktopLinks}</div>
             </div>
 
-            {/* Mobile header */}
-            <div className="relative flex items-center gap-2 py-1 md:hidden">
+            {/* Mobile header (no burger — navigation lives in the bottom bar) */}
+            <div className="relative flex items-center py-1 md:hidden">
                 {renderBrand("flex-shrink-0 leading-none")}
                 <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center text-sm font-semibold leading-none text-foreground/85">
                     {activeLabel}
                 </span>
-                <button
-                    type="button"
-                    className={`ml-auto inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-sm font-medium text-foreground/80 transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ${open ? "invisible pointer-events-none" : ""}`}
-                    aria-label="Åpne meny"
-                    aria-expanded={open}
-                    aria-controls="mobile-nav"
-                    onClick={() => setOpen((v) => !v)}
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
-                        <path d="M3.75 6.75h16.5a.75.75 0 000-1.5H3.75a.75.75 0 000 1.5z" />
-                        <path d="M3.75 12.75h16.5a.75.75 0 000-1.5H3.75a.75.75 0 000 1.5z" />
-                        <path d="M3.75 18.75h16.5a.75.75 0 000-1.5H3.75a.75.75 0 000 1.5z" />
-                    </svg>
-                </button>
             </div>
 
-            {/* Mobile menu panel (portal to body to avoid stacking issues) */}
+            {/* Mobile bottom navbar */}
+            <nav
+                className="app-bottom-nav md:hidden"
+                aria-label="Hovednavigasjon"
+            >
+                <ul className="flex items-stretch justify-around gap-1 px-2 pt-1">
+                    {primaryItems.map(({ href, label, icon: Icon }) => {
+                        const isActive = pathname === href;
+                        return (
+                            <li key={href} className="flex-1">
+                                <Link
+                                    href={href}
+                                    aria-current={isActive ? "page" : undefined}
+                                    className="app-bottom-nav-item"
+                                >
+                                    {Icon ? <Icon className="h-6 w-6" aria-hidden="true" /> : null}
+                                    <span className="text-[11px] leading-tight">{label}</span>
+                                </Link>
+                            </li>
+                        );
+                    })}
+                    {overflowItems.length > 0 && (
+                        <li className="flex-1">
+                            <button
+                                type="button"
+                                className="app-bottom-nav-item w-full"
+                                aria-label="Mer"
+                                aria-expanded={open}
+                                aria-controls="mobile-nav"
+                                aria-current={
+                                    overflowItems.some(({ href }) => href === pathname)
+                                        ? "page"
+                                        : undefined
+                                }
+                                onClick={() => setOpen((v) => !v)}
+                            >
+                                <MoreHorizontal className="h-6 w-6" aria-hidden="true" />
+                                <span className="text-[11px] leading-tight">Mer</span>
+                            </button>
+                        </li>
+                    )}
+                </ul>
+            </nav>
+
+            {/* Mobile "Mer"-panel (portal to body to avoid stacking issues) */}
             {mounted && open &&
                 createPortal(
                     <>
@@ -116,12 +164,12 @@ export function ResponsiveNav({ items }: Props) {
                         />
                         <div
                             id="mobile-nav"
-                            className="fixed right-3 top-3 z-[9999] w-[min(92vw,360px)] rounded-2xl border bg-[hsl(var(--card)/0.97)] p-3 shadow-xl md:hidden"
+                            className="app-bottom-nav-panel md:hidden"
                             role="dialog"
                             aria-modal="true"
                         >
                             <div className="flex items-center justify-between gap-2 px-1 py-1">
-                                <span className="text-sm font-semibold text-foreground/70">Meny</span>
+                                <span className="text-sm font-semibold text-foreground/70">Mer</span>
                                 <button
                                     className="inline-flex items-center justify-center rounded-full px-2 py-2 text-foreground/70 hover:bg-foreground/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
                                     aria-label="Lukk meny"
@@ -142,13 +190,14 @@ export function ResponsiveNav({ items }: Props) {
                                 </button>
                             </div>
                             <div className="mt-1 flex flex-col gap-2 p-1">
-                                {items.map(({ href, label }) => (
+                                {overflowItems.map(({ href, label, icon: Icon }) => (
                                     <Link
                                         key={`m-${href}`}
                                         href={href}
                                         className="app-nav-link w-full justify-start text-base"
                                         aria-current={pathname === href ? "page" : undefined}
                                     >
+                                        {Icon ? <Icon className="h-5 w-5" aria-hidden="true" /> : null}
                                         {label}
                                     </Link>
                                 ))}
