@@ -45,13 +45,15 @@ export function ResponsiveNav({ items }: Props) {
         return () => window.removeEventListener("keydown", onKey);
     }, [open]);
 
-    // Prevent body scroll when menu is open
+    // Prevent body scroll when menu is open, restoring the previous value
+    // so we don't clobber scroll locks set by other overlays (e.g. Radix Dialog).
     useEffect(() => {
-        if (open) {
-            document.body.style.overflow = "hidden";
-        } else {
-            document.body.style.overflow = "";
-        }
+        if (!open) return;
+        const previous = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+        return () => {
+            document.body.style.overflow = previous;
+        };
     }, [open]);
 
     const primaryItems = useMemo(
@@ -167,9 +169,10 @@ export function ResponsiveNav({ items }: Props) {
                             className="app-bottom-nav-panel md:hidden"
                             role="dialog"
                             aria-modal="true"
+                            aria-labelledby="mobile-nav-title"
                         >
                             <div className="flex items-center justify-between gap-2 px-1 py-1">
-                                <span className="text-sm font-semibold text-foreground/70">Mer</span>
+                                <span id="mobile-nav-title" className="text-sm font-semibold text-foreground/70">Mer</span>
                                 <button
                                     className="inline-flex items-center justify-center rounded-full px-2 py-2 text-foreground/70 hover:bg-foreground/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
                                     aria-label="Lukk meny"
