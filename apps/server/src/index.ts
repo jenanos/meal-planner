@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import "./load-env.js";
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";

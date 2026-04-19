@@ -16,9 +16,10 @@ export default function LoginPage() {
     setLoading("magic-link");
     setError(null);
     try {
+      const callbackURL = new URL("/", window.location.origin).toString();
       const result = await signIn.magicLink({
         email: email.trim(),
-        callbackURL: "/",
+        callbackURL,
       });
       if (result.error) {
         const message =
