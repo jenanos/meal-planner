@@ -1,5 +1,6 @@
 import "./load-env.js";
 
+import { timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import Fastify from "fastify";
@@ -226,17 +227,25 @@ await app.register(async (authApp) => {
 });
 
 // ─── tRPC ───
+
+function isValidApiKey(candidate: string, expected: string): boolean {
+  const a = Buffer.from(candidate);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
 async function createContext({ req }: { req: { headers: Record<string, string | string[] | undefined> } }): Promise<CreateContextOptions> {
   // ── Service-to-service auth via API key (e.g. MCP server) ──
   const apiKey = typeof req.headers["x-api-key"] === "string" ? req.headers["x-api-key"] : null;
-  if (apiKey && MCP_API_KEY && apiKey === MCP_API_KEY) {
+  if (apiKey && MCP_API_KEY && isValidApiKey(apiKey, MCP_API_KEY)) {
     const householdId = await resolveServiceHouseholdId();
     return {
       user: {
         id: "service:mcp",
         email: "mcp@internal",
         name: "MCP Service",
-        role: "ADMIN",
+        role: "USER",
       },
       householdId,
     };
