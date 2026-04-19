@@ -131,9 +131,9 @@ export default function ShoppingListPage() {
   useEffect(() => {
     const data = shoppingSettingsQuery.data as
       | {
-          settings: ShoppingUserSettings;
-          stores: ShoppingStore[];
-        }
+        settings: ShoppingUserSettings;
+        stores: ShoppingStore[];
+      }
       | undefined;
     if (!data) return;
 
@@ -1261,7 +1261,7 @@ export default function ShoppingListPage() {
                     {extraInput.trim().length > 0 && (
                       <div className="min-h-6">
                         {extraSuggest.isLoading ||
-                        packageSuggest.isLoading ? (
+                          packageSuggest.isLoading ? (
                           <p className="text-xs text-muted-foreground">
                             Søker…
                           </p>
@@ -1269,16 +1269,16 @@ export default function ShoppingListPage() {
                           (() => {
                             const suggestions = (extraSuggest.data ??
                               []) as Array<{
-                              id: string;
-                              name: string;
-                              hasCategory: boolean;
-                            }>;
+                                id: string;
+                                name: string;
+                                hasCategory: boolean;
+                              }>;
                             const pkgSuggestions = (packageSuggest.data ??
                               []) as Array<{
-                              id: string;
-                              name: string;
-                              itemCount: number;
-                            }>;
+                                id: string;
+                                name: string;
+                                itemCount: number;
+                              }>;
                             const exists = suggestions.some(
                               (s) =>
                                 s.name.toLowerCase() ===
@@ -1310,11 +1310,10 @@ export default function ShoppingListPage() {
                                 {suggestions.map((s) => (
                                   <Badge
                                     key={s.id}
-                                    className={`cursor-pointer border text-white ${
-                                      s.hasCategory
+                                    className={`cursor-pointer border text-white ${s.hasCategory
                                         ? "border-emerald-500 bg-emerald-500 hover:bg-emerald-600"
                                         : "border-orange-500 bg-orange-500 hover:bg-orange-600"
-                                    }`}
+                                      }`}
                                     onClick={() => addOrToggleExtra(s.name)}
                                   >
                                     {s.name}

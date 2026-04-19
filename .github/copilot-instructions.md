@@ -3,6 +3,7 @@
 This monorepo contains a Next.js web app, a Fastify+tRPC server, a Prisma database package, and a shared UI library. Keep your edits minimal, respect the packages’ contracts, and validate with lint + build before finishing.
 
 ## Architecture at a glance
+
 - apps/web: Next.js (App Router) frontend
   - State/data via tRPC React Query client in `apps/web/lib/trpcClient.ts`
   - Pages under `apps/web/app/**` (e.g. `/planner`, `/recipes`, `/ingredients`)
@@ -19,6 +20,7 @@ This monorepo contains a Next.js web app, a Fastify+tRPC server, a Prisma databa
 - packages/ui: shared UI (shadcn-based + magicui). Import via `@repo/ui`.
 
 ## Key conventions and patterns
+
 - Type flow: server exports `AppRouter` → web imports the type in `trpcClient.ts`; avoid importing built output.
 - Planner DnD: do not reintroduce transforms/backdrop-filter on containers that would create containing blocks; keep DragOverlay in a portal to `document.body`.
 - Recipe dialogs: use `StepNav` for navigation (arrows always enabled). Primary actions live in the dialog header (left); a close “X” sits in header (right). StepNav should not render extra right-side actions. Validation gating happens on the header button (disabled until required data is set).
@@ -28,6 +30,7 @@ This monorepo contains a Next.js web app, a Fastify+tRPC server, a Prisma databa
 - Dialog footers are removed (empty) — don’t add actions there.
 
 ## Developer workflows
+
 - Install: `pnpm install` in repo root (pnpm workspaces)
 - Copy shared env from `.env.example`, then copy auth/server env from `apps/server/.env.example` to `apps/server/.env`
 - Local dev uses the same real auth flow as prod: magic links via Better Auth + Resend
@@ -40,25 +43,30 @@ This monorepo contains a Next.js web app, a Fastify+tRPC server, a Prisma databa
   - Reset and seed: `pnpm --filter @repo/database prisma migrate reset -f && pnpm --filter @repo/database db:seed`
 
 ## External dependencies
+
 - tRPC v11 for end-to-end types
 - Prisma for DB access and migrations
 - Tailwind (v4) for styles; UI via `@repo/ui` (shadcn + magicui)
 - dnd-kit for drag-and-drop
 
 ## Cross-package boundaries
+
 - Do not import from a package’s build output; use source entrypoints (e.g., `@repo/api`, `@repo/ui`).
 - The web app expects tRPC procedures as defined in `packages/api/src/routers/*`; adjust both client and server when renaming procedures or shapes.
 
 ## Testing
+
 - E2E scaffolding via Playwright in `apps/web/tests/`; run with `pnpm --filter web test:e2e` (if tests exist).
 
 ## Examples from codebase
+
 - Step navigation with labels: `apps/web/app/recipes/components/StepNav.tsx`
 - Category emoji usage: `apps/web/app/components/CategoryEmoji.tsx` and `apps/web/app/recipes/components/RecipeCard.tsx`
 - Recipe dialogs (header actions + StepNav): `apps/web/app/recipes/components/RecipeFormDialog.tsx`, `RecipeViewDialog.tsx`
 - Planner DnD setup: `apps/web/app/planner/page.tsx`
 
 ## Guardrails for agents
+
 - Maintain separate DnD contexts for mobile/desktop and keep `DragOverlay` portaled.
 - Don’t use dialog footers for actions (actions belong in header; StepNav only for nav).
 - Respect the strict ESLint config (`--max-warnings 0`); fix unused imports/vars.

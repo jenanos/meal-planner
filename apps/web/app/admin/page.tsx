@@ -126,11 +126,10 @@ function UsersSection() {
                   </td>
                   <td className="px-4 py-2.5">
                     <span
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-                        u.role === "ADMIN"
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${u.role === "ADMIN"
                           ? "bg-amber-100 text-amber-800"
                           : "bg-gray-100 text-gray-700"
-                      }`}
+                        }`}
                     >
                       {u.role === "ADMIN" ? (
                         <Shield className="h-3 w-3" />
@@ -374,11 +373,10 @@ export default function AdminPage() {
         {tabs.map((t) => (
           <button
             key={t.id}
-            className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-              tab === t.id
+            className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${tab === t.id
                 ? "bg-background shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
-            }`}
+              }`}
             onClick={() => setTab(t.id)}
           >
             {t.label}
