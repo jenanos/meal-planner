@@ -99,7 +99,8 @@ Key settings:
 - Root `.env` provides `POSTGRES_*` defaults that both Docker and Prisma use.
 - `apps/server/.env` supplies `DATABASE_URL`, `AUTH_SECRET`, `BETTER_AUTH_URL`, `AUTH_TRUSTED_ORIGINS`, `RESEND_API_KEY`, and `EMAIL_FROM`.
 - `MEALS_API_INTERNAL_ORIGIN` and `NEXT_PUBLIC_API_URL` control how the web app reaches the API (internal vs. browser).
-- `ADMIN_EMAIL` optionally seeds an allowlisted admin email for bootstrap scenarios.
+- `ADMIN_EMAIL` promotes an existing user to app-admin and allowlists the address.
+- `BOOTSTRAP_HOUSEHOLD_NAME`, `BOOTSTRAP_HOUSEHOLD_OWNER_EMAILS`, and `BOOTSTRAP_HOUSEHOLD_MEMBER_EMAILS` let you bootstrap one canonical household from env in both dev and prod.
 
 ---
 
@@ -117,11 +118,11 @@ Key settings:
    ```bash
    pnpm --filter @repo/database db:migrate:dev
    ```
-4. **Seed demo data (optional but recommended)**
+4. **Seed base data (optional but recommended)**
    ```bash
    pnpm --filter @repo/database db:seed
    ```
-   To test real auth locally, set `ADMIN_EMAIL`, `AUTH_SECRET`, `BETTER_AUTH_URL`, `AUTH_TRUSTED_ORIGINS`, `RESEND_API_KEY`, and `EMAIL_FROM` in `apps/server/.env`.
+   There is no separate dev-login flow anymore. To test the real auth flow locally, set `ADMIN_EMAIL`, `BOOTSTRAP_HOUSEHOLD_NAME`, `BOOTSTRAP_HOUSEHOLD_OWNER_EMAILS`, `BOOTSTRAP_HOUSEHOLD_MEMBER_EMAILS`, `AUTH_SECRET`, `BETTER_AUTH_URL`, `AUTH_TRUSTED_ORIGINS`, `RESEND_API_KEY`, and `EMAIL_FROM` in `apps/server/.env`.
 5. **Start the API server** – runs Fastify on port `4000` by default and wires up the tRPC router. The `predev` hook automatically applies the latest Prisma migrations.
    ```bash
    pnpm --filter server dev
@@ -165,7 +166,7 @@ Key settings:
   pnpm db:push
   pnpm db:seed:prod -- /absolute/path/to/plain-pg-dump.sql
   ```
-  This replaces current dev data, imports the prod dump into the current schema, and creates local login users for the migrated household.
+  This replaces current dev data, imports the prod dump into the current schema, and binds the migrated household to the bootstrap emails configured in `apps/server/.env`.
 - **Force push schema (no migrations)**:
   ```bash
   pnpm --filter @repo/database exec prisma db push --force-reset

@@ -1,8 +1,12 @@
 import { createHash } from "crypto";
 import { readFile } from "fs/promises";
 import { prisma } from "./client";
+import {
+  deriveDisplayNameFromEmail,
+  getBootstrapConfigFromEnv,
+} from "./bootstrap";
 
-const MIGRATED_HOUSEHOLD_NAME = "Migrert prod-husholdning";
+const DEFAULT_MIGRATED_HOUSEHOLD_NAME = "Migrert prod-husholdning";
 
 const STANDARD_STORE_CATEGORY_ORDER = [
   "FRUKT_OG_GRONT",
@@ -18,18 +22,8 @@ const STANDARD_STORE_CATEGORY_ORDER = [
 ] as const;
 
 const LEGACY_USERS = {
-  JENS: {
-    email: "jens@prod-import.local",
-    name: "Jens",
-    appRole: "ADMIN" as const,
-    householdRole: "OWNER" as const,
-  },
-  INGVILD: {
-    email: "ingvild@prod-import.local",
-    name: "Ingvild",
-    appRole: "USER" as const,
-    householdRole: "MEMBER" as const,
-  },
+  JENS: "JENS",
+  INGVILD: "INGVILD",
 } as const;
 
 type LegacyRole = keyof typeof LEGACY_USERS;
@@ -229,33 +223,50 @@ function parseProdDump(sql: string): ParsedProdDump {
   };
 }
 
-function buildSeedUsers(adminEmail?: string | null): SeedUser[] {
-  const users: SeedUser[] = [
-    {
-      ...LEGACY_USERS.JENS,
-      preferenceSourceRole: "JENS",
-    },
-    {
-      ...LEGACY_USERS.INGVILD,
-      preferenceSourceRole: "INGVILD",
-    },
-  ];
+function buildSeedUsers(): SeedUser[] {
+  const config = getBootstrapConfigFromEnv();
+  const users = new Map<string, SeedUser>();
 
-  const normalizedAdminEmail = adminEmail?.trim().toLowerCase();
-  if (!normalizedAdminEmail) return users;
+  const ownerMembers = config.householdMembers.filter(
+    (member) => member.role === "OWNER",
+  );
+  const nonOwnerMembers = config.householdMembers.filter(
+    (member) => member.role !== "OWNER",
+  );
+  const preferenceSourceByEmail = new Map<string, LegacyRole>();
 
-  const alreadyPresent = users.some((user) => user.email === normalizedAdminEmail);
-  if (alreadyPresent) return users;
+  if (ownerMembers[0]) {
+    preferenceSourceByEmail.set(ownerMembers[0].email, "JENS");
+  }
+  if (nonOwnerMembers[0]) {
+    preferenceSourceByEmail.set(nonOwnerMembers[0].email, "INGVILD");
+  } else if (ownerMembers[1]) {
+    preferenceSourceByEmail.set(ownerMembers[1].email, "INGVILD");
+  }
 
-  users.push({
-    email: normalizedAdminEmail,
-    name: normalizedAdminEmail.split("@")[0] || "Admin",
-    appRole: "ADMIN",
-    householdRole: "OWNER",
-    preferenceSourceRole: "JENS",
-  });
+  for (const member of config.householdMembers) {
+    users.set(member.email, {
+      email: member.email,
+      name: member.name,
+      appRole: config.adminEmail === member.email ? "ADMIN" : "USER",
+      householdRole: member.role,
+      preferenceSourceRole:
+        preferenceSourceByEmail.get(member.email) ?? null,
+    });
+  }
 
-  return users;
+  if (config.adminEmail && !users.has(config.adminEmail)) {
+    users.set(config.adminEmail, {
+      email: config.adminEmail,
+      name: deriveDisplayNameFromEmail(config.adminEmail),
+      appRole: "ADMIN",
+      householdRole: "OWNER",
+      preferenceSourceRole:
+        ownerMembers.length === 0 ? "JENS" : null,
+    });
+  }
+
+  return Array.from(users.values());
 }
 
 function logSummary(parsed: ParsedProdDump) {
@@ -318,7 +329,15 @@ export async function importProdDump(
     return;
   }
 
-  const seedUsers = buildSeedUsers(process.env.ADMIN_EMAIL);
+  const seedUsers = buildSeedUsers();
+  if (!seedUsers.length) {
+    throw new Error(
+      "Prod-dump import krever ADMIN_EMAIL eller BOOTSTRAP_HOUSEHOLD_* konfigurert i miljøet.",
+    );
+  }
+  const config = getBootstrapConfigFromEnv();
+  const migratedHouseholdName =
+    config.householdName ?? DEFAULT_MIGRATED_HOUSEHOLD_NAME;
   const shoppingPreferenceByRole = new Map(
     parsed.shoppingPreferences
       .map((row) => {
@@ -332,7 +351,7 @@ export async function importProdDump(
 
   await prisma.$transaction(async (tx) => {
     const household = await tx.household.create({
-      data: { name: MIGRATED_HOUSEHOLD_NAME },
+      data: { name: migratedHouseholdName },
     });
 
     await tx.recipe.createMany({

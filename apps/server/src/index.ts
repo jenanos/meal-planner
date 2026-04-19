@@ -6,12 +6,18 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { fastifyTRPCPlugin } from "@trpc/server/adapters/fastify";
 import { appRouter } from "@repo/api";
-import { prisma } from "@repo/database";
+import {
+  ensureBootstrapState,
+  getBootstrapConfigFromEnv,
+  prisma,
+  syncBootstrapStateForUser,
+} from "@repo/database";
 import { auth } from "./auth.js";
 import type { CreateContextOptions } from "@repo/api";
 
 const isDev = process.env.NODE_ENV !== "production";
-const PROD_CUTOVER_HOUSEHOLD_NAME = "Osberg Ottemo";
+const BOOTSTRAP_HOUSEHOLD_NAME =
+  getBootstrapConfigFromEnv().householdName;
 
 const trustedOrigins = (process.env.AUTH_TRUSTED_ORIGINS ?? "http://localhost:3000")
   .split(",")
@@ -96,7 +102,7 @@ async function resolveActiveHouseholdId(userId: string) {
   }
 
   const canonicalMembership = memberships.find(
-    (membership) => membership.household.name === PROD_CUTOVER_HOUSEHOLD_NAME,
+    (membership) => membership.household.name === BOOTSTRAP_HOUSEHOLD_NAME,
   );
   if (canonicalMembership) {
     return canonicalMembership.householdId;
@@ -212,6 +218,11 @@ async function createContext({ req }: { req: { headers: Record<string, string | 
     return { user: null, householdId: null };
   }
 
+  await syncBootstrapStateForUser({
+    id: session.user.id,
+    email: session.user.email,
+  });
+
   // Look up the user's role and resolve an active household deterministically.
   const dbUser = await prisma.user.findUnique({
     where: { id: session.user.id },
@@ -250,6 +261,8 @@ app.get("/ready", async () => {
     throw Object.assign(new Error("Not ready"), { statusCode: 503 });
   }
 });
+
+await ensureBootstrapState();
 
 const port = Number(process.env.PORT ?? 4000);
 await app.listen({ port, host: "0.0.0.0" });
