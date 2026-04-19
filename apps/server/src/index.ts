@@ -18,6 +18,7 @@ import type { CreateContextOptions } from "@repo/api";
 const isDev = process.env.NODE_ENV !== "production";
 const BOOTSTRAP_HOUSEHOLD_NAME =
   getBootstrapConfigFromEnv().householdName;
+const MCP_API_KEY = process.env.MCP_API_KEY?.trim() || null;
 
 const trustedOrigins = (process.env.AUTH_TRUSTED_ORIGINS ?? "http://localhost:3000")
   .split(",")
@@ -121,6 +122,28 @@ async function resolveActiveHouseholdId(userId: string) {
   return memberships[0].householdId;
 }
 
+/**
+ * Resolve a household ID for service-to-service calls (e.g. MCP server).
+ * Uses the bootstrap household when configured, otherwise falls back to the
+ * oldest household in the database.
+ */
+async function resolveServiceHouseholdId(): Promise<string | null> {
+  if (BOOTSTRAP_HOUSEHOLD_NAME) {
+    const household = await prisma.household.findFirst({
+      where: { name: BOOTSTRAP_HOUSEHOLD_NAME },
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    });
+    if (household) return household.id;
+  }
+
+  const fallback = await prisma.household.findFirst({
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  return fallback?.id ?? null;
+}
+
 const app = Fastify({ logger: true });
 
 await app.register(cors, {
@@ -204,6 +227,21 @@ await app.register(async (authApp) => {
 
 // ─── tRPC ───
 async function createContext({ req }: { req: { headers: Record<string, string | string[] | undefined> } }): Promise<CreateContextOptions> {
+  // ── Service-to-service auth via API key (e.g. MCP server) ──
+  const apiKey = typeof req.headers["x-api-key"] === "string" ? req.headers["x-api-key"] : null;
+  if (apiKey && MCP_API_KEY && apiKey === MCP_API_KEY) {
+    const householdId = await resolveServiceHouseholdId();
+    return {
+      user: {
+        id: "service:mcp",
+        email: "mcp@internal",
+        name: "MCP Service",
+        role: "ADMIN",
+      },
+      householdId,
+    };
+  }
+
   const session = await auth.api.getSession({
     headers: new Headers(
       Object.entries(req.headers).flatMap(([key, value]) => {
