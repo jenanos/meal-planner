@@ -27,12 +27,18 @@ export function useAuth() {
 
 const PUBLIC_PATHS = ["/login"];
 
-export function AuthGuard({ children }: { children: ReactNode }) {
+export function AuthGuard({
+  children,
+  shell,
+}: {
+  children: ReactNode;
+  shell?: ReactNode;
+}) {
   const router = useRouter();
   const pathname = usePathname();
 
   return (
-    <AuthGuardInner pathname={pathname} router={router}>
+    <AuthGuardInner pathname={pathname} router={router} shell={shell}>
       {children}
     </AuthGuardInner>
   );
@@ -42,10 +48,12 @@ function AuthGuardInner({
   children,
   pathname,
   router,
+  shell,
 }: {
   children: ReactNode;
   pathname: string;
   router: ReturnType<typeof useRouter>;
+  shell?: ReactNode;
 }) {
   const { data: session, isPending } = useSession();
   const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
@@ -96,7 +104,7 @@ function AuthGuardInner({
       }
     : null;
 
-  // On public pages, show content regardless of auth state
+  // On public pages, show page content without app shell (no nav/header)
   if (isPublic) {
     return (
       <AuthContext.Provider value={{ user, isLoading: false }}>
@@ -128,6 +136,7 @@ function AuthGuardInner({
 
   return (
     <AuthContext.Provider value={{ user, isLoading: false }}>
+      {shell}
       {children}
     </AuthContext.Provider>
   );

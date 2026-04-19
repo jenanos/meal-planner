@@ -3,7 +3,16 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-DUMP_PATH="$ROOT_DIR/dev-data/prod-dumps/20260314-meals-db-plain-backup"
+
+# Dump path: CLI arg > PROD_DB_DUMP_PATH env var > error
+DUMP_PATH="${1:-${PROD_DB_DUMP_PATH:-}}"
+
+if [[ -z "$DUMP_PATH" ]]; then
+  echo "Feil: Ingen dump-path angitt." >&2
+  echo "Bruk: $0 <path-to-dump>" >&2
+  echo "  eller sett PROD_DB_DUMP_PATH miljøvariabel." >&2
+  exit 1
+fi
 
 if [[ ! -f "$DUMP_PATH" ]]; then
   echo "Fant ikke dumpfilen: $DUMP_PATH" >&2

@@ -12,7 +12,7 @@ export const adminRouter = router({
 
   /** Add an email to the allowlist */
   addAllowedEmail: adminProcedure
-    .input(z.object({ email: z.string().email() }))
+    .input(z.object({ email: z.string().trim().email() }))
     .mutation(async ({ input, ctx }) => {
       return prisma.allowedEmail.upsert({
         where: { email: input.email.toLowerCase() },

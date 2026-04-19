@@ -252,7 +252,7 @@ await app.register(fastifyTRPCPlugin, {
 
 app.get("/health", async () => ({ ok: true }));
 
-// Readiness: ensure DB is migrated (check for User table existence)
+// Readiness: ensure DB is migrated (check that weekIndex table is queryable)
 app.get("/ready", async () => {
   try {
     await prisma.weekIndex.findFirst({ select: { id: true }, take: 1 });
