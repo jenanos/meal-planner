@@ -95,11 +95,11 @@ async function resolveActiveHouseholdId(userId: string) {
     return memberships[0].householdId;
   }
 
-  const canonicalMembership = memberships.filter(
+  const canonicalMembership = memberships.find(
     (membership) => membership.household.name === PROD_CUTOVER_HOUSEHOLD_NAME,
   );
-  if (canonicalMembership.length === 1) {
-    return canonicalMembership[0].householdId;
+  if (canonicalMembership) {
+    return canonicalMembership.householdId;
   }
 
   const dataBearingMemberships = memberships.filter((membership) =>
@@ -109,7 +109,10 @@ async function resolveActiveHouseholdId(userId: string) {
     return dataBearingMemberships[0].householdId;
   }
 
-  return null;
+  // Never leave an authenticated user without a household context when they
+  // already have memberships. The query is ordered oldest-first, so this is
+  // the final deterministic fallback.
+  return memberships[0].householdId;
 }
 
 const app = Fastify({ logger: true });
@@ -209,7 +212,7 @@ async function createContext({ req }: { req: { headers: Record<string, string | 
     return { user: null, householdId: null };
   }
 
-  // Look up the user's role and first household membership
+  // Look up the user's role and resolve an active household deterministically.
   const dbUser = await prisma.user.findUnique({
     where: { id: session.user.id },
     select: { role: true },

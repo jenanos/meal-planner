@@ -354,7 +354,6 @@ export default function ShoppingListPage() {
         }
       }
     }
-    const totalDays = includeNextWeek ? 14 : 7;
     return Array.from(map.values())
       .filter((option) => {
         const offset = toDayOffset(

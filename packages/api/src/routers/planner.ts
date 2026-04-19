@@ -18,11 +18,6 @@ import {
 } from "../schemas.js";
 import { z } from "zod";
 
-/** Day + meta (kan utvides senere) */
-interface DayMeta {
-  label: string;
-}
-
 const DAYS = [0, 1, 2, 3, 4, 5, 6] as const;
 export type DayIndex = (typeof DAYS)[number];
 
@@ -64,20 +59,6 @@ const STANDARD_STORE_CATEGORY_ORDER: IngredientCategoryKey[] = [
   "HUSHOLDNING",
   "ANNET",
 ];
-
-const DAY_META: Record<DayIndex, DayMeta> = {
-  0: { label: "Mon" },
-  1: { label: "Tue" },
-  2: { label: "Wed" },
-  3: { label: "Thu" },
-  4: { label: "Fri" },
-  5: { label: "Sat" },
-  6: { label: "Sun" },
-};
-
-function getDayMeta(d: DayIndex) {
-  return DAY_META[d];
-}
 
 type RecipeDTO = {
   id: string;
@@ -244,12 +225,10 @@ const suggestionInputSchema = z.object({
   type: suggestionKindSchema.default("longGap"),
   search: z.string().optional(),
 });
-type SuggestionInput = z.infer<typeof suggestionInputSchema>;
 
 const weekStartInputSchema = z.object({
   weekStart: z.string().min(1),
 });
-type WeekStartInput = z.infer<typeof weekStartInputSchema>;
 
 const weekTimelineInputSchema = z.object({
   around: z.string().optional(),

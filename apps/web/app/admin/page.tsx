@@ -5,40 +5,12 @@ import { useState } from "react";
 import { Button, Input } from "@repo/ui";
 import { Trash2, UserPlus, Shield, ShieldOff } from "lucide-react";
 import { trpc } from "../../lib/trpcClient";
+import type { RouterOutputs } from "../../lib/trpcTypes";
 
-// ─── Types for admin queries ───
-
-type AllowedEmailEntry = {
-  id: string;
-  email: string;
-  addedBy: string | null;
-  createdAt: Date;
-};
-
-type UserEntry = {
-  id: string;
-  name: string;
-  email: string;
-  role: "USER" | "ADMIN";
-  createdAt: Date;
-  memberships: {
-    household: { id: string; name: string };
-    role: string;
-  }[];
-};
-
-type HouseholdMemberEntry = {
-  id: string;
-  role: string;
-  user: { id: string; name: string; email: string };
-};
-
-type HouseholdEntry = {
-  id: string;
-  name: string;
-  createdAt: Date;
-  members: HouseholdMemberEntry[];
-};
+type AllowedEmailEntry = RouterOutputs["admin"]["listAllowedEmails"][number];
+type UserEntry = RouterOutputs["admin"]["listUsers"][number];
+type HouseholdEntry = RouterOutputs["admin"]["listHouseholds"][number];
+type HouseholdMemberEntry = HouseholdEntry["members"][number];
 
 // ─── Allowed Emails Tab ───
 

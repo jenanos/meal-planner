@@ -29,9 +29,10 @@ This monorepo contains a Next.js web app, a Fastify+tRPC server, a Prisma databa
 
 ## Developer workflows
 - Install: `pnpm install` in repo root (pnpm workspaces)
-- Run web (mock mode, no backend): `pnpm --filter web dev:mock`
-- Run server (dev): `pnpm --filter server dev` (runs Prisma dev migrations)
-- Run web (real backend): ensure Postgres + server are up, then `pnpm --filter web dev`
+- Copy shared env from `.env.example`, then copy auth/server env from `apps/server/.env.example` to `apps/server/.env`
+- Local dev uses the same real auth flow as prod: magic links via Better Auth + Resend
+- Run server (dev): `pnpm --filter server dev` (applies current Prisma migrations via `predev`)
+- Run web (dev): ensure Postgres + server are up, then `pnpm --filter web dev`
 - Lint (strict, no warnings allowed): `pnpm lint`
 - Build all: `pnpm build`
 - Database

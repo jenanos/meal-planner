@@ -42,8 +42,6 @@ import {
   makeEmptyWeek,
   parseDragId,
   reorderDayNames,
-  reorderWeek,
-  toRealIndex,
   ALL_DAY_NAMES,
 } from "./utils";
 import { DisplayOptions } from "./components/DisplayOptions";

@@ -6,17 +6,11 @@
   ],
   "compilerOptions": {
     "outDir": "dist",
+    "rootDir": "src",
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "target": "ES2022",
-    "strict": true,
-    "baseUrl": "../..",
-    "paths": {
-      "@repo/api": ["packages/api"],
-      "@repo/api/*": ["packages/api/*"],
-      "@repo/database": ["packages/database"],
-      "@repo/database/*": ["packages/database/*"]
-    }
+    "strict": true
   },
   "include": ["src"]
 }

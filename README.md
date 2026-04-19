@@ -16,7 +16,9 @@ pnpm install
 
 # 2. Opprett miljøkonfigurasjon
 cp .env.example .env
-# Rediger .env med ønskede verdier
+cp apps/server/.env.example apps/server/.env
+cp apps/web/.env.local.example apps/web/.env.local
+# Rediger filene med ønskede verdier
 
 # 3. Start Postgres i Docker (krever POSTGRES_PASSWORD)
 export POSTGRES_PASSWORD=<ditt-passord>
@@ -119,7 +121,7 @@ Key settings:
    ```bash
    pnpm --filter @repo/database db:seed
    ```
-   To test real auth locally, set `ADMIN_EMAIL`, `AUTH_SECRET`, `BETTER_AUTH_URL`, `RESEND_API_KEY`, and `EMAIL_FROM` in `apps/server/.env`.
+   To test real auth locally, set `ADMIN_EMAIL`, `AUTH_SECRET`, `BETTER_AUTH_URL`, `AUTH_TRUSTED_ORIGINS`, `RESEND_API_KEY`, and `EMAIL_FROM` in `apps/server/.env`.
 5. **Start the API server** – runs Fastify on port `4000` by default and wires up the tRPC router. The `predev` hook automatically applies the latest Prisma migrations.
    ```bash
    pnpm --filter server dev

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
 import { Badge, Button, Input } from "@repo/ui";
 

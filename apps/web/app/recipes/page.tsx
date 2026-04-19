@@ -12,7 +12,9 @@ import { STEP_DESCRIPTIONS, STEP_TITLES } from "./constants";
 import type { RecipeListItem } from "./types";
 import { useRecipeDialogState } from "./hooks/useRecipeDialogState";
 
-type RecipeIngredientSummary = RecipeListItem["ingredients"] extends Array<infer R> ? R : never;
+type RecipeIngredientSummary = {
+  name?: string;
+};
 
 export default function RecipesPage() {
   const utils = trpc.useUtils();
