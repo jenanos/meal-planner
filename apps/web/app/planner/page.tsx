@@ -35,15 +35,13 @@ import type {
   RecipeDTO,
   WeekEntry,
   WeekPlanResult,
+  WeekTimelineResult,
   WeekState,
 } from "./types";
-import type { MockWeekTimelineResult } from "../../lib/mock/store";
 import {
   makeEmptyWeek,
   parseDragId,
   reorderDayNames,
-  reorderWeek,
-  toRealIndex,
   ALL_DAY_NAMES,
 } from "./utils";
 import { DisplayOptions } from "./components/DisplayOptions";
@@ -663,7 +661,7 @@ export default function PlannerPage() {
 
   const timelineWeeks = useMemo(() => {
     const rawWeeks = timelineQuery.data?.weeks ?? [];
-    const weeks = rawWeeks as MockWeekTimelineResult["weeks"];
+    const weeks = rawWeeks as WeekTimelineResult["weeks"];
     return weeks.map((week) => ({
       ...week,
       label: deriveWeekLabel(week.weekStart, currentWeekStart),

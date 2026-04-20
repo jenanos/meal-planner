@@ -2,7 +2,7 @@
 
 [![Build and Push Docker Images](https://github.com/jenanos/meal-planner/actions/workflows/build-and-push.yml/badge.svg)](https://github.com/jenanos/meal-planner/actions/workflows/build-and-push.yml)
 
-Meal Planner is a pnpm-powered Turborepo monorepo for planning dinners, managing recipes and ingredients, and preparing weekly shopping lists. It contains a Fastify+tRPC API, a Prisma/PostgreSQL data layer, and a modern Next.js frontend that can run with real data or a mocked backend for lightweight demos.
+Meal Planner is a pnpm-powered Turborepo monorepo for planning dinners, managing recipes and ingredients, and preparing weekly shopping lists. It contains a Fastify+tRPC API, a Prisma/PostgreSQL data layer, and a modern Next.js frontend with real magic-link authentication.
 
 ---
 
@@ -16,7 +16,9 @@ pnpm install
 
 # 2. Opprett miljøkonfigurasjon
 cp .env.example .env
-# Rediger .env med ønskede verdier
+cp apps/server/.env.example apps/server/.env
+cp apps/web/.env.local.example apps/web/.env.local
+# Rediger filene med ønskede verdier
 
 # 3. Start Postgres i Docker (krever POSTGRES_PASSWORD)
 export POSTGRES_PASSWORD=<ditt-passord>
@@ -62,7 +64,7 @@ This workspace is orchestrated by [Turborepo](https://turbo.build/repo), a high-
 
 | Package | Path | Purpose |
 | ------- | ---- | ------- |
-| **Frontend** | `apps/web` | Next.js App Router UI with Tailwind, tRPC React Query hooks, and mock mode for standalone deploys. |
+| **Frontend** | `apps/web` | Next.js App Router UI with Tailwind and tRPC React Query hooks. |
 | **API server** | `apps/server` | Fastify host that mounts the tRPC router from `@repo/api` and exposes health/readiness endpoints. |
 | **MCP server** | `apps/mcp-server` | Streamable HTTP MCP server that maps MCP tools to the Meal Planner tRPC API. |
 | **tRPC router** | `packages/api` | Shared types, routers (`planner`, `recipe`, `ingredient`), and Zod schemas used by both server and frontend. |
@@ -95,9 +97,10 @@ cp apps/web/.env.local.example apps/web/.env.local
 Key settings:
 
 - Root `.env` provides `POSTGRES_*` defaults that both Docker and Prisma use.
-- `apps/server/.env` supplies `DATABASE_URL` so the API can reach Postgres.
+- `apps/server/.env` supplies `DATABASE_URL`, `AUTH_SECRET`, `BETTER_AUTH_URL`, `AUTH_TRUSTED_ORIGINS`, `RESEND_API_KEY`, and `EMAIL_FROM`.
 - `MEALS_API_INTERNAL_ORIGIN` and `NEXT_PUBLIC_API_URL` control how the web app reaches the API (internal vs. browser).
-- `NEXT_PUBLIC_MOCK_MODE` (in `apps/web/.env.local`) toggles the mock backend for the frontend.
+- `ADMIN_EMAIL` promotes an existing user to app-admin and allowlists the address.
+- `BOOTSTRAP_HOUSEHOLD_NAME`, `BOOTSTRAP_HOUSEHOLD_OWNER_EMAILS`, and `BOOTSTRAP_HOUSEHOLD_MEMBER_EMAILS` let you bootstrap one canonical household from env in both dev and prod.
 
 ---
 
@@ -113,12 +116,13 @@ Key settings:
    ```
 3. **Apply migrations** (Prisma also regenerates the client automatically)
    ```bash
-   pnpm --filter @repo/database prisma migrate dev
+   pnpm --filter @repo/database db:migrate:dev
    ```
-4. **Seed demo data (optional but recommended)**
+4. **Seed base data (optional but recommended)**
    ```bash
    pnpm --filter @repo/database db:seed
    ```
+   There is no separate dev-login flow anymore. To test the real auth flow locally, set `ADMIN_EMAIL`, `BOOTSTRAP_HOUSEHOLD_NAME`, `BOOTSTRAP_HOUSEHOLD_OWNER_EMAILS`, `BOOTSTRAP_HOUSEHOLD_MEMBER_EMAILS`, `AUTH_SECRET`, `BETTER_AUTH_URL`, `AUTH_TRUSTED_ORIGINS`, `RESEND_API_KEY`, and `EMAIL_FROM` in `apps/server/.env`.
 5. **Start the API server** – runs Fastify on port `4000` by default and wires up the tRPC router. The `predev` hook automatically applies the latest Prisma migrations.
    ```bash
    pnpm --filter server dev
@@ -149,33 +153,23 @@ Key settings:
 
 ---
 
-## 🧪 Mock-only frontend mode
-
-Run the UI without any backend or database – useful for quick demos or Vercel-style deployments:
-
-```bash
-# Development
-pnpm --filter web dev:mock
-
-# Build with mock data
-NEXT_PUBLIC_MOCK_MODE=true pnpm --filter web build
-```
-
-Deployments can set `NEXT_PUBLIC_MOCK_MODE=true` to ship the static frontend backed by in-memory seed data.
-
----
-
 ## 🗃️ Database management
 
 - **View data**: `pnpm --filter @repo/database studio` opens Prisma Studio.
 - **Reset dev database**:
   ```bash
-  pnpm --filter @repo/database prisma migrate reset -f
+  pnpm --filter @repo/database db:reset
   pnpm --filter @repo/database db:seed
   ```
+- **Seed dev from a plain prod dump**:
+  ```bash
+  pnpm db:push
+  pnpm db:seed:prod -- /absolute/path/to/plain-pg-dump.sql
+  ```
+  This replaces current dev data, imports the prod dump into the current schema, and binds the migrated household to the bootstrap emails configured in `apps/server/.env`.
 - **Force push schema (no migrations)**:
   ```bash
-  pnpm --filter @repo/database prisma db push --force-reset
+  pnpm --filter @repo/database exec prisma db push --force-reset
   pnpm --filter @repo/database db:seed
   ```
 
@@ -212,7 +206,7 @@ pnpm --filter web test:e2e   # Playwright end-to-end tests (headless)
 
 - **API not ready**: check `apps/server` logs; ensure migrations ran and Postgres is reachable.
 - **Frontend requests failing**: verify `NEXT_PUBLIC_API_URL` (browser) and `MEALS_API_INTERNAL_ORIGIN` (server-side) point to the API.
-- **Mock mode confusion**: remember to set `NEXT_PUBLIC_MOCK_MODE=false` when switching back to the real backend.
+- **Magic links are not sent**: verify `RESEND_API_KEY`, `EMAIL_FROM`, `BETTER_AUTH_URL`, and `AUTH_TRUSTED_ORIGINS` in `apps/server/.env`.
 
 ---
 

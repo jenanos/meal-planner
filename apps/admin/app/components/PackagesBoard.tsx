@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
 import { Badge, Button, Input } from "@repo/ui";
 
@@ -303,11 +303,10 @@ function ItemSuggestions({
         <Badge
           asChild
           key={`extra-${e.id}`}
-          className={`cursor-pointer border text-white ${
-            e.hasCategory
+          className={`cursor-pointer border text-white ${e.hasCategory
               ? "border-emerald-500 bg-emerald-500 hover:bg-emerald-600"
               : "border-orange-500 bg-orange-500 hover:bg-orange-600"
-          }`}
+            }`}
         >
           <button
             type="button"

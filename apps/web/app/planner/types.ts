@@ -1,6 +1,7 @@
-import type { MockWeekPlanResult } from "../../lib/mock/store";
+import type { RouterOutputs } from "../../lib/trpcTypes";
 
-export type WeekPlanResult = MockWeekPlanResult;
+export type WeekPlanResult = RouterOutputs["planner"]["getWeekPlan"];
+export type WeekTimelineResult = RouterOutputs["planner"]["weekTimeline"];
 export type WeekDay = WeekPlanResult["days"][number];
 export type WeekRecipe = WeekDay["recipe"];
 export type RecipeDTO = NonNullable<WeekRecipe>;

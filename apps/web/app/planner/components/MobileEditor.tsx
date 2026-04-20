@@ -1,7 +1,6 @@
 "use client";
 
 import { WeekSlot } from "./WeekSlot";
-import { toRealIndex } from "../utils";
 import type { WeekEntry, DayName } from "../types";
 
 export type MobileEditorItem = {

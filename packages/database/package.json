@@ -18,14 +18,17 @@
     "build": "tsc -b",
     "check-types": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
+    "prisma": "prisma",
     "generate": "prisma generate",
     "postinstall": "prisma generate",
     "format": "prisma format",
     "dev": "tsc -b -w",
     "db:migrate:dev": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
+    "db:reset": "prisma migrate reset -f",
     "db:push": "prisma db push",
     "db:seed": "tsx src/seed.ts",
+    "db:seed:prod": "tsx src/seed-prod-dump.ts",
     "studio": "prisma studio"
   },
   "dependencies": {

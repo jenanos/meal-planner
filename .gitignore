@@ -45,3 +45,6 @@ packages/database/prisma/migrations/20250909075958_init/migration.sql
 
 # typescript build info
 *.tsbuildinfo
+
+# repo-local database dump copies for dev seeding
+dev-data/

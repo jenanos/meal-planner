@@ -21,7 +21,15 @@ export const RECIPE_VIEW_DIALOG_CONTENT_CLASSNAME = cn(
   "max-sm:w-[calc(100vw-2rem)] max-sm:mx-auto max-sm:h-[calc(100dvh-4rem)] max-sm:max-h-[calc(100dvh-4rem)] max-sm:p-6 max-sm:bg-background max-sm:rounded-2xl max-sm:border-0 max-sm:shadow-none max-sm:!top-[calc(env(safe-area-inset-top)+1rem)] max-sm:!translate-y-0 max-sm:overflow-hidden max-sm:touch-pan-y"
 );
 
-type RecipeIngredient = RecipeListItem["ingredients"] extends Array<infer R> ? R : never;
+type RecipeIngredient = {
+  ingredientId?: string;
+  id?: string;
+  name: string;
+  unit?: string;
+  quantity?: string | number;
+  notes?: string;
+  isPantryItem?: boolean;
+};
 
 type MaybePromise<T> = T | Promise<T>;
 
@@ -101,7 +109,7 @@ export function useRecipeDialogState({
   const ingredientData = ingredientQuery.data as IngredientSuggestion[] | undefined;
 
   const createIngredient = trpc.ingredient.create.useMutation({
-    onSuccess: (newIng: IngredientSuggestion) => {
+    onSuccess: (newIng) => {
       utils.ingredient.list.invalidate().catch(() => undefined);
       setIngList((prev) =>
         prev.some((item) => item.name.toLowerCase() === newIng.name.toLowerCase())
@@ -343,12 +351,12 @@ export function useRecipeDialogState({
       setIngList(
         ingredients.map((ingredient) => ({
           // Store both id and ingredientId to ensure we have a reference for updates
-          id: (ingredient as any).ingredientId ?? (ingredient as any).id,
+          id: ingredient.ingredientId ?? ingredient.id,
           name: ingredient.name,
           unit: ingredient.unit ?? undefined,
           quantity: ingredient.quantity ?? undefined,
           notes: ingredient.notes ?? undefined,
-          isPantryItem: (ingredient as any).isPantryItem,
+          isPantryItem: ingredient.isPantryItem,
         }))
       );
       setIngSearch("");

@@ -1,0 +1,5 @@
+-- Historical production household cutover is now handled by env-driven
+-- bootstrap logic in the application runtime and seed/import helpers.
+--
+-- Keeping this migration as a no-op removes person-specific hardcoding from
+-- schema history while preserving the migration timeline.

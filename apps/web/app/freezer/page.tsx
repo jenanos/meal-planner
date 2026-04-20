@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
 import { Button, Input, ScrollArea } from "@repo/ui";
 import { CategoryEmoji } from "../components/CategoryEmoji";

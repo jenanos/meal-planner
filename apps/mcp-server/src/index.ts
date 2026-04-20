@@ -35,12 +35,15 @@ const mealsApiOrigin =
   process.env.MEALS_API_URL ??
   "http://localhost:4000";
 
+const mcpApiKey = process.env.MCP_API_KEY?.trim() || null;
+
 const trpcUrl = new URL("/trpc", mealsApiOrigin).toString();
 
 const trpcClient = createTRPCProxyClient<AppRouter>({
   links: [
     httpBatchLink({
       url: trpcUrl,
+      headers: mcpApiKey ? { "x-api-key": mcpApiKey } : undefined,
     }),
   ],
 });

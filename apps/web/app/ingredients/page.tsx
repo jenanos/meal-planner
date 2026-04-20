@@ -4,12 +4,12 @@ export const dynamic = "force-dynamic";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
 import { Badge, Button, Checkbox, Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, ScrollArea } from "@repo/ui";
-import type { MockIngredientDetailResult, MockIngredientListResult } from "../../lib/mock/store";
+import type { RouterOutputs } from "../../lib/trpcTypes";
 import { IngredientCard } from "./components/IngredientCard";
 import { X } from "lucide-react";
 
-type IngredientListItem = MockIngredientListResult[number];
-type IngredientRecipe = MockIngredientDetailResult["recipes"][number];
+type IngredientListItem = RouterOutputs["ingredient"]["list"][number];
+type IngredientRecipe = RouterOutputs["ingredient"]["getWithRecipes"]["recipes"][number];
 
 export default function IngredientsPage() {
     const [search, setSearch] = useState("");

@@ -1,4 +1,6 @@
 import { Prisma, prisma } from "./client";
+import { ensureBootstrapState, getBootstrapConfigFromEnv } from "./bootstrap";
+import { importProdDump } from "./prod-dump-import";
 import { EXTRA_CATALOG, INGREDIENTS, RECIPES } from "./seed-data";
 
 function daysAgo(n: number) {
@@ -8,7 +10,36 @@ function daysAgo(n: number) {
   return d;
 }
 
+async function seedBootstrapFromEnv() {
+  const config = getBootstrapConfigFromEnv();
+  const { householdId } = await ensureBootstrapState();
+
+  if (!config.allowlistedEmails.length && !householdId) {
+    console.log(
+      "No bootstrap auth env configured. Skipping allowlist/household bootstrap.",
+    );
+    return;
+  }
+
+  console.log("Bootstrap auth configuration applied from env.");
+  if (config.allowlistedEmails.length) {
+    console.log(`  Allowlist: ${config.allowlistedEmails.join(", ")}`);
+  }
+  if (householdId && config.householdName) {
+    console.log(`  Household: ${config.householdName}`);
+  }
+}
+
 async function main() {
+  const prodDumpPath = process.env.PROD_DB_DUMP_PATH?.trim();
+  if (prodDumpPath) {
+    console.log(`PROD_DB_DUMP_PATH er satt. Importerer prod-dump fra ${prodDumpPath}`);
+    await importProdDump(prodDumpPath);
+    return;
+  }
+
+  await seedBootstrapFromEnv();
+
   // Upsert ingredienser
   for (const ing of INGREDIENTS) {
     const trimmedName = ing.name.trim();
@@ -28,14 +59,18 @@ async function main() {
     });
   }
 
-  // Seed some extra shopping catalog items (non-recipe)
+  // The extra catalog items are now household-scoped.
+  // In dev mode, seed them into all dev households.
+  const households = await prisma.household.findMany({ select: { id: true } });
   for (const name of EXTRA_CATALOG) {
     const trimmed = name.trim();
-    await prisma.extraItemCatalog.upsert({
-      where: { name: trimmed },
-      update: {},
-      create: { name: trimmed },
-    });
+    for (const h of households) {
+      await prisma.extraItemCatalog.upsert({
+        where: { name_householdId: { name: trimmed, householdId: h.id } },
+        update: {},
+        create: { name: trimmed, householdId: h.id },
+      });
+    }
   }
 
   for (const r of RECIPES) {

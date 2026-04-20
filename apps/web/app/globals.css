@@ -235,6 +235,57 @@
     }
   }
 
+  .app-bottom-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    background: hsl(var(--card) / 0.97);
+    border-top: 1px solid hsl(var(--border) / 0.65);
+    box-shadow: 0 -12px 36px -24px color-mix(in oklab, hsl(var(--primary)) 30%, transparent);
+    padding-bottom: env(safe-area-inset-bottom);
+    -webkit-backdrop-filter: saturate(180%) blur(12px);
+    backdrop-filter: saturate(180%) blur(12px);
+  }
+
+  .app-bottom-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.125rem;
+    padding: 0.4rem 0.25rem 0.55rem;
+    width: 100%;
+    color: hsl(var(--foreground) / 0.72);
+    font-weight: 500;
+    transition: color 160ms ease, background-color 160ms ease;
+    border-radius: 0.75rem;
+  }
+
+  .app-bottom-nav-item:is(:hover, :focus-visible) {
+    color: hsl(var(--primary));
+    background: color-mix(in oklab, hsl(var(--primary)) 10%, transparent);
+    outline: none;
+  }
+
+  .app-bottom-nav-item[aria-current="page"] {
+    color: hsl(var(--primary));
+  }
+
+  .app-bottom-nav-panel {
+    position: fixed;
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: calc(5.25rem + env(safe-area-inset-bottom));
+    z-index: 9999;
+    border: 1px solid hsl(var(--border));
+    border-radius: 1rem;
+    background: hsl(var(--card) / 0.97);
+    padding: 0.75rem;
+    box-shadow: 0 24px 48px -20px color-mix(in oklab, hsl(var(--primary)) 35%, transparent);
+  }
+
   /* Ensure dialogs have pleasant side clearance on small screens */
   .dialog-content-responsive {
     max-width: min(100vw - 2rem, 40rem);

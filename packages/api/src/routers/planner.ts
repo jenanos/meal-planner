@@ -1,6 +1,6 @@
 import { prisma, Prisma } from "@repo/database";
 import { TRPCError } from "@trpc/server";
-import { router, publicProcedure } from "../trpc.js";
+import { router, protectedProcedure } from "../trpc.js";
 import {
   PlannerConstraints,
   WeekPlanInput,
@@ -9,9 +9,7 @@ import {
   ExtraCatalogBulkCategoryUpdate,
   ExtraShoppingToggle,
   ExtraShoppingRemove,
-  ShoppingSettingsGetInput,
-  ShoppingDeviceRoleUpsert,
-  ShoppingRoleSettingsUpdate,
+  UserPreferenceUpdate,
   ShoppingStoreCreate,
   ShoppingPackageCreate,
   ShoppingPackageUpdate,
@@ -19,11 +17,6 @@ import {
   ShoppingPackageSuggest,
 } from "../schemas.js";
 import { z } from "zod";
-
-/** Day + meta (kan utvides senere) */
-interface DayMeta {
-  label: string;
-}
 
 const DAYS = [0, 1, 2, 3, 4, 5, 6] as const;
 export type DayIndex = (typeof DAYS)[number];
@@ -51,9 +44,6 @@ const INGREDIENT_CATEGORY_KEYS = [
 ] as const;
 type IngredientCategoryKey = (typeof INGREDIENT_CATEGORY_KEYS)[number];
 
-const SHOPPING_USER_ROLES = ["INGVILD", "JENS"] as const;
-type ShoppingUserRoleKey = (typeof SHOPPING_USER_ROLES)[number];
-
 const DEFAULT_VISIBLE_DAY_INDICES = [0, 1, 2, 3, 4, 5, 6] as const;
 
 const STANDARD_STORE_NAME = "Standard butikk";
@@ -69,20 +59,6 @@ const STANDARD_STORE_CATEGORY_ORDER: IngredientCategoryKey[] = [
   "HUSHOLDNING",
   "ANNET",
 ];
-
-const DAY_META: Record<DayIndex, DayMeta> = {
-  0: { label: "Mon" },
-  1: { label: "Tue" },
-  2: { label: "Wed" },
-  3: { label: "Thu" },
-  4: { label: "Fri" },
-  5: { label: "Sat" },
-  6: { label: "Sun" },
-};
-
-function getDayMeta(d: DayIndex) {
-  return DAY_META[d];
-}
 
 type RecipeDTO = {
   id: string;
@@ -249,12 +225,10 @@ const suggestionInputSchema = z.object({
   type: suggestionKindSchema.default("longGap"),
   search: z.string().optional(),
 });
-type SuggestionInput = z.infer<typeof suggestionInputSchema>;
 
 const weekStartInputSchema = z.object({
   weekStart: z.string().min(1),
 });
-type WeekStartInput = z.infer<typeof weekStartInputSchema>;
 
 const weekTimelineInputSchema = z.object({
   around: z.string().optional(),
@@ -408,22 +382,23 @@ function enforceFutureLimit(weekStart: Date) {
 async function ensureWeekIndex(
   client: TxClient | typeof prisma,
   weekStart: Date,
+  householdId: string,
 ) {
   const index = await client.weekIndex.upsert({
-    where: { weekStart },
+    where: { weekStart_householdId: { weekStart, householdId } },
     update: {},
-    create: { weekStart },
+    create: { weekStart, householdId },
   });
 
   await client.weekPlan.updateMany({
-    where: { weekStart, weekIndexId: null },
+    where: { weekStart, householdId, weekIndexId: null },
     data: { weekIndexId: index.id },
   });
 
   return index;
 }
 
-async function ensureWeekIndexWindow(baseWeek: Date) {
+async function ensureWeekIndexWindow(baseWeek: Date, householdId: string) {
   const maxFuture = maxAllowedFutureWeek();
   const seen = new Map<number, Date>();
   const currentWeek = startOfWeek();
@@ -442,7 +417,7 @@ async function ensureWeekIndexWindow(baseWeek: Date) {
 
   // for (const week of seen.values()) {
   for (const week of Array.from(seen.values())) {
-    await ensureWeekIndex(prisma, week);
+    await ensureWeekIndex(prisma, week, householdId);
   }
 }
 
@@ -478,12 +453,18 @@ function serializeShoppingStore(store: {
   };
 }
 
-function serializeShoppingPreference(
-  preference: any,
+function serializeUserPreference(
+  preference: {
+    defaultViewMode: string | null;
+    startDay: number;
+    includeNextWeek: boolean;
+    showPantryWithIngredients: boolean;
+    visibleDayIndices: number[];
+    defaultStoreId: string | null;
+  },
   fallbackStoreId: string | null,
 ) {
   return {
-    role: preference.role as ShoppingUserRoleKey,
     defaultViewMode: toClientViewMode(preference.defaultViewMode),
     startDay: Math.min(6, Math.max(0, Number(preference.startDay ?? 0))),
     includeNextWeek: Boolean(preference.includeNextWeek),
@@ -495,71 +476,35 @@ function serializeShoppingPreference(
   };
 }
 
-async function ensureShoppingPreferencesSeed(
-  client: any = prisma as any,
-) {
-  const defaultStore = await client.shoppingStore.upsert({
-    where: { name: STANDARD_STORE_NAME },
-    update: {
-      isDefault: true,
-      categoryOrder: STANDARD_STORE_CATEGORY_ORDER as any,
-    },
-    create: {
+async function ensureDefaultStore(householdId: string) {
+  const existing = await prisma.shoppingStore.findFirst({
+    where: { householdId, isDefault: true },
+    orderBy: { createdAt: "asc" },
+  });
+  if (existing) return existing;
+
+  return prisma.shoppingStore.create({
+    data: {
       name: STANDARD_STORE_NAME,
       isDefault: true,
+      householdId,
       categoryOrder: STANDARD_STORE_CATEGORY_ORDER as any,
     },
   });
-
-  await client.shoppingStore.updateMany({
-    where: {
-      isDefault: true,
-      NOT: { id: defaultStore.id },
-    },
-    data: { isDefault: false },
-  });
-
-  for (const role of SHOPPING_USER_ROLES) {
-    const existing = await client.shoppingPreference.findUnique({
-      where: { role },
-    });
-    if (!existing) {
-      await client.shoppingPreference.create({
-        data: {
-          role,
-          defaultViewMode: "BY_DAY" as any,
-          startDay: 0,
-          includeNextWeek: false,
-          showPantryWithIngredients: false,
-          visibleDayIndices: [...DEFAULT_VISIBLE_DAY_INDICES],
-          defaultStoreId: defaultStore.id,
-        },
-      });
-      continue;
-    }
-    if (!existing.defaultStoreId) {
-      await client.shoppingPreference.update({
-        where: { role },
-        data: { defaultStoreId: defaultStore.id },
-      });
-    }
-  }
-
-  return defaultStore;
 }
 
-async function writeWeekPlan(weekStart: Date, days: WeekPlanDayEntryInput[]) {
+async function writeWeekPlan(weekStart: Date, days: WeekPlanDayEntryInput[], householdId: string) {
   if (days.length !== 7) {
     throw new Error("days must have length 7");
   }
 
   return prisma.$transaction(async (tx) => {
     const now = new Date();
-    const index = await ensureWeekIndex(tx, weekStart);
+    const index = await ensureWeekIndex(tx, weekStart, householdId);
     const plan = await tx.weekPlan.upsert({
-      where: { weekStart },
+      where: { weekStart_householdId: { weekStart, householdId } },
       update: { weekIndexId: index.id },
-      create: { weekStart, weekIndexId: index.id, createdAt: now },
+      create: { weekStart, householdId, weekIndexId: index.id, createdAt: now },
     });
 
     const prevEntries = await tx.weekPlanEntry.findMany({
@@ -910,11 +855,12 @@ export function selectRecipes(
 
 async function ensureWeekPlanResponse(
   weekStart: Date,
+  householdId: string,
 ): Promise<WeekPlanResponse> {
-  await ensureWeekIndex(prisma, weekStart);
+  await ensureWeekIndex(prisma, weekStart, householdId);
   const [planWithEntries, pool] = await Promise.all([
     prisma.weekPlan.findUnique({
-      where: { weekStart },
+      where: { weekStart_householdId: { weekStart, householdId } },
       include: {
         entries: {
           include: {
@@ -952,9 +898,10 @@ const GenerateWeekInput = z.object({
 type GenerateWeekInput = z.infer<typeof GenerateWeekInput>;
 
 export const plannerRouter = router({
-  generateWeekPlan: publicProcedure
+  generateWeekPlan: protectedProcedure
     .input(GenerateWeekInput.optional())
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const householdId = ctx.householdId;
       const weekStart = startOfWeek(input?.weekStart);
       enforceFutureLimit(weekStart);
       const cfg = resolveConstraints(input?.constraints);
@@ -964,14 +911,19 @@ export const plannerRouter = router({
       const [pool, prevPlan] = await Promise.all([
         fetchAllRecipes(),
         prisma.weekPlan.findUnique({
-          where: { weekStart: prevWeekStart },
+          where: {
+            weekStart_householdId: {
+              weekStart: prevWeekStart,
+              householdId,
+            },
+          },
           include: {
             entries: { select: { recipeId: true } },
           },
         }),
       ]);
 
-      const previousWeekRecipeIds = new Set(
+      const previousWeekRecipeIds = new Set<string>(
         (prevPlan?.entries ?? [])
           .map((e) => e.recipeId)
           .filter((id): id is string => id != null),
@@ -982,7 +934,7 @@ export const plannerRouter = router({
         type: "RECIPE" as const,
         recipeId: recipe.id,
       }));
-      const persisted = await writeWeekPlan(weekStart, days);
+      const persisted = await writeWeekPlan(weekStart, days, householdId);
 
       const suggestions = buildSuggestionBuckets(pool, []);
 
@@ -994,24 +946,25 @@ export const plannerRouter = router({
       });
     }),
 
-  getWeekPlan: publicProcedure
+  getWeekPlan: protectedProcedure
     .input(weekStartInputSchema)
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const targetWeek = startOfWeek(input.weekStart);
       const weekStart = clampToFutureLimit(targetWeek);
-      return ensureWeekPlanResponse(weekStart);
+      return ensureWeekPlanResponse(weekStart, ctx.householdId);
     }),
 
-  weekTimeline: publicProcedure
+  weekTimeline: protectedProcedure
     .input(weekTimelineInputSchema.optional())
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
+      const householdId = ctx.householdId;
       let baseWeek = startOfWeek(input?.around);
       const clamped = clampToFutureLimit(baseWeek);
       if (clamped.getTime() !== baseWeek.getTime()) {
         baseWeek = clamped;
       }
 
-      await ensureWeekIndexWindow(baseWeek);
+      await ensureWeekIndexWindow(baseWeek, householdId);
 
       const windowStart = addWeeks(baseWeek, -PAST_WEEKS_WINDOW);
       const futureEndCandidate = addWeeks(baseWeek, FUTURE_WEEKS_LIMIT);
@@ -1023,6 +976,7 @@ export const plannerRouter = router({
 
       const stored = await prisma.weekIndex.findMany({
         where: {
+          householdId,
           weekStart: {
             gte: windowStart,
             lte: windowEnd,
@@ -1054,7 +1008,7 @@ export const plannerRouter = router({
       };
     }),
 
-  suggestions: publicProcedure
+  suggestions: protectedProcedure
     .input(suggestionInputSchema.optional())
     .query(async ({ input }) => {
       const args = suggestionInputSchema.parse(input ?? {});
@@ -1072,98 +1026,58 @@ export const plannerRouter = router({
       });
     }),
 
-  shoppingSettings: publicProcedure
-    .input(ShoppingSettingsGetInput)
-    .query(async ({ input }) => {
-      const deviceId = input.deviceId.trim();
-      await ensureShoppingPreferencesSeed(prisma);
-      const db = prisma as any;
+  // ─── User-based shopping settings ───
 
-      const [devicePreference, preferences, stores] = await Promise.all([
-        db.devicePreference.findUnique({
-          where: { deviceId },
+  shoppingSettings: protectedProcedure
+    .query(async ({ ctx }) => {
+      const householdId = ctx.householdId;
+      const userId = ctx.user.id;
+
+      await ensureDefaultStore(householdId);
+
+      const [preference, stores] = await Promise.all([
+        prisma.userPreference.findUnique({
+          where: { userId },
         }),
-        db.shoppingPreference.findMany({
-          orderBy: { role: "asc" },
-        }),
-        db.shoppingStore.findMany({
+        prisma.shoppingStore.findMany({
+          where: { householdId },
           orderBy: [{ isDefault: "desc" }, { name: "asc" }],
         }),
       ]);
 
-      let activeRole = devicePreference?.role as ShoppingUserRoleKey | undefined;
-      if (!activeRole || !SHOPPING_USER_ROLES.includes(activeRole)) {
-        activeRole = "JENS";
-        await db.devicePreference.upsert({
-          where: { deviceId },
-          create: { deviceId, role: activeRole },
-          update: { role: activeRole },
-        });
-      }
-
       const serializedStores = stores.map(serializeShoppingStore);
       const fallbackStoreId =
         serializedStores.find((store) => store.isDefault)?.id ?? null;
-      const preferenceByRole = new Map(
-        preferences.map((preference) => [preference.role, preference]),
-      );
 
-      const roles = SHOPPING_USER_ROLES.map((role) => {
-        const preference = preferenceByRole.get(role);
-        if (!preference) {
-          return {
-            role,
-            defaultViewMode: "by-day",
+      const settings = preference
+        ? serializeUserPreference(preference, fallbackStoreId)
+        : {
+            defaultViewMode: "by-day" as const,
             startDay: 0,
             includeNextWeek: false,
             showPantryWithIngredients: false,
             visibleDayIndices: [...DEFAULT_VISIBLE_DAY_INDICES],
             defaultStoreId: fallbackStoreId,
           };
-        }
-        return serializeShoppingPreference(preference, fallbackStoreId);
-      });
 
       return {
-        deviceId,
-        activeRole,
-        roles,
+        settings,
         stores: serializedStores,
       };
     }),
 
-  setShoppingDeviceRole: publicProcedure
-    .input(ShoppingDeviceRoleUpsert)
-    .mutation(async ({ input }) => {
-      const deviceId = input.deviceId.trim();
-      await ensureShoppingPreferencesSeed(prisma);
-      const db = prisma as any;
-      const result = await db.devicePreference.upsert({
-        where: { deviceId },
-        create: { deviceId, role: input.role as any },
-        update: { role: input.role as any },
-      });
-      return {
-        deviceId: result.deviceId,
-        role: result.role,
-      };
-    }),
+  updateShoppingSettings: protectedProcedure
+    .input(UserPreferenceUpdate)
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.user.id;
+      const householdId = ctx.householdId;
 
-  updateShoppingRoleSettings: publicProcedure
-    .input(ShoppingRoleSettingsUpdate)
-    .mutation(async ({ input }) => {
-      await ensureShoppingPreferencesSeed(prisma);
-      const db = prisma as any;
+      await ensureDefaultStore(householdId);
 
-      const defaultStore = await db.shoppingStore.findFirst({
-        where: { isDefault: true },
-        orderBy: { createdAt: "asc" },
-      });
-
-      let defaultStoreId = input.defaultStoreId ?? defaultStore?.id ?? null;
+      let defaultStoreId = input.defaultStoreId ?? null;
       if (defaultStoreId) {
-        const store = await db.shoppingStore.findUnique({
-          where: { id: defaultStoreId },
+        const store = await prisma.shoppingStore.findFirst({
+          where: { id: defaultStoreId, householdId },
         });
         if (!store) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Valgt butikk finnes ikke" });
@@ -1175,10 +1089,10 @@ export const plannerRouter = router({
         input.visibleDayIndices,
       );
 
-      const updated = await db.shoppingPreference.upsert({
-        where: { role: input.role as any },
+      const updated = await prisma.userPreference.upsert({
+        where: { userId },
         create: {
-          role: input.role as any,
+          userId,
           defaultViewMode: toDbViewMode(input.defaultViewMode) as any,
           startDay: input.startDay,
           includeNextWeek: input.includeNextWeek,
@@ -1196,14 +1110,15 @@ export const plannerRouter = router({
         },
       });
 
-      return serializeShoppingPreference(updated, defaultStoreId);
+      return serializeUserPreference(updated, defaultStoreId);
     }),
 
-  createShoppingStore: publicProcedure
+  createShoppingStore: protectedProcedure
     .input(ShoppingStoreCreate)
-    .mutation(async ({ input }) => {
-      await ensureShoppingPreferencesSeed(prisma);
-      const db = prisma as any;
+    .mutation(async ({ input, ctx }) => {
+      const householdId = ctx.householdId;
+
+      await ensureDefaultStore(householdId);
 
       const categoryOrder = input.categoryOrder.map((category) =>
         normalizeIngredientCategory(category),
@@ -1217,11 +1132,12 @@ export const plannerRouter = router({
 
       const normalizedName = input.name.trim();
       try {
-        const created = await db.shoppingStore.create({
+        const created = await prisma.shoppingStore.create({
           data: {
             name: normalizedName,
             categoryOrder: categoryOrder as any,
             isDefault: false,
+            householdId,
           },
         });
         return serializeShoppingStore(created);
@@ -1233,9 +1149,10 @@ export const plannerRouter = router({
       }
     }),
 
-  shoppingList: publicProcedure
+  shoppingList: protectedProcedure
     .input(shoppingListInputSchema.optional())
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
+      const householdId = ctx.householdId;
       const args = shoppingListInputSchema.parse(input ?? {});
       const targetWeek = startOfWeek(args.weekStart);
       const weekStart = clampToFutureLimit(targetWeek);
@@ -1254,11 +1171,11 @@ export const plannerRouter = router({
       }
 
       for (const week of weekStarts) {
-        await ensureWeekIndex(prisma, week);
+        await ensureWeekIndex(prisma, week, householdId);
       }
 
       const plans = await prisma.weekPlan.findMany({
-        where: { weekStart: { in: weekStarts } },
+        where: { weekStart: { in: weekStarts }, householdId },
         include: {
           entries: {
             include: {
@@ -1281,6 +1198,7 @@ export const plannerRouter = router({
       const statuses = await prisma.shoppingState.findMany({
         where: {
           weekStart: { in: weekStarts },
+          householdId,
         },
       });
 
@@ -1510,8 +1428,9 @@ export const plannerRouter = router({
           a.name.localeCompare(b.name, "nb", { sensitivity: "base" }),
         );
 
-      // Include extra shopping items as a shared/global list across weeks.
+      // Include extra shopping items scoped to this household.
       const extraItems = await prisma.extraShoppingItem.findMany({
+        where: { householdId },
         include: { catalogItem: true },
         orderBy: { updatedAt: "desc" },
       });
@@ -1550,7 +1469,7 @@ export const plannerRouter = router({
       };
     }),
 
-  updateShoppingItem: publicProcedure
+  updateShoppingItem: protectedProcedure
     .input(
       z.object({
         ingredientId: z.string().uuid(),
@@ -1567,7 +1486,8 @@ export const plannerRouter = router({
         checked: z.boolean(),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const householdId = ctx.householdId;
       const unitKey = input.unit ?? ""; // alltid string
       const weekMeta = new Map<number, { week: Date; dayIndices: number[] }>();
 
@@ -1615,10 +1535,11 @@ export const plannerRouter = router({
 
           return prisma.shoppingState.upsert({
             where: {
-              weekStart_ingredientId_unit: {
+              weekStart_ingredientId_unit_householdId: {
                 weekStart: week,
                 ingredientId: input.ingredientId,
                 unit: unitKey, // endret fra null|string
+                householdId,
               },
             },
             create: {
@@ -1627,6 +1548,7 @@ export const plannerRouter = router({
               unit: unitKey, // endret fra null|string
               checked: input.checked,
               firstCheckedDayIndex: firstDayIndex,
+              householdId,
             },
             update: updateData,
           });
@@ -1636,9 +1558,10 @@ export const plannerRouter = router({
       return { ok: true };
     }),
 
-  saveWeekPlan: publicProcedure
+  saveWeekPlan: protectedProcedure
     .input(WeekPlanInput)
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const householdId = ctx.householdId;
       const { weekStart: weekStartString, days } = input;
       if (days.length !== 7) {
         throw new Error("days must have length 7");
@@ -1646,7 +1569,7 @@ export const plannerRouter = router({
 
       const weekStart = startOfWeek(weekStartString);
       enforceFutureLimit(weekStart);
-      const persisted = await writeWeekPlan(weekStart, days);
+      const persisted = await writeWeekPlan(weekStart, days, householdId);
 
       const pool = await fetchAllRecipes();
       const suggestions = buildSuggestionBuckets(pool, []);
@@ -1659,8 +1582,10 @@ export const plannerRouter = router({
       });
     }),
 
-  extraCatalogList: publicProcedure.query(async () => {
+  extraCatalogList: protectedProcedure.query(async ({ ctx }) => {
+    const householdId = ctx.householdId;
     const rows = await prisma.extraItemCatalog.findMany({
+      where: { householdId },
       orderBy: { name: "asc" },
       include: { _count: { select: { extras: true } } },
     });
@@ -1675,10 +1600,11 @@ export const plannerRouter = router({
     }));
   }),
 
-  extraCatalogBulkUpdateCategories: publicProcedure
+  extraCatalogBulkUpdateCategories: protectedProcedure
     .input(ExtraCatalogBulkCategoryUpdate)
     .output(z.object({ count: z.number().int() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const householdId = ctx.householdId;
       let count = 0;
 
       for (const update of input.updates) {
@@ -1692,6 +1618,7 @@ export const plannerRouter = router({
                   UPDATE "ExtraItemCatalog"
                   SET "category" = NULL
                   WHERE "id" = ${update.id}::uuid
+                    AND "householdId" = ${householdId}::uuid
                 `,
               )
               : await prisma.$executeRaw(
@@ -1699,6 +1626,7 @@ export const plannerRouter = router({
                   UPDATE "ExtraItemCatalog"
                   SET "category" = ${normalizedCategory}::"IngredientCategory"
                   WHERE "id" = ${update.id}::uuid
+                    AND "householdId" = ${householdId}::uuid
                 `,
               );
           if (Number(affectedRows) > 0) {
@@ -1712,15 +1640,17 @@ export const plannerRouter = router({
       return { count };
     }),
 
-  extraCatalogListPotentialDuplicates: publicProcedure
+  extraCatalogListPotentialDuplicates: protectedProcedure
     .output(z.array(z.array(z.object({
       id: z.string().uuid(),
       name: z.string(),
       usageCount: z.number().int(),
       category: z.string().nullable(),
     }))))
-    .query(async () => {
+    .query(async ({ ctx }) => {
+      const householdId = ctx.householdId;
       const allItems = await prisma.extraItemCatalog.findMany({
+        where: { householdId },
         orderBy: { name: "asc" },
         include: { _count: { select: { extras: true } } },
       });
@@ -1768,33 +1698,46 @@ export const plannerRouter = router({
         );
     }),
 
-  extraCatalogMerge: publicProcedure
+  extraCatalogMerge: protectedProcedure
     .input(z.object({
       keepId: z.string().uuid(),
       mergeIds: z.array(z.string().uuid()).min(1),
     }))
     .output(z.object({ mergedCount: z.number().int(), updatedItems: z.number().int() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const householdId = ctx.householdId;
       const { keepId, mergeIds } = input;
       const uniqueMergeIds = [...new Set(mergeIds.filter((id) => id !== keepId))];
       if (uniqueMergeIds.length === 0) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "No items to merge" });
       }
 
-      const keep = await prisma.extraItemCatalog.findUnique({ where: { id: keepId } });
+      const keep = await prisma.extraItemCatalog.findFirst({
+        where: { id: keepId, householdId },
+      });
       if (!keep) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Keep item not found" });
+      }
+
+      // Verify all merge items belong to this household
+      const verifiedMergeItems = await prisma.extraItemCatalog.findMany({
+        where: { id: { in: uniqueMergeIds }, householdId },
+        select: { id: true },
+      });
+      const verifiedMergeIds = verifiedMergeItems.map((item) => item.id);
+      if (verifiedMergeIds.length === 0) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "No valid items to merge" });
       }
 
       let updatedItems = 0;
 
       await prisma.$transaction(async (tx) => {
         const mergeLinks = await tx.extraShoppingItem.findMany({
-          where: { catalogItemId: { in: uniqueMergeIds } },
+          where: { catalogItemId: { in: verifiedMergeIds }, householdId },
         });
 
         const keepLinks = await tx.extraShoppingItem.findMany({
-          where: { catalogItemId: keepId },
+          where: { catalogItemId: keepId, householdId },
         });
         const keepWeeks = new Set(keepLinks.map((l) => l.weekStart.getTime()));
 
@@ -1813,7 +1756,7 @@ export const plannerRouter = router({
 
         // Repoint package items referencing merged catalog entries
         const mergePackageItems = await tx.shoppingPackageItem.findMany({
-          where: { extraItemCatalogId: { in: uniqueMergeIds } },
+          where: { extraItemCatalogId: { in: verifiedMergeIds } },
         });
         const keepPackageIds = new Set(
           (
@@ -1836,17 +1779,18 @@ export const plannerRouter = router({
         }
 
         await tx.extraItemCatalog.deleteMany({
-          where: { id: { in: uniqueMergeIds } },
+          where: { id: { in: verifiedMergeIds }, householdId },
         });
       });
 
-      return { mergedCount: uniqueMergeIds.length, updatedItems };
+      return { mergedCount: verifiedMergeIds.length, updatedItems };
     }),
 
   // Suggest extra items by prefix
-  extraSuggest: publicProcedure
+  extraSuggest: protectedProcedure
     .input(ExtraItemSuggest.optional())
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
+      const householdId = ctx.householdId;
       const q = (input?.search ?? "").trim();
       if (!q) {
         return [] as {
@@ -1857,7 +1801,7 @@ export const plannerRouter = router({
         }[];
       }
       const all = await prisma.extraItemCatalog.findMany({
-        where: { name: { contains: q } },
+        where: { name: { contains: q }, householdId },
         orderBy: { name: "asc" },
         take: 20,
       });
@@ -1876,29 +1820,31 @@ export const plannerRouter = router({
     }),
 
   // Add an extra item to the current week's list (upsert into catalog)
-  extraAdd: publicProcedure
+  extraAdd: protectedProcedure
     .input(ExtraItemUpsert)
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const householdId = ctx.householdId;
       const name = input.name.trim();
       const catalog = await prisma.extraItemCatalog.upsert({
-        where: { name },
+        where: { name_householdId: { name, householdId } },
         update: {},
-        create: { name },
+        create: { name, householdId },
       });
       return { id: catalog.id, name: catalog.name };
     }),
 
   // Toggle or set check on an extra item for a given week
-  extraToggle: publicProcedure
+  extraToggle: protectedProcedure
     .input(ExtraShoppingToggle)
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const householdId = ctx.householdId;
       const catalog = await prisma.extraItemCatalog.upsert({
-        where: { name: input.name.trim() },
+        where: { name_householdId: { name: input.name.trim(), householdId } },
         update: {},
-        create: { name: input.name.trim() },
+        create: { name: input.name.trim(), householdId },
       });
       const existing = await prisma.extraShoppingItem.findFirst({
-        where: { catalogItemId: catalog.id },
+        where: { catalogItemId: catalog.id, householdId },
         orderBy: { updatedAt: "desc" },
       });
       const checked = input.checked ?? !existing?.checked;
@@ -1906,15 +1852,17 @@ export const plannerRouter = router({
       const saved = await prisma.$transaction(async (tx) => {
         const globalRow = await tx.extraShoppingItem.upsert({
           where: {
-            weekStart_catalogItemId: {
+            weekStart_catalogItemId_householdId: {
               weekStart: GLOBAL_EXTRA_WEEK_START,
               catalogItemId: catalog.id,
+              householdId,
             },
           },
           create: {
             weekStart: GLOBAL_EXTRA_WEEK_START,
             catalogItemId: catalog.id,
             checked,
+            householdId,
           },
           update: { checked },
         });
@@ -1922,6 +1870,7 @@ export const plannerRouter = router({
         await tx.extraShoppingItem.updateMany({
           where: {
             catalogItemId: catalog.id,
+            householdId,
             NOT: { id: globalRow.id },
           },
           data: { checked },
@@ -1934,15 +1883,16 @@ export const plannerRouter = router({
     }),
 
   // Remove an extra item from a specific week (keeps catalog)
-  extraRemove: publicProcedure
+  extraRemove: protectedProcedure
     .input(ExtraShoppingRemove)
-    .mutation(async ({ input }) => {
-      const catalog = await prisma.extraItemCatalog.findUnique({
-        where: { name: input.name.trim() },
+    .mutation(async ({ input, ctx }) => {
+      const householdId = ctx.householdId;
+      const catalog = await prisma.extraItemCatalog.findFirst({
+        where: { name: input.name.trim(), householdId },
       });
       if (!catalog) return { ok: true };
       await prisma.extraShoppingItem.deleteMany({
-        where: { catalogItemId: catalog.id },
+        where: { catalogItemId: catalog.id, householdId },
       });
       return { ok: true };
     }),
@@ -1950,8 +1900,10 @@ export const plannerRouter = router({
   // ─── Shopping Packages ─────────────────────────────────────────────
 
   // List all packages
-  packageList: publicProcedure.query(async () => {
+  packageList: protectedProcedure.query(async ({ ctx }) => {
+    const householdId = ctx.householdId;
     const packages = await prisma.shoppingPackage.findMany({
+      where: { householdId },
       orderBy: { name: "asc" },
       include: {
         items: {
@@ -1972,11 +1924,12 @@ export const plannerRouter = router({
   }),
 
   // Get a single package by ID
-  packageGet: publicProcedure
+  packageGet: protectedProcedure
     .input(ShoppingPackageById)
-    .query(async ({ input }) => {
-      const pkg = await prisma.shoppingPackage.findUnique({
-        where: { id: input.id },
+    .query(async ({ input, ctx }) => {
+      const householdId = ctx.householdId;
+      const pkg = await prisma.shoppingPackage.findFirst({
+        where: { id: input.id, householdId },
         include: { items: { orderBy: { displayName: "asc" } } },
       });
       if (!pkg) throw new TRPCError({ code: "NOT_FOUND" });
@@ -1993,12 +1946,14 @@ export const plannerRouter = router({
     }),
 
   // Create a package
-  packageCreate: publicProcedure
+  packageCreate: protectedProcedure
     .input(ShoppingPackageCreate)
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const householdId = ctx.householdId;
       const pkg = await prisma.shoppingPackage.create({
         data: {
           name: input.name.trim(),
+          householdId,
           items: {
             create: input.items.map((item) => ({
               displayName: item.displayName.trim(),
@@ -2013,11 +1968,12 @@ export const plannerRouter = router({
     }),
 
   // Update a package (name and/or items)
-  packageUpdate: publicProcedure
+  packageUpdate: protectedProcedure
     .input(ShoppingPackageUpdate)
-    .mutation(async ({ input }) => {
-      const existing = await prisma.shoppingPackage.findUnique({
-        where: { id: input.id },
+    .mutation(async ({ input, ctx }) => {
+      const householdId = ctx.householdId;
+      const existing = await prisma.shoppingPackage.findFirst({
+        where: { id: input.id, householdId },
       });
       if (!existing) throw new TRPCError({ code: "NOT_FOUND" });
 
@@ -2050,32 +2006,27 @@ export const plannerRouter = router({
     }),
 
   // Delete a package
-  packageDelete: publicProcedure
+  packageDelete: protectedProcedure
     .input(ShoppingPackageById)
-    .mutation(async ({ input }) => {
-      try {
-        await prisma.shoppingPackage.delete({ where: { id: input.id } });
-      } catch (error) {
-        if (
-          error instanceof Prisma.PrismaClientKnownRequestError &&
-          error.code === "P2025"
-        ) {
-          // Already deleted or doesn't exist — treat as success
-        } else {
-          throw error;
-        }
-      }
+    .mutation(async ({ input, ctx }) => {
+      const householdId = ctx.householdId;
+      const existing = await prisma.shoppingPackage.findFirst({
+        where: { id: input.id, householdId },
+      });
+      if (!existing) return { ok: true };
+      await prisma.shoppingPackage.delete({ where: { id: existing.id } });
       return { ok: true };
     }),
 
   // Suggest packages matching a search string (for the shopping list dialog)
-  packageSuggest: publicProcedure
+  packageSuggest: protectedProcedure
     .input(ShoppingPackageSuggest.optional())
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
+      const householdId = ctx.householdId;
       const q = (input?.search ?? "").trim();
       if (!q) return [] as { id: string; name: string; itemCount: number }[];
       const packages = await prisma.shoppingPackage.findMany({
-        where: { name: { contains: q } },
+        where: { name: { contains: q }, householdId },
         orderBy: { name: "asc" },
         take: 10,
         include: { _count: { select: { items: true } } },
@@ -2088,16 +2039,17 @@ export const plannerRouter = router({
     }),
 
   // Expand a package: add all its items to the shopping list as extras
-  packageExpand: publicProcedure
+  packageExpand: protectedProcedure
     .input(
       z.object({
         packageId: z.string().uuid(),
         weekStart: z.string().min(1),
       }),
     )
-    .mutation(async ({ input }) => {
-      const pkg = await prisma.shoppingPackage.findUnique({
-        where: { id: input.packageId },
+    .mutation(async ({ input, ctx }) => {
+      const householdId = ctx.householdId;
+      const pkg = await prisma.shoppingPackage.findFirst({
+        where: { id: input.packageId, householdId },
         include: { items: true },
       });
       if (!pkg) throw new TRPCError({ code: "NOT_FOUND" });
@@ -2113,26 +2065,26 @@ export const plannerRouter = router({
       const uniqueNames = Array.from(new Set(names));
 
       if (uniqueNames.length > 0) {
-        // Resolve existing catalog entries
+        // Resolve existing catalog entries scoped to this household
         const existingCatalog = await prisma.extraItemCatalog.findMany({
-          where: { name: { in: uniqueNames } },
+          where: { name: { in: uniqueNames }, householdId },
         });
         const existingNames = new Set(existingCatalog.map((c) => c.name));
         const missingNames = uniqueNames.filter(
           (name) => !existingNames.has(name),
         );
 
-        // Insert missing catalog entries
+        // Insert missing catalog entries for this household
         if (missingNames.length > 0) {
           await prisma.extraItemCatalog.createMany({
-            data: missingNames.map((name) => ({ name })),
+            data: missingNames.map((name) => ({ name, householdId })),
             skipDuplicates: true,
           });
         }
 
-        // Fetch all catalog entries for the involved names
+        // Fetch all catalog entries for the involved names in this household
         const allCatalog = await prisma.extraItemCatalog.findMany({
-          where: { name: { in: uniqueNames } },
+          where: { name: { in: uniqueNames }, householdId },
         });
         const catalogByName = new Map<string, string>(
           allCatalog.map((c) => [c.name, c.id]),
@@ -2148,14 +2100,16 @@ export const plannerRouter = router({
           txOps.push(
             prisma.extraShoppingItem.upsert({
               where: {
-                weekStart_catalogItemId: {
+                weekStart_catalogItemId_householdId: {
                   weekStart: GLOBAL_EXTRA_WEEK_START,
                   catalogItemId: catalogId,
+                  householdId,
                 },
               },
               create: {
                 weekStart: GLOBAL_EXTRA_WEEK_START,
                 catalogItemId: catalogId,
+                householdId,
                 checked: false,
               },
               update: { checked: false },
@@ -2166,14 +2120,16 @@ export const plannerRouter = router({
           txOps.push(
             prisma.extraShoppingItem.upsert({
               where: {
-                weekStart_catalogItemId: {
+                weekStart_catalogItemId_householdId: {
                   weekStart: weekStartDate,
                   catalogItemId: catalogId,
+                  householdId,
                 },
               },
               create: {
                 weekStart: weekStartDate,
                 catalogItemId: catalogId,
+                householdId,
                 checked: false,
               },
               update: {},
