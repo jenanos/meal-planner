@@ -21,7 +21,10 @@ This service exposes a Model Context Protocol (MCP) server that maps MCP tools t
 - `update-ingredient` → `ingredient.update`
 - `get-ingredient-with-recipes` → `ingredient.getWithRecipes`
 - `get-ingredients-without-unit` → `ingredient.listWithoutUnit`
+- `get-ingredients-without-category` → `ingredient.listWithoutCategory`
 - `bulk-update-missing-ingredient-units` → `ingredient.listWithoutUnit` + `ingredient.bulkUpdateUnits`
+- `bulk-update-missing-ingredient-categories` → `ingredient.listWithoutCategory` + `ingredient.bulkUpdateCategories`
+- `bulk-update-ingredient-categories` → `ingredient.bulkUpdateCategories`
 - `get-potential-duplicate-ingredients` → `ingredient.listPotentialDuplicates`
 - `bulk-update-ingredient-units` → `ingredient.bulkUpdateUnits`
 - `list-recipes` → `recipe.list`
@@ -42,6 +45,10 @@ Environment variables:
 
 - `MEALS_API_INTERNAL_ORIGIN` – base URL for the Meal Planner API (default: `http://localhost:4000`).
 - `PORT` – port to expose the MCP server (default: `5050`).
+- `MCP_API_KEY` – shared secret sent as `x-api-key` to the Meal Planner API for service-to-service auth. Must match `MCP_API_KEY` in `apps/server/.env`. Generate with `openssl rand -base64 32`.
+- `MCP_ALLOWED_HOSTS` – optional comma-separated list of `Host` headers accepted by the server (DNS rebinding protection). Example: `meals-mcp.example.com,meals-mcp:5050,localhost:5050`.
+
+All tool calls run as the bootstrap household configured on the Meal Planner API (see `BOOTSTRAP_HOUSEHOLD_*` in the server env).
 
 ## Local development
 
@@ -58,4 +65,4 @@ pnpm --filter mcp-server start
 
 ## Deployment notes
 
-When running in Docker Compose, point `MEALS_API_INTERNAL_ORIGIN` at the `meals-api` service (for example `http://meals-api:4000`) and expose the MCP server at `/mcp` on the container port.
+When running in Docker Compose, point `MEALS_API_INTERNAL_ORIGIN` at the `meals-api` service (for example `http://meals-api:4000`) and expose the MCP server at `/mcp` on the container port. Set `MCP_API_KEY` to the same value configured on `meals-api`, and set `MCP_ALLOWED_HOSTS` to include the public domain and the internal compose service name (e.g. `meals-mcp.example.com,meals-mcp:5050`).
