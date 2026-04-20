@@ -1,4 +1,4 @@
-import { createServer, type Server } from "node:http";
+import { createServer } from "node:http";
 import type { Request, Response } from "express";
 import { createTRPCProxyClient, httpBatchLink } from "@trpc/client";
 import {
@@ -80,14 +80,11 @@ const formatSuccess = <T extends Record<string, unknown>>(payload: T): CallToolR
 });
 
 const buildServer = () => {
-  const server = new McpServer(
-    {
-      name: "meal-planner-mcp",
-      version: "1.0.0",
-      websiteUrl: "https://github.com/jenanos/meal-planner",
-    },
-    { capabilities: { logging: {} } }
-  );
+  const server = new McpServer({
+    name: "meal-planner-mcp",
+    version: "1.0.0",
+    websiteUrl: "https://github.com/jenanos/meal-planner",
+  });
 
   server.registerTool(
     "get-week-plan",
@@ -160,6 +157,7 @@ const buildServer = () => {
         }),
       annotations: {
         readOnlyHint: false,
+        idempotentHint: true,
       },
     },
     async ({ weekStart, days, recipeIdsByDay }): Promise<CallToolResult> => {
@@ -224,6 +222,7 @@ const buildServer = () => {
       }),
       annotations: {
         readOnlyHint: false,
+        idempotentHint: true,
       },
     },
     async ({ ingredientId, unit, weeks, occurrences, checked }): Promise<CallToolResult> => {
@@ -259,6 +258,7 @@ const buildServer = () => {
       }),
       annotations: {
         readOnlyHint: false,
+        idempotentHint: true,
       },
     },
     async ({ weekStart, ingredientNames, checked, includeNextWeek }): Promise<CallToolResult> => {
@@ -390,6 +390,7 @@ const buildServer = () => {
       }),
       annotations: {
         readOnlyHint: false,
+        idempotentHint: true,
       },
     },
     async ({ updates }): Promise<CallToolResult> => {
@@ -453,6 +454,7 @@ const buildServer = () => {
       }),
       annotations: {
         readOnlyHint: false,
+        idempotentHint: true,
       },
     },
     async ({ updates }): Promise<CallToolResult> => {
@@ -484,6 +486,7 @@ const buildServer = () => {
       }),
       annotations: {
         readOnlyHint: false,
+        idempotentHint: true,
       },
     },
     async ({ updates }): Promise<CallToolResult> => {
@@ -562,6 +565,7 @@ const buildServer = () => {
       }),
       annotations: {
         readOnlyHint: false,
+        idempotentHint: true,
       },
     },
     async ({ updates }): Promise<CallToolResult> => {
@@ -626,6 +630,7 @@ const buildServer = () => {
       inputSchema: IngredientUpdate,
       annotations: {
         readOnlyHint: false,
+        idempotentHint: true,
       },
     },
     async (input): Promise<CallToolResult> => {
@@ -725,6 +730,7 @@ const buildServer = () => {
       inputSchema: RecipeUpdate,
       annotations: {
         readOnlyHint: false,
+        idempotentHint: true,
       },
     },
     async (input): Promise<CallToolResult> => {
@@ -745,6 +751,8 @@ const buildServer = () => {
       inputSchema: z.object({ id: z.string().uuid() }),
       annotations: {
         readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
       },
     },
     async (input): Promise<CallToolResult> => {
@@ -925,6 +933,8 @@ const buildServer = () => {
       inputSchema: ExtraShoppingRemove,
       annotations: {
         readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
       },
     },
     async (input): Promise<CallToolResult> => {
@@ -960,17 +970,26 @@ const buildServer = () => {
   return server;
 };
 
-const mcpServer = buildServer();
-const app = createMcpExpressApp({ host: "0.0.0.0" });
+const allowedHosts = (process.env.MCP_ALLOWED_HOSTS ?? "")
+  .split(",")
+  .map((h) => h.trim())
+  .filter(Boolean);
+
+const app = createMcpExpressApp({
+  host: "0.0.0.0",
+  allowedHosts: allowedHosts.length ? allowedHosts : undefined,
+});
 
 app.post("/mcp", async (req: Request, res: Response) => {
   try {
+    const server = buildServer();
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-    await mcpServer.connect(transport);
-    await transport.handleRequest(req, res, req.body);
     res.on("close", () => {
       transport.close();
+      server.close();
     });
+    await server.connect(transport);
+    await transport.handleRequest(req, res, req.body);
   } catch (error) {
     console.error("Error handling MCP request:", error);
     if (!res.headersSent) {
@@ -998,49 +1017,27 @@ app.get("/health", (_req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
-const requestedPort = Number(process.env.PORT ?? 5050);
-const canRetryPort = !process.env.PORT;
-const maxRetryPort = requestedPort + 10;
-let activePort = requestedPort;
-let httpServer: Server;
+const port = Number(process.env.PORT ?? 5050);
+const httpServer = createServer(app);
 
-const startHttpServer = (port: number) => {
-  activePort = port;
-  const candidateServer = createServer(app);
-  httpServer = candidateServer;
+httpServer.on("error", (error: NodeJS.ErrnoException) => {
+  console.error("Failed to start MCP server:", error);
+  process.exit(1);
+});
 
-  candidateServer.once("error", (error: NodeJS.ErrnoException) => {
-    if (error.code === "EADDRINUSE" && canRetryPort && port < maxRetryPort) {
-      const nextPort = port + 1;
-      console.warn(
-        `Port ${port} is in use. Retrying MCP server on port ${nextPort}...`,
-      );
-      candidateServer.close(() => {
-        startHttpServer(nextPort);
-      });
-      return;
-    }
-    console.error("Failed to start MCP server:", error);
-    process.exit(1);
-  });
-
-  candidateServer.listen(port, () => {
-    console.log(`Meal Planner MCP server listening on port ${activePort}`);
-    console.log(`Using meals API origin: ${mealsApiOrigin}`);
-  });
-};
-
-startHttpServer(requestedPort);
+httpServer.listen(port, () => {
+  console.log(`Meal Planner MCP server listening on port ${port}`);
+  console.log(`Using meals API origin: ${mealsApiOrigin}`);
+});
 
 const gracefulShutdown = (signal: string) => {
   console.log(`Received ${signal}, shutting down gracefully...`);
-  
-  // Force exit after 10 seconds if graceful shutdown hangs
+
   const forceExitTimer = setTimeout(() => {
     console.error("Forcefully shutting down after timeout");
     process.exit(1);
   }, 10000);
-  
+
   httpServer.close(() => {
     clearTimeout(forceExitTimer);
     console.log("Server closed");
