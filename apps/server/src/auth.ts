@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { magicLink } from "better-auth/plugins/magic-link";
+import { emailOTP } from "better-auth/plugins/email-otp";
 import { prisma } from "@repo/database";
 
 const isDev = process.env.NODE_ENV !== "production";
@@ -105,6 +106,46 @@ async function sendMagicLinkEmail(email: string, url: string) {
   );
 }
 
+async function sendOtpEmail(email: string, otp: string) {
+  const { resendApiKey, authEmailFrom } = getRequiredEmailConfig();
+  const safeOtp = escapeHtml(otp);
+  const safeEmail = escapeHtml(email);
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${resendApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: authEmailFrom,
+      to: [email],
+      subject: "Innloggingskode til Butta",
+      text: [
+        `Din engangskode er: ${otp}`,
+        "",
+        "Koden er gyldig i 5 minutter.",
+        "Hvis du ikke ba om denne e-posten, kan du ignorere den.",
+      ].join("\n"),
+      html: [
+        "<p>Din engangskode er:</p>",
+        `<p style="font-size:24px;font-weight:bold;letter-spacing:4px;">${safeOtp}</p>`,
+        "<p>Koden er gyldig i 5 minutter.</p>",
+        `<p>Denne koden ble sendt til ${safeEmail}.</p>`,
+        "<p>Hvis du ikke ba om denne e-posten, kan du ignorere den.</p>",
+      ].join(""),
+    }),
+  });
+
+  if (response.ok) {
+    return;
+  }
+
+  const errorBody = await response.text();
+  throw new Error(
+    `Resend failed to send OTP (${response.status}): ${errorBody || "Unknown error"}`,
+  );
+}
+
 export const auth = betterAuth({
   ...(authSecret ? { secret: authSecret } : {}),
   ...(authBaseURL ? { baseURL: authBaseURL } : {}),
@@ -164,6 +205,18 @@ export const auth = betterAuth({
         }
 
         await sendMagicLinkEmail(email, url);
+      },
+    }),
+    emailOTP({
+      sendVerificationOTP: async ({ email, otp, type }) => {
+        if (type !== "sign-in") return;
+        // ── Allowlist gate: reject OTP requests from unknown emails ──
+        const allowed = await isEmailAllowed(email);
+        if (!allowed) {
+          throw new Error("E-postadressen har ikke tilgang til appen.");
+        }
+
+        await sendOtpEmail(email, otp);
       },
     }),
   ],
