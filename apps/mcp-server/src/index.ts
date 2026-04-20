@@ -752,7 +752,7 @@ const buildServer = () => {
       annotations: {
         readOnlyHint: false,
         destructiveHint: true,
-        idempotentHint: true,
+        idempotentHint: false,
       },
     },
     async (input): Promise<CallToolResult> => {
