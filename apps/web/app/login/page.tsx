@@ -17,18 +17,38 @@ type PendingState = {
   savedAt: number;
 };
 
+function isPendingState(value: unknown): value is PendingState {
+  if (!value || typeof value !== "object") return false;
+
+  const candidate = value as Record<string, unknown>;
+
+  return (
+    (candidate.stage === "enter-otp" ||
+      candidate.stage === "magic-link-sent") &&
+    typeof candidate.email === "string" &&
+    candidate.email.trim().length > 0 &&
+    typeof candidate.savedAt === "number" &&
+    Number.isFinite(candidate.savedAt)
+  );
+}
+
 function loadPendingState(): PendingState | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(PENDING_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as PendingState;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!isPendingState(parsed)) {
+      window.localStorage.removeItem(PENDING_KEY);
+      return null;
+    }
     if (Date.now() - parsed.savedAt > PENDING_TTL_MS) {
       window.localStorage.removeItem(PENDING_KEY);
       return null;
     }
     return parsed;
   } catch {
+    window.localStorage.removeItem(PENDING_KEY);
     return null;
   }
 }
