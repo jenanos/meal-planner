@@ -70,7 +70,7 @@ export default function LoginPage() {
   async function handleVerifyOtp(e: React.FormEvent) {
     e.preventDefault();
     const code = otp.trim();
-    if (!code) return;
+    if (code.length !== 6) return;
     setLoading("verify");
     setError(null);
     try {
@@ -100,6 +100,7 @@ export default function LoginPage() {
 
   function reset() {
     setStage("enter-email");
+    setEmail("");
     setOtp("");
     setError(null);
   }
@@ -185,7 +186,7 @@ export default function LoginPage() {
             <Button
               type="submit"
               className="w-full"
-              disabled={loading !== null || otp.trim().length < 4}
+              disabled={loading !== null || otp.trim().length !== 6}
             >
               {loading === "verify" ? "Logger inn…" : "Logg inn"}
             </Button>

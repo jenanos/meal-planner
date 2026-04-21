@@ -50,14 +50,12 @@ function escapeHtml(value: string) {
 
 function getRequiredEmailConfig() {
   if (!resendApiKey) {
-    throw new Error(
-      "Magic link email sending requires RESEND_API_KEY to be set.",
-    );
+    throw new Error("Auth email sending requires RESEND_API_KEY to be set.");
   }
 
   if (!authEmailFrom) {
     throw new Error(
-      "Magic link email sending requires AUTH_EMAIL_FROM or EMAIL_FROM to be set.",
+      "Auth email sending requires AUTH_EMAIL_FROM or EMAIL_FROM to be set.",
     );
   }
 
