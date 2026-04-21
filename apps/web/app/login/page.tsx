@@ -1,11 +1,58 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn, emailOtp } from "../../lib/auth-client";
 import { Button, Input } from "@repo/ui";
 
 type Stage = "enter-email" | "enter-otp" | "magic-link-sent";
+
+// Persist the pending OTP stage across PWA background-kills on Android.
+const PENDING_KEY = "butta:pending-login";
+const PENDING_TTL_MS = 10 * 60 * 1000; // OTP is valid for 5 min; give buffer.
+
+type PendingState = {
+  stage: "enter-otp" | "magic-link-sent";
+  email: string;
+  savedAt: number;
+};
+
+function loadPendingState(): PendingState | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(PENDING_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PendingState;
+    if (Date.now() - parsed.savedAt > PENDING_TTL_MS) {
+      window.localStorage.removeItem(PENDING_KEY);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function savePendingState(state: Omit<PendingState, "savedAt">) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      PENDING_KEY,
+      JSON.stringify({ ...state, savedAt: Date.now() }),
+    );
+  } catch {
+    // ignore storage failures (private mode, quota, etc.)
+  }
+}
+
+function clearPendingState() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(PENDING_KEY);
+  } catch {
+    // ignore
+  }
+}
 
 function describeSendError(message: string): string {
   const lower = message.toLowerCase();
@@ -23,6 +70,14 @@ export default function LoginPage() {
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    const pending = loadPendingState();
+    if (pending) {
+      setEmail(pending.email);
+      setStage(pending.stage);
+    }
+  }, []);
+
   async function handleSendOtp(e: React.FormEvent) {
     e.preventDefault();
     if (!email.trim()) return;
@@ -37,6 +92,7 @@ export default function LoginPage() {
         setError(describeSendError(result.error.message ?? ""));
         return;
       }
+      savePendingState({ stage: "enter-otp", email: email.trim() });
       setStage("enter-otp");
     } catch {
       setError("Kunne ikke sende kode akkurat nå. Prøv igjen om litt.");
@@ -59,6 +115,7 @@ export default function LoginPage() {
         setError(describeSendError(result.error.message ?? ""));
         return;
       }
+      savePendingState({ stage: "magic-link-sent", email: email.trim() });
       setStage("magic-link-sent");
     } catch {
       setError("Kunne ikke sende innloggingslenke akkurat nå. Prøv igjen om litt.");
@@ -89,6 +146,7 @@ export default function LoginPage() {
         }
         return;
       }
+      clearPendingState();
       router.push("/");
       router.refresh();
     } catch {
@@ -99,6 +157,7 @@ export default function LoginPage() {
   }
 
   function reset() {
+    clearPendingState();
     setStage("enter-email");
     setEmail("");
     setOtp("");
@@ -214,10 +273,7 @@ export default function LoginPage() {
               variant="ghost"
               size="sm"
               className="mt-3"
-              onClick={() => {
-                setStage("enter-email");
-                setEmail("");
-              }}
+              onClick={reset}
             >
               Prøv igjen
             </Button>
