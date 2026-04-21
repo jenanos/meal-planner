@@ -26,13 +26,13 @@ export function useAuth() {
 }
 
 const PUBLIC_PATHS = ["/login"];
-const PENDING_LOGIN_KEY = "butta:pending-login";
+const PENDING_KEY = "butta:pending-login";
 
 function clearPendingLoginState() {
   if (typeof window === "undefined") return;
 
   try {
-    window.localStorage.removeItem(PENDING_LOGIN_KEY);
+    window.localStorage.removeItem(PENDING_KEY);
   } catch {
     // ignore storage failures
   }
