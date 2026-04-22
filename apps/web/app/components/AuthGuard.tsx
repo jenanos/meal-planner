@@ -26,6 +26,17 @@ export function useAuth() {
 }
 
 const PUBLIC_PATHS = ["/login"];
+const PENDING_KEY = "butta:pending-login";
+
+function clearPendingLoginState() {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.removeItem(PENDING_KEY);
+  } catch {
+    // ignore storage failures
+  }
+}
 
 export function AuthGuard({
   children,
@@ -69,6 +80,12 @@ function AuthGuardInner({
       router.replace("/login");
     }
   }, [session, isPending, isPublic, router]);
+
+  useEffect(() => {
+    if (session?.user) {
+      clearPendingLoginState();
+    }
+  }, [session]);
 
   // Admin-only route protection
   const isAdminRoute = pathname.startsWith("/admin");
