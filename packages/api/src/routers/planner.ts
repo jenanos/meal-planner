@@ -169,6 +169,16 @@ function toDbViewMode(mode: string | null | undefined) {
   return "BY_DAY";
 }
 
+function toClientDisplayStyle(style: string | null | undefined) {
+  if (style === "GRID") return "grid";
+  return "list";
+}
+
+function toDbDisplayStyle(style: string | null | undefined) {
+  if (style === "grid") return "GRID";
+  return "LIST";
+}
+
 function sanitizeVisibleDayIndices(indices: number[] | null | undefined) {
   const source = Array.isArray(indices) ? indices : [];
   const uniqueSorted = Array.from(
@@ -456,6 +466,7 @@ function serializeShoppingStore(store: {
 function serializeUserPreference(
   preference: {
     defaultViewMode: string | null;
+    defaultDisplayStyle?: string | null;
     startDay: number;
     includeNextWeek: boolean;
     showPantryWithIngredients: boolean;
@@ -466,6 +477,7 @@ function serializeUserPreference(
 ) {
   return {
     defaultViewMode: toClientViewMode(preference.defaultViewMode),
+    defaultDisplayStyle: toClientDisplayStyle(preference.defaultDisplayStyle),
     startDay: Math.min(6, Math.max(0, Number(preference.startDay ?? 0))),
     includeNextWeek: Boolean(preference.includeNextWeek),
     showPantryWithIngredients: Boolean(
@@ -1053,6 +1065,7 @@ export const plannerRouter = router({
         ? serializeUserPreference(preference, fallbackStoreId)
         : {
             defaultViewMode: "by-day" as const,
+            defaultDisplayStyle: "list" as const,
             startDay: 0,
             includeNextWeek: false,
             showPantryWithIngredients: false,
@@ -1094,6 +1107,7 @@ export const plannerRouter = router({
         create: {
           userId,
           defaultViewMode: toDbViewMode(input.defaultViewMode) as any,
+          defaultDisplayStyle: toDbDisplayStyle(input.defaultDisplayStyle) as any,
           startDay: input.startDay,
           includeNextWeek: input.includeNextWeek,
           showPantryWithIngredients: input.showPantryWithIngredients,
@@ -1102,6 +1116,7 @@ export const plannerRouter = router({
         },
         update: {
           defaultViewMode: toDbViewMode(input.defaultViewMode) as any,
+          defaultDisplayStyle: toDbDisplayStyle(input.defaultDisplayStyle) as any,
           startDay: input.startDay,
           includeNextWeek: input.includeNextWeek,
           showPantryWithIngredients: input.showPantryWithIngredients,

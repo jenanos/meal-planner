@@ -41,6 +41,10 @@ import {
   type ShoppingViewMode,
   type ShoppingDisplayStyle,
 } from "../../lib/shopping";
+import {
+  readShoppingSession,
+  writeShoppingSession,
+} from "../../lib/shopping-session";
 
 const EMPTY_ITEMS: ShoppingListItem[] = [];
 const CHECKED_EXTRAS_WINDOW_MS = 5 * 24 * 60 * 60 * 1000;
@@ -54,6 +58,7 @@ type ShoppingStore = {
 
 type ShoppingUserSettings = {
   defaultViewMode: ShoppingViewMode;
+  defaultDisplayStyle: ShoppingDisplayStyle;
   startDay: number;
   includeNextWeek: boolean;
   showPantryWithIngredients: boolean;
@@ -63,6 +68,7 @@ type ShoppingUserSettings = {
 
 const DEFAULT_USER_SETTINGS: ShoppingUserSettings = {
   defaultViewMode: "by-day",
+  defaultDisplayStyle: "list",
   startDay: 0,
   includeNextWeek: false,
   showPantryWithIngredients: false,
@@ -113,6 +119,7 @@ export default function ShoppingListPage() {
     new Set(),
   );
   const previousOptionKeysRef = useRef<string[]>([]);
+  const pendingSessionDayKeysRef = useRef<string[] | null>(null);
   // Extras UI state
   const [isAddExtraOpen, setIsAddExtraOpen] = useState(false);
   const [extraInput, setExtraInput] = useState("");
@@ -144,26 +151,84 @@ export default function ShoppingListPage() {
     setStores(nextStores);
 
     const userSettings = data.settings ?? DEFAULT_USER_SETTINGS;
-    setActiveSettings(userSettings);
 
     const fallbackStoreId =
       userSettings.defaultStoreId ??
       nextStores.find((store) => store.isDefault)?.id ??
       nextStores[0]?.id ??
       null;
-    setSelectedStoreId(fallbackStoreId);
 
     if (!defaultsHydrated) {
-      setViewMode(userSettings.defaultViewMode ?? "by-day");
-      setStartDay(userSettings.startDay ?? 0);
-      setIncludeNextWeek(Boolean(userSettings.includeNextWeek));
-      setShowPantryWithIngredients(
-        Boolean(userSettings.showPantryWithIngredients),
+      const session = readShoppingSession();
+      const sessionStoreId =
+        session && nextStores.some((store) => store.id === session.selectedStoreId)
+          ? session.selectedStoreId
+          : null;
+
+      setViewMode(session?.viewMode ?? userSettings.defaultViewMode ?? "by-day");
+      setDisplayStyle(
+        session?.displayStyle ?? userSettings.defaultDisplayStyle ?? "list",
       );
+      setStartDay(session?.startDay ?? userSettings.startDay ?? 0);
+      setIncludeNextWeek(
+        session
+          ? Boolean(session.includeNextWeek)
+          : Boolean(userSettings.includeNextWeek),
+      );
+      setShowPantryWithIngredients(
+        session
+          ? Boolean(session.showPantryWithIngredients)
+          : Boolean(userSettings.showPantryWithIngredients),
+      );
+      setSelectedStoreId(sessionStoreId ?? fallbackStoreId);
+
+      setActiveSettings(userSettings);
+
+      // When a session exists, queue its day keys (including an intentional
+      // empty selection) for the day-init effect to consume once options load.
+      pendingSessionDayKeysRef.current = session ? session.visibleDayKeys : null;
       setVisibleDayKeys([]);
       setDefaultsHydrated(true);
+    } else {
+      setActiveSettings(userSettings);
+      setSelectedStoreId((current) =>
+        current && nextStores.some((store) => store.id === current)
+          ? current
+          : fallbackStoreId,
+      );
     }
   }, [shoppingSettingsQuery.data, defaultsHydrated]);
+
+  const sessionWriteSeededRef = useRef(false);
+
+  useEffect(() => {
+    if (!defaultsHydrated) return;
+    // Skip the first run after hydration so we don't refresh the 24h timer
+    // when the user merely opened the page without changing anything.
+    if (!sessionWriteSeededRef.current) {
+      sessionWriteSeededRef.current = true;
+      return;
+    }
+
+    writeShoppingSession({
+      viewMode,
+      displayStyle,
+      startDay,
+      includeNextWeek,
+      showPantryWithIngredients,
+      visibleDayKeys,
+      selectedStoreId,
+    });
+  }, [
+    defaultsHydrated,
+    viewMode,
+    displayStyle,
+    startDay,
+    includeNextWeek,
+    showPantryWithIngredients,
+    visibleDayKeys,
+    selectedStoreId,
+  ]);
 
   const shoppingQuery = trpc.planner.shoppingList.useQuery({
     weekStart: activeWeekStart,
@@ -380,6 +445,16 @@ export default function ShoppingListPage() {
       if (optionKeys.length === 0) {
         return [];
       }
+
+      // Consume any pending session keys exactly once. An intentional empty
+      // selection ("Fjern alle") is preserved as-is.
+      if (pendingSessionDayKeysRef.current !== null) {
+        const sessionKeys = pendingSessionDayKeysRef.current;
+        pendingSessionDayKeysRef.current = null;
+        const optionKeySet = new Set(optionKeys);
+        return sessionKeys.filter((key) => optionKeySet.has(key));
+      }
+
       if (prev.length === 0) {
         if (defaultsHydrated) {
           const preferred = new Set(

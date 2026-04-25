@@ -25,6 +25,9 @@ export const ShoppingViewMode = z.enum([
 ]);
 export type ShoppingViewMode = z.infer<typeof ShoppingViewMode>;
 
+export const ShoppingDisplayStyle = z.enum(["list", "grid"]);
+export type ShoppingDisplayStyle = z.infer<typeof ShoppingDisplayStyle>;
+
 export const IngredientCreate = z.object({
   name: z.string().min(1),
   unit: z.string().min(1).optional(),
@@ -171,6 +174,7 @@ export type ExtraShoppingRemove = z.infer<typeof ExtraShoppingRemove>;
 
 export const UserPreferenceUpdate = z.object({
   defaultViewMode: ShoppingViewMode,
+  defaultDisplayStyle: ShoppingDisplayStyle,
   startDay: z.number().int().min(0).max(6),
   includeNextWeek: z.boolean(),
   showPantryWithIngredients: z.boolean(),
