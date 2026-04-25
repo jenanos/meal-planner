@@ -39,6 +39,7 @@ import {
   STANDARD_STORE_CATEGORY_ORDER,
   ingredientCategoryLabel,
   normalizeCategoryOrder,
+  type ShoppingDisplayStyle,
   type ShoppingViewMode,
 } from "../../lib/shopping";
 import { ALL_DAY_NAMES } from "../planner/utils";
@@ -52,6 +53,7 @@ type ShoppingStore = {
 
 type UserSettings = {
   defaultViewMode: ShoppingViewMode;
+  defaultDisplayStyle: ShoppingDisplayStyle;
   startDay: number;
   includeNextWeek: boolean;
   showPantryWithIngredients: boolean;
@@ -92,6 +94,7 @@ export default function SettingsPage() {
   const { user } = useAuth();
   const [settings, setSettings] = useState<UserSettings>({
     defaultViewMode: "by-day",
+    defaultDisplayStyle: "list",
     startDay: 0,
     includeNextWeek: false,
     showPantryWithIngredients: false,
@@ -176,6 +179,7 @@ export default function SettingsPage() {
   async function saveSettings() {
     await updateSettingsMutation.mutateAsync({
       defaultViewMode: settings.defaultViewMode,
+      defaultDisplayStyle: settings.defaultDisplayStyle,
       startDay: settings.startDay,
       includeNextWeek: settings.includeNextWeek,
       showPantryWithIngredients: settings.showPantryWithIngredients,
@@ -296,6 +300,36 @@ export default function SettingsPage() {
                 onClick={() =>
                   patchSettings({
                     defaultViewMode: option.id as ShoppingViewMode,
+                  })
+                }
+              >
+                {option.label}
+              </Button>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <h3 className="font-medium text-xs text-muted-foreground uppercase tracking-wider">
+            Listeformat
+          </h3>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { id: "list", label: "Liste" },
+              { id: "grid", label: "Rutenett" },
+            ].map((option) => (
+              <Button
+                key={option.id}
+                type="button"
+                variant={
+                  settings.defaultDisplayStyle === option.id
+                    ? "default"
+                    : "outline"
+                }
+                size="sm"
+                onClick={() =>
+                  patchSettings({
+                    defaultDisplayStyle: option.id as ShoppingDisplayStyle,
                   })
                 }
               >

@@ -42,6 +42,11 @@ enum ShoppingViewMode {
   BY_CATEGORY
 }
 
+enum ShoppingDisplayStyle {
+  LIST
+  GRID
+}
+
 enum HouseholdRole {
   OWNER
   MEMBER
@@ -170,15 +175,16 @@ model HouseholdInvitation {
 // ─── User preferences (replaces device/role-based ShoppingPreference) ───
 
 model UserPreference {
-  userId                    String           @id
-  defaultViewMode           ShoppingViewMode @default(BY_DAY)
-  startDay                  Int              @default(0)
-  includeNextWeek           Boolean          @default(false)
-  showPantryWithIngredients Boolean          @default(false)
-  visibleDayIndices         Int[]            @default([0, 1, 2, 3, 4, 5, 6])
-  defaultStoreId            String?          @db.Uuid
-  createdAt                 DateTime         @default(now())
-  updatedAt                 DateTime         @updatedAt
+  userId                    String               @id
+  defaultViewMode           ShoppingViewMode     @default(BY_DAY)
+  defaultDisplayStyle       ShoppingDisplayStyle @default(LIST)
+  startDay                  Int                  @default(0)
+  includeNextWeek           Boolean              @default(false)
+  showPantryWithIngredients Boolean              @default(false)
+  visibleDayIndices         Int[]                @default([0, 1, 2, 3, 4, 5, 6])
+  defaultStoreId            String?              @db.Uuid
+  createdAt                 DateTime             @default(now())
+  updatedAt                 DateTime             @updatedAt
 
   user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   defaultStore ShoppingStore? @relation(fields: [defaultStoreId], references: [id], onDelete: SetNull)
