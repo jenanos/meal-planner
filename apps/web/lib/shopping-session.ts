@@ -14,7 +14,7 @@ export type ShoppingSessionState = {
   startDay: number;
   includeNextWeek: boolean;
   showPantryWithIngredients: boolean;
-  visibleDayIndices: number[];
+  visibleDayKeys: string[];
   selectedStoreId: string | null;
 };
 
@@ -34,14 +34,26 @@ function isDisplayStyle(value: unknown): value is ShoppingDisplayStyle {
   );
 }
 
-function sanitizeDayIndices(value: unknown): number[] {
+function sanitizeDayKeys(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  const unique = new Set<number>();
+  const unique: string[] = [];
+  const seen = new Set<string>();
   for (const entry of value) {
-    const n = Number(entry);
-    if (Number.isInteger(n) && n >= 0 && n <= 6) unique.add(n);
+    if (typeof entry !== "string") continue;
+    if (seen.has(entry)) continue;
+    seen.add(entry);
+    unique.push(entry);
   }
-  return Array.from(unique).sort((a, b) => a - b);
+  return unique;
+}
+
+function clearStorage() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // Ignore
+  }
 }
 
 export function readShoppingSession(): ShoppingSessionState | null {
@@ -50,20 +62,29 @@ export function readShoppingSession(): ShoppingSessionState | null {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<StoredSession> | null;
-    if (!parsed || typeof parsed !== "object") return null;
+    if (!parsed || typeof parsed !== "object") {
+      clearStorage();
+      return null;
+    }
 
     const savedAt = Number(parsed.savedAt);
     if (!Number.isFinite(savedAt)) {
-      window.localStorage.removeItem(STORAGE_KEY);
+      clearStorage();
       return null;
     }
     if (Date.now() - savedAt > SHOPPING_SESSION_TTL_MS) {
-      window.localStorage.removeItem(STORAGE_KEY);
+      clearStorage();
       return null;
     }
 
-    if (!isViewMode(parsed.viewMode)) return null;
-    if (!isDisplayStyle(parsed.displayStyle)) return null;
+    if (!isViewMode(parsed.viewMode)) {
+      clearStorage();
+      return null;
+    }
+    if (!isDisplayStyle(parsed.displayStyle)) {
+      clearStorage();
+      return null;
+    }
 
     const startDay = Math.min(
       6,
@@ -76,11 +97,12 @@ export function readShoppingSession(): ShoppingSessionState | null {
       startDay,
       includeNextWeek: Boolean(parsed.includeNextWeek),
       showPantryWithIngredients: Boolean(parsed.showPantryWithIngredients),
-      visibleDayIndices: sanitizeDayIndices(parsed.visibleDayIndices),
+      visibleDayKeys: sanitizeDayKeys(parsed.visibleDayKeys),
       selectedStoreId:
         typeof parsed.selectedStoreId === "string" ? parsed.selectedStoreId : null,
     };
   } catch {
+    clearStorage();
     return null;
   }
 }
@@ -96,10 +118,5 @@ export function writeShoppingSession(state: ShoppingSessionState) {
 }
 
 export function clearShoppingSession() {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // Ignore
-  }
+  clearStorage();
 }

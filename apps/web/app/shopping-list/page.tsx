@@ -119,6 +119,7 @@ export default function ShoppingListPage() {
     new Set(),
   );
   const previousOptionKeysRef = useRef<string[]>([]);
+  const pendingSessionDayKeysRef = useRef<string[] | null>(null);
   // Extras UI state
   const [isAddExtraOpen, setIsAddExtraOpen] = useState(false);
   const [extraInput, setExtraInput] = useState("");
@@ -181,17 +182,11 @@ export default function ShoppingListPage() {
       );
       setSelectedStoreId(sessionStoreId ?? fallbackStoreId);
 
-      // When a session exists, prefer its day selection so that visibleDayKeys
-      // hydrates from the session indices rather than the user's defaults.
-      if (session && session.visibleDayIndices.length > 0) {
-        setActiveSettings({
-          ...userSettings,
-          visibleDayIndices: session.visibleDayIndices,
-        });
-      } else {
-        setActiveSettings(userSettings);
-      }
+      setActiveSettings(userSettings);
 
+      // When a session exists, queue its day keys (including an intentional
+      // empty selection) for the day-init effect to consume once options load.
+      pendingSessionDayKeysRef.current = session ? session.visibleDayKeys : null;
       setVisibleDayKeys([]);
       setDefaultsHydrated(true);
     } else {
@@ -215,21 +210,13 @@ export default function ShoppingListPage() {
       return;
     }
 
-    const visibleDayIndices = Array.from(
-      new Set(
-        visibleDayKeys
-          .map((key) => Number(key.split("::")[1]))
-          .filter((value) => Number.isInteger(value)),
-      ),
-    ).sort((a, b) => a - b);
-
     writeShoppingSession({
       viewMode,
       displayStyle,
       startDay,
       includeNextWeek,
       showPantryWithIngredients,
-      visibleDayIndices,
+      visibleDayKeys,
       selectedStoreId,
     });
   }, [
@@ -458,6 +445,16 @@ export default function ShoppingListPage() {
       if (optionKeys.length === 0) {
         return [];
       }
+
+      // Consume any pending session keys exactly once. An intentional empty
+      // selection ("Fjern alle") is preserved as-is.
+      if (pendingSessionDayKeysRef.current !== null) {
+        const sessionKeys = pendingSessionDayKeysRef.current;
+        pendingSessionDayKeysRef.current = null;
+        const optionKeySet = new Set(optionKeys);
+        return sessionKeys.filter((key) => optionKeySet.has(key));
+      }
+
       if (prev.length === 0) {
         if (defaultsHydrated) {
           const preferred = new Set(
