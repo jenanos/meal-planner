@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TRPCError } from "@trpc/server";
+import { Prisma } from "@repo/database";
 
 const { recipeModel, DecimalStub } = vi.hoisted(() => {
   class DecimalMock {
@@ -33,7 +34,6 @@ vi.mock("@repo/database", () => ({
 }));
 
 import { recipeRouter } from "../src/routers/recipe";
-import { Prisma } from "@repo/database";
 
 const HOUSEHOLD_ID = "00000000-0000-0000-0000-000000000100";
 const USER = {
@@ -215,7 +215,7 @@ describe("recipe router", () => {
           create: [
             {
               notes: "hakket",
-              quantity: new Prisma.Decimal("2"),
+              quantity: "2",
               ingredient: {
                 connectOrCreate: {
                   where: { name: "Løk" },
@@ -308,7 +308,7 @@ describe("recipe router", () => {
           create: [
             {
               notes: null,
-              quantity: new Prisma.Decimal("1"),
+              quantity: "1",
               ingredient: {
                 connectOrCreate: {
                   where: { name: "Tomat" },
@@ -412,7 +412,7 @@ describe("recipe router", () => {
           create: [
             {
               notes: null,
-              quantity: new Prisma.Decimal("2"),
+              quantity: "2",
               ingredient: {
                 connectOrCreate: {
                   where: { name: "Tomat" },
@@ -462,18 +462,15 @@ describe("recipe router", () => {
     expect(result).toEqual({ id: "rec6", usageCount: 5, lastUsed });
   });
 
-  it("patches selected fields and converts missing recipes to NOT_FOUND", async () => {
-    recipeModel.update
-      .mockResolvedValueOnce({
-        id: "rec7",
-        category: "VEGETAR",
-        healthScore: 5,
-        everydayScore: 4,
-      })
-      .mockRejectedValueOnce({ code: "P2025" });
+  it("patches selected recipe fields", async () => {
+    recipeModel.update.mockResolvedValueOnce({
+      id: "rec7",
+      category: "VEGETAR",
+      healthScore: 5,
+      everydayScore: 4,
+    });
 
-    const caller = createCaller();
-    const patched = await caller.patchField({
+    const patched = await createCaller().patchField({
       id: "00000000-0000-0000-0000-000000000078",
       category: "VEGETAR",
       healthScore: 5,
@@ -489,7 +486,12 @@ describe("recipe router", () => {
       healthScore: 5,
       everydayScore: 4,
     });
+  });
 
+  it("returns NOT_FOUND when patching a missing recipe", async () => {
+    recipeModel.update.mockRejectedValueOnce({ code: "P2025" });
+
+    const caller = createCaller();
     await expect(
       caller.patchField({
         id: "00000000-0000-0000-0000-000000000079",

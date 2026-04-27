@@ -282,16 +282,8 @@ describe("ingredient router", () => {
     ]);
   });
 
-  it("finds potential duplicate ingredients and skips empty normalized names", async () => {
+  it("finds potential duplicate ingredients", async () => {
     prismaMock.ingredient.findMany.mockResolvedValueOnce([
-      {
-        id: "00000000-0000-0000-0000-000000000009",
-        name: "!!!",
-        unit: "stk",
-        isPantryItem: false,
-        category: "ANNET",
-        _count: { recipes: 0 },
-      },
       {
         id: "00000000-0000-0000-0000-000000000010",
         name: "Løk",
@@ -336,6 +328,40 @@ describe("ingredient router", () => {
         },
       ],
     ]);
+  });
+
+  it("skips ingredients whose normalized duplicate key is empty", async () => {
+    prismaMock.ingredient.findMany.mockResolvedValueOnce([
+      {
+        id: "00000000-0000-0000-0000-000000000009",
+        name: "!!!",
+        unit: "stk",
+        isPantryItem: false,
+        category: "ANNET",
+        _count: { recipes: 0 },
+      },
+      {
+        id: "00000000-0000-0000-0000-000000000010",
+        name: "Løk",
+        unit: "stk",
+        isPantryItem: false,
+        category: "GRONNSAKER",
+        _count: { recipes: 2 },
+      },
+      {
+        id: "00000000-0000-0000-0000-000000000011",
+        name: "Løk, rød",
+        unit: "stk",
+        isPantryItem: false,
+        category: "GRONNSAKER",
+        _count: { recipes: 3 },
+      },
+    ]);
+
+    const result = await createCaller().listPotentialDuplicates();
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toHaveLength(2);
   });
 
   it("lists ingredients whose normalized category is ANNET", async () => {
