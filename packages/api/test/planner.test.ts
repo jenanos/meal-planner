@@ -100,7 +100,7 @@ describe("planner heuristics", () => {
     expect(counts.STORFE).toBe(4);
   });
 
-  it("throws when there are not enough unique recipes", () => {
+  it("falls back to duplicate recipes when there are not enough unique recipes", () => {
     const recipes = [
       { id: "1", diet: "MEAT" },
       { id: "2", diet: "MEAT" },
@@ -110,9 +110,10 @@ describe("planner heuristics", () => {
       { id: "6", diet: "VEG" },
     ];
 
-    expect(() => selectRecipes(recipes, {})).toThrowError(
-      /No recipes available/
-    );
+    const plan = selectRecipes(recipes, {});
+
+    expect(plan).toHaveLength(7);
+    expect(new Set(plan.map((recipe) => recipe.id)).size).toBeLessThan(7);
   });
 
   it("respects english aliases in targets", () => {

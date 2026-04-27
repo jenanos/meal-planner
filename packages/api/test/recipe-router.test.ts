@@ -35,7 +35,22 @@ vi.mock("@repo/database", () => ({
 import { recipeRouter } from "../src/routers/recipe";
 import { Prisma } from "@repo/database";
 
-const createCaller = () => recipeRouter.createCaller({});
+const HOUSEHOLD_ID = "00000000-0000-0000-0000-000000000100";
+const USER = {
+  id: "00000000-0000-0000-0000-000000000101",
+  email: "user@example.com",
+  name: "Test User",
+  role: "USER" as const,
+};
+
+const createCaller = (
+  ctx: Partial<{ user: typeof USER | null; householdId: string | null }> = {}
+) =>
+  recipeRouter.createCaller({
+    user: USER,
+    householdId: HOUSEHOLD_ID,
+    ...ctx,
+  });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -76,11 +91,14 @@ describe("recipe router", () => {
     expect(recipeModel.count).toHaveBeenCalledWith({
       where: {
         category: "FISK",
-        name: { contains: "suppe" },
+        name: { contains: "suppe", mode: "insensitive" },
       },
     });
     expect(recipeModel.findMany).toHaveBeenCalledWith({
-      where: { category: "FISK", name: { contains: "suppe" } },
+      where: {
+        category: "FISK",
+        name: { contains: "suppe", mode: "insensitive" },
+      },
       orderBy: { createdAt: "desc" },
       skip: 2,
       take: 2,
@@ -442,5 +460,47 @@ describe("recipe router", () => {
       data: { usageCount: { increment: 1 }, lastUsed: expect.any(Date) },
     });
     expect(result).toEqual({ id: "rec6", usageCount: 5, lastUsed });
+  });
+
+  it("patches selected fields and converts missing recipes to NOT_FOUND", async () => {
+    recipeModel.update
+      .mockResolvedValueOnce({
+        id: "rec7",
+        category: "VEGETAR",
+        healthScore: 5,
+        everydayScore: 4,
+      })
+      .mockRejectedValueOnce({ code: "P2025" });
+
+    const caller = createCaller();
+    const patched = await caller.patchField({
+      id: "00000000-0000-0000-0000-000000000078",
+      category: "VEGETAR",
+      healthScore: 5,
+    });
+
+    expect(recipeModel.update).toHaveBeenNthCalledWith(1, {
+      where: { id: "00000000-0000-0000-0000-000000000078" },
+      data: { category: "VEGETAR", healthScore: 5 },
+    });
+    expect(patched).toEqual({
+      id: "rec7",
+      category: "VEGETAR",
+      healthScore: 5,
+      everydayScore: 4,
+    });
+
+    await expect(
+      caller.patchField({
+        id: "00000000-0000-0000-0000-000000000079",
+        everydayScore: 2,
+      })
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("requires authentication and household membership", async () => {
+    await expect(
+      createCaller({ user: null, householdId: null }).list({})
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 });
