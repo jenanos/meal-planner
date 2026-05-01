@@ -79,8 +79,10 @@ function isAuthorized(req: Request): boolean {
   if (!mcpBearerToken) return true;
   const header = req.headers.authorization;
   if (typeof header !== "string") return false;
-  if (!header.startsWith("Bearer ")) return false;
-  const token = header.slice("Bearer ".length).trim();
+  const spaceIndex = header.indexOf(" ");
+  if (spaceIndex === -1) return false;
+  if (header.slice(0, spaceIndex).toLowerCase() !== "bearer") return false;
+  const token = header.slice(spaceIndex + 1).trim();
   if (!token) return false;
   return timingSafeStringEqual(token, mcpBearerToken);
 }
