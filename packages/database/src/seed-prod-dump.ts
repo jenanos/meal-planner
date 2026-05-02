@@ -1,5 +1,5 @@
-import { prisma } from "./client";
-import { importProdDump } from "./prod-dump-import";
+import { prisma } from "./client.js";
+import { importProdDump } from "./prod-dump-import.js";
 
 function parseArgs(argv: string[]) {
   let dumpPath: string | null = null;
