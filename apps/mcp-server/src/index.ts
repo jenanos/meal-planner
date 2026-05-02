@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { timingSafeEqual } from "node:crypto";
 import type { Request, Response } from "express";
 import { createTRPCProxyClient, httpBatchLink } from "@trpc/client";
 import {
@@ -36,6 +37,7 @@ const mealsApiOrigin =
   "http://localhost:4000";
 
 const mcpApiKey = process.env.MCP_API_KEY?.trim() || null;
+const mcpBearerToken = process.env.MCP_BEARER_TOKEN?.trim() || null;
 
 const trpcUrl = new URL("/trpc", mealsApiOrigin).toString();
 
@@ -56,6 +58,34 @@ const methodNotAllowedResponse = {
   },
   id: null,
 };
+
+const unauthorizedResponse = {
+  jsonrpc: "2.0",
+  error: {
+    code: -32001,
+    message: "Unauthorized.",
+  },
+  id: null,
+};
+
+function timingSafeStringEqual(candidate: string, expected: string): boolean {
+  const a = Buffer.from(candidate);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
+function isAuthorized(req: Request): boolean {
+  if (!mcpBearerToken) return true;
+  const header = req.headers.authorization;
+  if (typeof header !== "string") return false;
+  const spaceIndex = header.indexOf(" ");
+  if (spaceIndex === -1) return false;
+  if (header.slice(0, spaceIndex).toLowerCase() !== "bearer") return false;
+  const token = header.slice(spaceIndex + 1).trim();
+  if (!token) return false;
+  return timingSafeStringEqual(token, mcpBearerToken);
+}
 
 const formatToolError = (error: unknown, context: string): CallToolResult => {
   const message = error instanceof Error ? error.message : String(error);
@@ -981,6 +1011,11 @@ const app = createMcpExpressApp({
 });
 
 app.post("/mcp", async (req: Request, res: Response) => {
+  if (!isAuthorized(req)) {
+    res.status(401).json(unauthorizedResponse);
+    return;
+  }
+
   try {
     const server = buildServer();
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
@@ -1028,6 +1063,19 @@ httpServer.on("error", (error: NodeJS.ErrnoException) => {
 httpServer.listen(port, () => {
   console.log(`Meal Planner MCP server listening on port ${port}`);
   console.log(`Using meals API origin: ${mealsApiOrigin}`);
+  if (mcpBearerToken) {
+    console.log("MCP bearer token enabled: /mcp requires Authorization: Bearer <token>");
+  } else {
+    console.warn(
+      "MCP bearer token NOT set. /mcp accepts unauthenticated requests — " +
+        "rely on an external gate (e.g. Cloudflare Access) or set MCP_BEARER_TOKEN.",
+    );
+  }
+  if (!mcpApiKey) {
+    console.warn(
+      "MCP_API_KEY is not set. tRPC calls to the meals API will fail with UNAUTHORIZED.",
+    );
+  }
 });
 
 const gracefulShutdown = (signal: string) => {

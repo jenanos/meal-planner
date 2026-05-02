@@ -45,10 +45,25 @@ Environment variables:
 
 - `MEALS_API_INTERNAL_ORIGIN` – base URL for the Meal Planner API (default: `http://localhost:4000`).
 - `PORT` – port to expose the MCP server (default: `5050`).
-- `MCP_API_KEY` – shared secret sent as `x-api-key` to the Meal Planner API for service-to-service auth. Must match `MCP_API_KEY` in `apps/server/.env`. Generate with `openssl rand -base64 32`.
+- `MCP_API_KEY` – shared secret sent as `x-api-key` to the Meal Planner API for service-to-service auth. Must match `MCP_API_KEY` in `apps/server/.env`. Generate with `openssl rand -base64 32`. Without it the API rejects every MCP call as `UNAUTHORIZED`.
+- `MCP_BEARER_TOKEN` – optional. When set, every incoming `/mcp` request must include `Authorization: Bearer <token>`. When empty, `/mcp` is open to anyone who can reach the container, so an external gate (Cloudflare Access, mTLS, VPN) is required.
 - `MCP_ALLOWED_HOSTS` – optional comma-separated list of `Host` headers accepted by the server (DNS rebinding protection). Example: `meals-mcp.example.com,meals-mcp:5050,localhost:5050`.
 
-All tool calls run as the bootstrap household configured on the Meal Planner API (see `BOOTSTRAP_HOUSEHOLD_*` in the server env).
+## Auth, identity, and which household the tools touch
+
+The MCP server has no concept of users. It opens one anonymous tRPC client to `meals-api` and forwards every tool call with the shared `MCP_API_KEY`. On the API side that key is recognised in `createContext` and produces a synthetic context:
+
+- `user.id = "service:mcp"`, `user.role = "USER"` – not stored in the `User` table; only lives inside the tRPC context.
+- `householdId` is resolved by `resolveServiceHouseholdId()`:
+  1. The household whose name equals `BOOTSTRAP_HOUSEHOLD_NAME` (recommended).
+  2. Otherwise, the oldest household in the database (fallback — only deterministic while you have one household).
+
+Because of this:
+
+- All `planner.*`-backed tools (`get-week-plan`, `save-week-plan`, `get-shopping-list`, `update-shopping-item`, `extra-*`, …) read and write data scoped to that single household.
+- `recipe.*` and `ingredient.*` are **not** household-scoped in this codebase. They are global, so any change MCP makes there is visible to every household in the same database.
+
+To make this deterministic in production, set `BOOTSTRAP_HOUSEHOLD_NAME` (and at least one of the bootstrap email lists) on the API server.
 
 ## Local development
 
@@ -66,3 +81,30 @@ pnpm --filter mcp-server start
 ## Deployment notes
 
 When running in Docker Compose, point `MEALS_API_INTERNAL_ORIGIN` at the `meals-api` service (for example `http://meals-api:4000`) and expose the MCP server at `/mcp` on the container port. Set `MCP_API_KEY` to the same value configured on `meals-api`, and set `MCP_ALLOWED_HOSTS` to include the public domain and the internal compose service name (e.g. `meals-mcp.example.com,meals-mcp:5050`).
+
+For public deployments, gate `/mcp` with at least one of:
+
+- An external auth layer (Cloudflare Access, mTLS, VPN), **or**
+- `MCP_BEARER_TOKEN`. Clients then send `Authorization: Bearer <token>` on every request.
+
+Both can be combined.
+
+## Connecting a client
+
+Example for an MCP client that supports a Streamable HTTP server with custom headers:
+
+```jsonc
+{
+  "mcpServers": {
+    "meal-planner": {
+      "url": "https://meals-mcp.example.com/mcp",
+      "transport": "streamable-http",
+      "headers": {
+        "Authorization": "Bearer <MCP_BEARER_TOKEN>"
+      }
+    }
+  }
+}
+```
+
+If you protect the endpoint with Cloudflare Access service tokens instead, replace the bearer header with `CF-Access-Client-Id` / `CF-Access-Client-Secret`.
