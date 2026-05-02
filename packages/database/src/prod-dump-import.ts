@@ -1,10 +1,10 @@
 import { createHash } from "crypto";
 import { readFile } from "fs/promises";
-import { prisma } from "./client";
+import { prisma } from "./client.js";
 import {
   deriveDisplayNameFromEmail,
   getBootstrapConfigFromEnv,
-} from "./bootstrap";
+} from "./bootstrap.js";
 
 const DEFAULT_MIGRATED_HOUSEHOLD_NAME = "Migrert prod-husholdning";
 

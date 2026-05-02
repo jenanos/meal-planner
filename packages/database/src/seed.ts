@@ -1,7 +1,7 @@
-import { Prisma, prisma } from "./client";
-import { ensureBootstrapState, getBootstrapConfigFromEnv } from "./bootstrap";
-import { importProdDump } from "./prod-dump-import";
-import { EXTRA_CATALOG, INGREDIENTS, RECIPES } from "./seed-data";
+import { Prisma, prisma } from "./client.js";
+import { ensureBootstrapState, getBootstrapConfigFromEnv } from "./bootstrap.js";
+import { importProdDump } from "./prod-dump-import.js";
+import { EXTRA_CATALOG, INGREDIENTS, RECIPES } from "./seed-data.js";
 
 function daysAgo(n: number) {
   const d = new Date();

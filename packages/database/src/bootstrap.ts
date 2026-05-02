@@ -1,5 +1,5 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
-import { prisma } from "./client";
+import { prisma } from "./client.js";
 
 const STANDARD_STORE_CATEGORY_ORDER = [
   "FRUKT_OG_GRONT",
