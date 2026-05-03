@@ -101,6 +101,10 @@ describe("freezer router", () => {
   });
 
   it("upserts items with computed expiry dates", async () => {
+    const frozenAt = new Date("2024-01-15T00:00:00.000Z");
+    const expectedExpiresAt = new Date(frozenAt);
+    expectedExpiresAt.setMonth(expectedExpiresAt.getMonth() + 4);
+
     prismaMock.recipe.findUniqueOrThrow.mockResolvedValueOnce({
       id: "00000000-0000-0000-0000-000000000203",
       name: "Kyllinggryte",
@@ -110,8 +114,8 @@ describe("freezer router", () => {
       id: "00000000-0000-0000-0000-000000000002",
       recipeId: "00000000-0000-0000-0000-000000000203",
       quantity: 3,
-      frozenAt: new Date("2024-01-15T00:00:00.000Z"),
-      expiresAt: new Date("2024-05-15T00:00:00.000Z"),
+      frozenAt,
+      expiresAt: expectedExpiresAt,
       recipe: {
         id: "00000000-0000-0000-0000-000000000203",
         name: "Kyllinggryte",
@@ -138,14 +142,14 @@ describe("freezer router", () => {
       },
       update: {
         quantity: 3,
-        frozenAt: new Date("2024-01-15T00:00:00.000Z"),
+        frozenAt,
       },
       create: {
         recipeId: "00000000-0000-0000-0000-000000000203",
         householdId: HOUSEHOLD_ID,
         quantity: 3,
-        frozenAt: new Date("2024-01-15T00:00:00.000Z"),
-        expiresAt: new Date("2024-05-15T00:00:00.000Z"),
+        frozenAt,
+        expiresAt: expectedExpiresAt,
       },
       include: { recipe: { select: { id: true, name: true, category: true } } },
     });
@@ -156,7 +160,7 @@ describe("freezer router", () => {
       recipeCategory: "KYLLING",
       quantity: 3,
       frozenAt: "2024-01-15T00:00:00.000Z",
-      expiresAt: "2024-05-15T00:00:00.000Z",
+      expiresAt: expectedExpiresAt.toISOString(),
     });
   });
 
@@ -290,7 +294,10 @@ describe("freezer router", () => {
 
   it("increments freezer items and computes default expiry", async () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date("2024-03-10T00:00:00.000Z"));
+    const frozenAt = new Date("2024-03-10T00:00:00.000Z");
+    const expectedExpiresAt = new Date(frozenAt);
+    expectedExpiresAt.setMonth(expectedExpiresAt.getMonth() + 2);
+    vi.setSystemTime(frozenAt);
 
     prismaMock.recipe.findUniqueOrThrow.mockResolvedValueOnce({
       id: "00000000-0000-0000-0000-000000000209",
@@ -319,8 +326,8 @@ describe("freezer router", () => {
         recipeId: "00000000-0000-0000-0000-000000000209",
         householdId: HOUSEHOLD_ID,
         quantity: 1,
-        frozenAt: new Date("2024-03-10T00:00:00.000Z"),
-        expiresAt: new Date("2024-05-10T00:00:00.000Z"),
+        frozenAt,
+        expiresAt: expectedExpiresAt,
       },
     });
     expect(result).toEqual({
