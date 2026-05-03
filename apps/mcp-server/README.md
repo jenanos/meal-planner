@@ -1,6 +1,8 @@
 # Meal Planner MCP Server
 
-This service exposes a Model Context Protocol (MCP) server that maps MCP tools to the Meal Planner tRPC API. It is designed to run alongside the existing `meals-api` container and lets MCP clients (including ChatGPT) read and update weekly plans.
+This service exposes a Model Context Protocol (MCP) server that maps MCP tools to the Meal Planner tRPC API. It is designed to run alongside the existing `meals-api` container and lets MCP clients (including ChatGPT and Claude) read and update weekly plans.
+
+The server includes its own OAuth 2.1 + PKCE authorization server so that clients which only support OAuth (such as ChatGPT custom connectors) can connect without a static bearer token. User authentication is delegated to the existing better-auth setup on the meals web app — the MCP server validates the shared session cookie via the meals API and then issues its own JWT access tokens.
 
 ## Features
 
@@ -41,58 +43,48 @@ Copy the sample environment file and adjust as needed:
 cp .env.example .env
 ```
 
-Environment variables:
+Required environment variables:
 
-- `MEALS_API_INTERNAL_ORIGIN` – base URL for the Meal Planner API (default: `http://localhost:4000`).
-- `PORT` – port to expose the MCP server (default: `5050`).
-- `DATABASE_URL` – required. The MCP server itself never queries Postgres, but importing `@repo/api` transitively loads `@repo/database`, whose client module validates `DATABASE_URL` at module load and throws when it is unset (the Prisma client is constructed only after that check passes). Point it at the same Postgres instance as `meals-api`; the connection is lazy and never opened in practice.
-- `MCP_API_KEY` – shared secret sent as `x-api-key` to the Meal Planner API for service-to-service auth. Must match `MCP_API_KEY` in `apps/server/.env`. Generate with `openssl rand -base64 32`. Without it the API rejects every MCP call as `UNAUTHORIZED`.
-- `MCP_BEARER_TOKEN` – optional. When set, every incoming `/mcp` request must include `Authorization: Bearer <token>`. When empty, `/mcp` is open to anyone who can reach the container, so an external gate (Cloudflare Access, mTLS, VPN) is required.
-- `MCP_ALLOWED_HOSTS` – optional comma-separated list of `Host` headers accepted by the server (DNS rebinding protection). Example: `meals-mcp.example.com,meals-mcp:5050,localhost:5050`.
+- `MEALS_API_INTERNAL_ORIGIN` – base URL for the Meal Planner API. Used for both forwarded tRPC calls and for validating better-auth sessions during the OAuth login flow (the MCP server calls `${MEALS_API_INTERNAL_ORIGIN}/auth/get-session`). Default: `http://localhost:4000`.
+- `DATABASE_URL` – Postgres connection string. The MCP server uses this for OAuth provider state (clients, codes, refresh tokens). Point it at the same instance as `meals-api`.
+- `MCP_API_KEY` – shared secret sent as `x-api-key` to the Meal Planner API for service-to-service auth. Must match `MCP_API_KEY` in `apps/server/.env`. Generate with `openssl rand -base64 32`.
+- `MCP_OAUTH_ISSUER` – public origin of this MCP server, e.g. `https://meals-mcp.example.com`. Used as the OAuth issuer in tokens and discovery metadata.
+- `MCP_OAUTH_SIGNING_SECRET` – HMAC secret used to sign JWT access tokens. Generate with `openssl rand -base64 64`.
+- `MCP_OAUTH_LOGIN_URL` – public URL of the meals web app's login page. Unauthenticated `/oauth/authorize` requests are redirected here with `?callbackUrl=…`.
 
-## Auth, identity, and which household the tools touch
+Optional:
 
-The MCP server has no concept of users. It opens one anonymous tRPC client to `meals-api` and forwards every tool call with the shared `MCP_API_KEY`. On the API side that key is recognised in `createContext` and produces a synthetic context:
+- `MCP_OAUTH_ACCESS_TOKEN_TTL` – access token lifetime in seconds. Default: `3600` (1 hour).
+- `MCP_OAUTH_REFRESH_TOKEN_TTL` – refresh token lifetime in seconds. Default: `2592000` (30 days).
+- `PORT` – port to expose the MCP server. Default: `5050`.
+- `MCP_ALLOWED_HOSTS` – comma-separated list of `Host` headers accepted by the server (DNS rebinding protection).
 
-- `user.id = "service:mcp"`, `user.role = "USER"` – not stored in the `User` table; only lives inside the tRPC context.
-- `householdId` is resolved by `resolveServiceHouseholdId()`:
-  1. The household whose name equals `BOOTSTRAP_HOUSEHOLD_NAME` (recommended).
-  2. Otherwise, the oldest household in the database (fallback — only deterministic while you have one household).
+## OAuth flow overview
 
-Because of this:
+The MCP server hosts a complete OAuth 2.1 authorization server with PKCE and Dynamic Client Registration:
 
-- All `planner.*`-backed tools (`get-week-plan`, `save-week-plan`, `get-shopping-list`, `update-shopping-item`, `extra-*`, …) read and write data scoped to that single household.
-- `recipe.*` and `ingredient.*` are **not** household-scoped in this codebase. They are global, so any change MCP makes there is visible to every household in the same database.
+| Endpoint                                          | Purpose                                  |
+| ------------------------------------------------- | ---------------------------------------- |
+| `GET /.well-known/oauth-authorization-server`     | RFC 8414 metadata (auth + token URLs)    |
+| `GET /.well-known/oauth-protected-resource`       | RFC 9728 resource metadata               |
+| `POST /oauth/register`                            | RFC 7591 Dynamic Client Registration     |
+| `GET /oauth/authorize`                            | Authorization endpoint (PKCE S256 only)  |
+| `POST /oauth/token`                               | Token endpoint (`authorization_code`, `refresh_token`) |
+| `POST /mcp`                                       | Protected MCP endpoint (`Authorization: Bearer <jwt>`) |
 
-To make this deterministic in production, set `BOOTSTRAP_HOUSEHOLD_NAME` (and at least one of the bootstrap email lists) on the API server.
+When a client hits `/oauth/authorize` without a valid better-auth session cookie, the server redirects to `MCP_OAUTH_LOGIN_URL?callbackUrl=…`. The web app's login page authenticates the user (magic link or OTP via better-auth) and sends them back to `/oauth/authorize`, which then issues an authorization code. Token exchange validates PKCE and returns a JWT access token plus a rotating opaque refresh token.
 
-## Local development
+For the cookie share to work, better-auth on `meals-api` must be configured with `BETTER_AUTH_COOKIE_DOMAIN` set to the parent domain (e.g. `.jenanos.xyz`).
 
-```bash
-pnpm --filter mcp-server dev
-```
+## Connecting from ChatGPT
 
-## Build & start
+1. In ChatGPT → "Ny app" → set the URL to `https://<your-mcp-host>/mcp`.
+2. Choose **OAuth** as authentication.
+3. Use **dynamic client registration** — once ChatGPT discovers `registration_endpoint` in the metadata it can register itself with no manual client_id needed.
 
-```bash
-pnpm --filter mcp-server build
-pnpm --filter mcp-server start
-```
+ChatGPT will register itself, redirect you to the meals web app to log in, then come back and complete the token exchange.
 
-## Deployment notes
-
-When running in Docker Compose, point `MEALS_API_INTERNAL_ORIGIN` at the `meals-api` service (for example `http://meals-api:4000`) and expose the MCP server at `/mcp` on the container port. Set `MCP_API_KEY` to the same value configured on `meals-api`, and set `MCP_ALLOWED_HOSTS` to include the public domain and the internal compose service name (e.g. `meals-mcp.example.com,meals-mcp:5050`).
-
-For public deployments, gate `/mcp` with at least one of:
-
-- An external auth layer (Cloudflare Access, mTLS, VPN), **or**
-- `MCP_BEARER_TOKEN`. Clients then send `Authorization: Bearer <token>` on every request.
-
-Both can be combined.
-
-## Connecting a client
-
-Example for an MCP client that supports a Streamable HTTP server with custom headers:
+## Connecting from Claude (or other MCP clients)
 
 ```jsonc
 {
@@ -100,12 +92,45 @@ Example for an MCP client that supports a Streamable HTTP server with custom hea
     "meal-planner": {
       "url": "https://meals-mcp.example.com/mcp",
       "transport": "streamable-http",
-      "headers": {
-        "Authorization": "Bearer <MCP_BEARER_TOKEN>"
+      "auth": {
+        "type": "oauth",
+        "metadata_url": "https://meals-mcp.example.com/.well-known/oauth-authorization-server"
       }
     }
   }
 }
 ```
 
-If you protect the endpoint with Cloudflare Access service tokens instead, replace the bearer header with `CF-Access-Client-Id` / `CF-Access-Client-Secret`.
+Clients without OAuth support are no longer accepted — the previous static `MCP_BEARER_TOKEN` path has been removed.
+
+## Auth, identity, and which household the tools touch
+
+After OAuth, every MCP tool call carries the authenticated user's identity. The MCP server forwards the user id to `meals-api` via `x-mcp-on-behalf-of` alongside the existing `x-api-key` header. The API resolves the user's household via their `HouseholdMember` rows, exactly the same way the regular tRPC clients do for browser sessions.
+
+This means:
+
+- `planner.*`-backed tools read and write data scoped to the user's active household — `BOOTSTRAP_HOUSEHOLD_NAME` is only used as a tie-breaker when the user is in multiple households.
+- `recipe.*` and `ingredient.*` tools are still global (not household-scoped) – any change is visible to every household.
+
+## Local development
+
+```bash
+pnpm --filter mcp-server dev
+```
+
+For local OAuth testing, set:
+
+```bash
+MCP_OAUTH_ISSUER=http://localhost:5050
+MCP_OAUTH_LOGIN_URL=http://localhost:3000/login
+MCP_OAUTH_SIGNING_SECRET=$(openssl rand -base64 64)
+```
+
+Note: when both apps run on `localhost`, the cross-subdomain cookie share isn't needed — but you also won't be testing the production cookie path. End-to-end testing of OAuth is best done on real subdomains.
+
+## Build & start
+
+```bash
+pnpm --filter mcp-server build
+pnpm --filter mcp-server start
+```
