@@ -45,6 +45,7 @@ Environment variables:
 
 - `MEALS_API_INTERNAL_ORIGIN` – base URL for the Meal Planner API (default: `http://localhost:4000`).
 - `PORT` – port to expose the MCP server (default: `5050`).
+- `DATABASE_URL` – required. The MCP server itself never queries Postgres, but importing `@repo/api` transitively loads `@repo/database`, which instantiates the Prisma client at module load and throws if `DATABASE_URL` is unset. Point it at the same Postgres instance as `meals-api`; the connection is lazy and never opened in practice.
 - `MCP_API_KEY` – shared secret sent as `x-api-key` to the Meal Planner API for service-to-service auth. Must match `MCP_API_KEY` in `apps/server/.env`. Generate with `openssl rand -base64 32`. Without it the API rejects every MCP call as `UNAUTHORIZED`.
 - `MCP_BEARER_TOKEN` – optional. When set, every incoming `/mcp` request must include `Authorization: Bearer <token>`. When empty, `/mcp` is open to anyone who can reach the container, so an external gate (Cloudflare Access, mTLS, VPN) is required.
 - `MCP_ALLOWED_HOSTS` – optional comma-separated list of `Host` headers accepted by the server (DNS rebinding protection). Example: `meals-mcp.example.com,meals-mcp:5050,localhost:5050`.
