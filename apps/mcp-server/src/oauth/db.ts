@@ -1,4 +1,4 @@
-import { prisma } from "@repo/database";
+import { prisma } from "@repo/api";
 
 export async function findClient(clientId: string) {
   return prisma.oAuthClient.findUnique({ where: { clientId } });
