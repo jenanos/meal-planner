@@ -356,40 +356,39 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig) {
           error_description: "Missing required parameters",
         });
       }
-      const stored = await db.findRefreshToken(refreshToken);
-      if (
-        !stored ||
-        stored.revokedAt !== null ||
-        stored.expiresAt < new Date()
-      ) {
+
+      // Atomically consume the old refresh token. Two concurrent refreshes
+      // can't both pass: only one updateMany flips revokedAt; the other
+      // gets null here. The returned row carries the bound user/client/scope.
+      const consumed = await db.consumeRefreshToken(refreshToken);
+      if (!consumed) {
         return res.status(400).json({
           error: "invalid_grant",
-          error_description: "Refresh token is invalid or expired",
+          error_description:
+            "Refresh token is invalid, expired, or already used",
         });
       }
-      if (stored.clientId !== clientId) {
+      if (consumed.clientId !== clientId) {
         return res.status(400).json({
           error: "invalid_grant",
           error_description: "client_id mismatch",
         });
       }
 
-      // Rotate the refresh token (single-use).
-      await db.revokeRefreshToken(refreshToken);
       const newRefresh = generateOpaqueToken(48);
       await db.createRefreshToken({
         token: newRefresh,
-        clientId: stored.clientId,
-        userId: stored.userId,
-        scope: stored.scope,
+        clientId: consumed.clientId,
+        userId: consumed.userId,
+        scope: consumed.scope,
         expiresAt: new Date(Date.now() + config.refreshTokenTtl * 1000),
       });
 
       const accessToken = signAccessToken(
         {
-          sub: stored.userId,
-          client_id: stored.clientId,
-          scope: stored.scope ?? undefined,
+          sub: consumed.userId,
+          client_id: consumed.clientId,
+          scope: consumed.scope ?? undefined,
           iss: config.issuer,
           aud: config.issuer,
         },
@@ -402,7 +401,7 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig) {
         token_type: "Bearer",
         expires_in: config.accessTokenTtl,
         refresh_token: newRefresh,
-        scope: stored.scope ?? undefined,
+        scope: consumed.scope ?? undefined,
       });
     }
 

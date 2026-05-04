@@ -40,6 +40,7 @@ export function verifyAccessToken(
   token: string,
   secret: string,
   expectedIssuer: string,
+  expectedAudience: string,
 ): VerifiedAccessToken | null {
   const parts = token.split(".");
   if (parts.length !== 3) return null;
@@ -69,6 +70,7 @@ export function verifyAccessToken(
     return null;
   }
   if (p.iss !== expectedIssuer) return null;
+  if (p.aud !== expectedAudience) return null;
   if (typeof p.sub !== "string" || typeof p.client_id !== "string") {
     return null;
   }
@@ -77,7 +79,7 @@ export function verifyAccessToken(
     client_id: p.client_id,
     scope: typeof p.scope === "string" ? p.scope : undefined,
     iss: String(p.iss),
-    aud: typeof p.aud === "string" ? p.aud : "",
+    aud: String(p.aud),
     iat: typeof p.iat === "number" ? p.iat : 0,
     exp: p.exp,
   };

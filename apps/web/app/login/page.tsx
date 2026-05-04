@@ -11,6 +11,14 @@ type Stage = "enter-email" | "enter-otp" | "magic-link-sent";
 const PENDING_KEY = "butta:pending-login";
 const PENDING_TTL_MS = 10 * 60 * 1000; // OTP is valid for 5 min; give buffer.
 
+// Hosts allowed as `?callbackUrl=` targets. `same-host` is always implicitly
+// allowed; this suffix list extends that to sibling subdomains we control
+// (currently the MCP server's OAuth bounce). Each entry must start with a
+// dot. The API's better-auth trustedOrigins independently validates
+// magic-link callbacks server-side, so this is a defense-in-depth layer
+// against open-redirects from the OTP success flow.
+const ALLOWED_CALLBACK_HOST_SUFFIXES = [".jenanos.xyz"];
+
 type PendingState = {
   stage: "enter-otp" | "magic-link-sent";
   email: string;
@@ -77,30 +85,42 @@ function clearPendingState() {
   }
 }
 
+function isLocalhost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1";
+}
+
 /**
- * Validate a `?callbackUrl=` value: only allow same-origin or other subdomains
- * of the same registrable domain (e.g. *.jenanos.xyz). Anything else is
- * dropped to avoid open-redirects.
+ * Validate a `?callbackUrl=` value before redirecting to it. Rules:
+ *
+ * - HTTPS required, except `http://localhost`/`127.0.0.1` for dev.
+ * - Same-host is always allowed.
+ * - Cross-host is allowed only when the target hostname matches one of the
+ *   `ALLOWED_CALLBACK_HOST_SUFFIXES` entries (each `.example.com`-style).
+ *
+ * Anything else is rejected. Notably, this does NOT do a public-suffix-aware
+ * "registrable domain" guess — that would require a PSL bundle, which we
+ * skip in favor of an explicit allowlist.
  */
 function sanitizeCallbackUrl(raw: string | null): string | null {
   if (!raw || typeof window === "undefined") return null;
   try {
     const target = new URL(raw, window.location.origin);
-    const here = window.location.hostname;
-    if (target.protocol !== "https:" && target.protocol !== "http:") {
+
+    if (target.protocol === "http:") {
+      if (!isLocalhost(target.hostname)) return null;
+    } else if (target.protocol !== "https:") {
       return null;
     }
-    if (target.hostname === here) return target.toString();
-    // Allow other subdomains of the same registrable domain
-    // (foo.jenanos.xyz ↔ bar.jenanos.xyz) by matching the last two labels.
-    const hereParts = here.split(".");
-    const targetParts = target.hostname.split(".");
-    if (hereParts.length >= 2 && targetParts.length >= 2) {
-      const hereTail = hereParts.slice(-2).join(".");
-      const targetTail = targetParts.slice(-2).join(".");
-      if (hereTail === targetTail) return target.toString();
+
+    if (target.hostname === window.location.hostname) {
+      return target.toString();
     }
-    return null;
+
+    const matchesSuffix = ALLOWED_CALLBACK_HOST_SUFFIXES.some(
+      (suffix) =>
+        suffix.startsWith(".") && target.hostname.endsWith(suffix),
+    );
+    return matchesSuffix ? target.toString() : null;
   } catch {
     return null;
   }

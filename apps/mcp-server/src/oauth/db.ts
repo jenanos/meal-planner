@@ -59,13 +59,26 @@ export async function createRefreshToken(input: {
   return prisma.oAuthRefreshToken.create({ data: input });
 }
 
-export async function findRefreshToken(token: string) {
-  return prisma.oAuthRefreshToken.findUnique({ where: { token } });
-}
-
-export async function revokeRefreshToken(token: string) {
-  return prisma.oAuthRefreshToken.update({
-    where: { token },
-    data: { revokedAt: new Date() },
+/**
+ * Atomically consume a refresh token for rotation. Only succeeds if the
+ * token exists, has not been revoked, and has not expired. Returns the row
+ * (with its userId/clientId/scope) if revocation succeeded, otherwise null.
+ *
+ * Two concurrent refreshes therefore cannot both pass — only one
+ * `updateMany` flips `revokedAt`, and the other returns count 0 and sees
+ * null here.
+ */
+export async function consumeRefreshToken(token: string) {
+  return prisma.$transaction(async (tx) => {
+    const result = await tx.oAuthRefreshToken.updateMany({
+      where: {
+        token,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      data: { revokedAt: new Date() },
+    });
+    if (result.count === 0) return null;
+    return tx.oAuthRefreshToken.findUnique({ where: { token } });
   });
 }
