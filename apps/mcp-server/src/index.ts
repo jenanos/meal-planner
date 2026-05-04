@@ -43,11 +43,32 @@ const mcpApiKey = process.env.MCP_API_KEY?.trim() || null;
 const oauthIssuer = process.env.MCP_OAUTH_ISSUER?.trim() || null;
 const oauthSigningSecret = process.env.MCP_OAUTH_SIGNING_SECRET?.trim() || null;
 const oauthLoginUrl = process.env.MCP_OAUTH_LOGIN_URL?.trim() || null;
-const oauthAccessTokenTtl =
-  Number(process.env.MCP_OAUTH_ACCESS_TOKEN_TTL ?? 3600) || 3600;
-const oauthRefreshTokenTtl =
-  Number(process.env.MCP_OAUTH_REFRESH_TOKEN_TTL ?? 60 * 60 * 24 * 30) ||
-  60 * 60 * 24 * 30;
+
+function parsePositiveIntEnv(
+  name: string,
+  raw: string | undefined,
+  fallback: number,
+): number {
+  if (raw === undefined || raw === "") return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) {
+    throw new Error(
+      `${name} must be a positive integer (seconds); got ${JSON.stringify(raw)}`,
+    );
+  }
+  return n;
+}
+
+const oauthAccessTokenTtl = parsePositiveIntEnv(
+  "MCP_OAUTH_ACCESS_TOKEN_TTL",
+  process.env.MCP_OAUTH_ACCESS_TOKEN_TTL,
+  3600,
+);
+const oauthRefreshTokenTtl = parsePositiveIntEnv(
+  "MCP_OAUTH_REFRESH_TOKEN_TTL",
+  process.env.MCP_OAUTH_REFRESH_TOKEN_TTL,
+  60 * 60 * 24 * 30,
+);
 
 if (!oauthIssuer || !oauthSigningSecret || !oauthLoginUrl) {
   throw new Error(
@@ -1055,6 +1076,7 @@ app.post("/mcp", async (req: Request, res: Response) => {
   const claims = verifyAccessToken(
     token,
     oauthConfig.signingSecret,
+    oauthConfig.issuer,
     oauthConfig.issuer,
   );
   if (!claims) {
