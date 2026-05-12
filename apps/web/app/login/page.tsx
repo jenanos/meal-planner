@@ -12,12 +12,11 @@ const PENDING_KEY = "butta:pending-login";
 const PENDING_TTL_MS = 10 * 60 * 1000; // OTP is valid for 5 min; give buffer.
 
 // Hosts allowed as `?callbackUrl=` targets. `same-host` is always implicitly
-// allowed; this suffix list extends that to sibling subdomains we control
-// (currently the MCP server's OAuth bounce). Each entry must start with a
-// dot. The API's better-auth trustedOrigins independently validates
+// allowed; this explicit allowlist only extends that to the MCP server's OAuth
+// bounce hostname. The API's better-auth trustedOrigins independently validates
 // magic-link callbacks server-side, so this is a defense-in-depth layer
 // against open-redirects from the OTP success flow.
-const ALLOWED_CALLBACK_HOST_SUFFIXES = [".jenanos.xyz"];
+const ALLOWED_CALLBACK_HOSTS = ["meals-mcp.jenanos.xyz"];
 
 type PendingState = {
   stage: "enter-otp" | "magic-link-sent";
@@ -94,8 +93,8 @@ function isLocalhost(hostname: string): boolean {
  *
  * - HTTPS required, except `http://localhost`/`127.0.0.1` for dev.
  * - Same-host is always allowed.
- * - Cross-host is allowed only when the target hostname matches one of the
- *   `ALLOWED_CALLBACK_HOST_SUFFIXES` entries (each `.example.com`-style).
+ * - Cross-host is allowed only when the target hostname is explicitly listed
+ *   in `ALLOWED_CALLBACK_HOSTS`.
  *
  * Anything else is rejected. Notably, this does NOT do a public-suffix-aware
  * "registrable domain" guess — that would require a PSL bundle, which we
@@ -116,11 +115,8 @@ function sanitizeCallbackUrl(raw: string | null): string | null {
       return target.toString();
     }
 
-    const matchesSuffix = ALLOWED_CALLBACK_HOST_SUFFIXES.some(
-      (suffix) =>
-        suffix.startsWith(".") && target.hostname.endsWith(suffix),
-    );
-    return matchesSuffix ? target.toString() : null;
+    const isAllowedHost = ALLOWED_CALLBACK_HOSTS.includes(target.hostname);
+    return isAllowedHost ? target.toString() : null;
   } catch {
     return null;
   }
