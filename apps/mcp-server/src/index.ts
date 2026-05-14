@@ -21,7 +21,6 @@ import {
 } from "@repo/api";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import * as z from "zod";
 import { registerOAuthRoutes, type OAuthConfig } from "./oauth/routes.js";
@@ -1043,19 +1042,65 @@ const buildServer = () => {
   return server;
 };
 
-const allowedHosts = (process.env.MCP_ALLOWED_HOSTS ?? "")
+// Split "hostname[:port]" into its parts, lowercasing the hostname so the
+// comparison is case-insensitive (DNS labels are). Handles `[::1]:5050`-style
+// bracketed IPv6 too. Allowlist entries without an explicit port match any
+// port on the request side; entries that specify a port require an exact
+// match.
+function parseHost(value: string): { host: string; port: string | null } {
+  const trimmed = value.trim().toLowerCase();
+  if (trimmed.startsWith("[")) {
+    const closeIdx = trimmed.indexOf("]");
+    if (closeIdx === -1) return { host: trimmed, port: null };
+    const host = trimmed.slice(0, closeIdx + 1);
+    const rest = trimmed.slice(closeIdx + 1);
+    return { host, port: rest.startsWith(":") ? rest.slice(1) : null };
+  }
+  const colonIdx = trimmed.lastIndexOf(":");
+  if (colonIdx === -1) return { host: trimmed, port: null };
+  return { host: trimmed.slice(0, colonIdx), port: trimmed.slice(colonIdx + 1) };
+}
+
+const allowedHostEntries = (process.env.MCP_ALLOWED_HOSTS ?? "")
   .split(",")
   .map((h) => h.trim())
-  .filter(Boolean);
+  .filter(Boolean)
+  .map(parseHost);
 
-const app = createMcpExpressApp({
-  host: "0.0.0.0",
-  allowedHosts: allowedHosts.length ? allowedHosts : undefined,
-});
+function isAllowedHost(headerValue: string): boolean {
+  if (allowedHostEntries.length === 0) return true;
+  const incoming = parseHost(headerValue);
+  return allowedHostEntries.some((entry) => {
+    if (entry.host !== incoming.host) return false;
+    if (entry.port === null) return true;
+    return entry.port === incoming.port;
+  });
+}
 
-// Body parsing for OAuth endpoints (token uses x-www-form-urlencoded per
-// RFC 6749, register uses application/json). Mounted globally; harmless for
-// the streamable /mcp transport which reads its own JSON body.
+// Build the Express app ourselves rather than using
+// `createMcpExpressApp` from the MCP SDK. The SDK helper mounts its own
+// body parser, which conflicts with the JSON/urlencoded parsers we need
+// for /oauth/register and /oauth/token — the second parser sees an
+// already-consumed request stream and throws "stream is not readable",
+// surfacing as a 500 on DCR. Mounting the parsers ourselves first means
+// every route gets a freshly parsed body.
+const app = express();
+
+if (allowedHostEntries.length > 0) {
+  // DNS rebinding protection.
+  app.use((req, res, next) => {
+    const host = typeof req.headers.host === "string" ? req.headers.host : "";
+    if (!isAllowedHost(host)) {
+      res.status(421).json({ error: "Misdirected request" });
+      return;
+    }
+    next();
+  });
+}
+
+// Body parsing for both /mcp (JSON-RPC payload) and the OAuth endpoints
+// (/oauth/register is JSON, /oauth/token is x-www-form-urlencoded per
+// RFC 6749, though many clients send JSON there too — both are accepted).
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: false }));
 
