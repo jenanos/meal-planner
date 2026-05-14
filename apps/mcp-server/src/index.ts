@@ -21,7 +21,6 @@ import {
 } from "@repo/api";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import * as z from "zod";
 import { registerOAuthRoutes, type OAuthConfig } from "./oauth/routes.js";
@@ -1048,14 +1047,31 @@ const allowedHosts = (process.env.MCP_ALLOWED_HOSTS ?? "")
   .map((h) => h.trim())
   .filter(Boolean);
 
-const app = createMcpExpressApp({
-  host: "0.0.0.0",
-  allowedHosts: allowedHosts.length ? allowedHosts : undefined,
-});
+// Build the Express app ourselves rather than using
+// `createMcpExpressApp` from the MCP SDK. The SDK helper mounts its own
+// body parser, which conflicts with the JSON/urlencoded parsers we need
+// for /oauth/register and /oauth/token — the second parser sees an
+// already-consumed request stream and throws "stream is not readable",
+// surfacing as a 500 on DCR. Mounting the parsers ourselves first means
+// every route gets a freshly parsed body.
+const app = express();
 
-// Body parsing for OAuth endpoints (token uses x-www-form-urlencoded per
-// RFC 6749, register uses application/json). Mounted globally; harmless for
-// the streamable /mcp transport which reads its own JSON body.
+if (allowedHosts.length > 0) {
+  // DNS rebinding protection: mirror the host-header check the SDK
+  // helper would have done.
+  app.use((req, res, next) => {
+    const host = typeof req.headers.host === "string" ? req.headers.host : "";
+    if (!allowedHosts.includes(host)) {
+      res.status(421).json({ error: "Misdirected request" });
+      return;
+    }
+    next();
+  });
+}
+
+// Body parsing for both /mcp (JSON-RPC payload) and the OAuth endpoints
+// (/oauth/register is JSON, /oauth/token is x-www-form-urlencoded per
+// RFC 6749, though many clients send JSON there too — both are accepted).
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: false }));
 
