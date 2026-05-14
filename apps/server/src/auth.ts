@@ -11,6 +11,7 @@ const authBaseURL =
   process.env.BETTER_AUTH_URL ??
   process.env.AUTH_BASE_URL ??
   (isDev ? "http://localhost:4000" : undefined);
+const cookieDomain = process.env.BETTER_AUTH_COOKIE_DOMAIN?.trim();
 const resendApiKey = process.env.RESEND_API_KEY?.trim();
 const authEmailFrom =
   process.env.AUTH_EMAIL_FROM?.trim() ?? process.env.EMAIL_FROM?.trim();
@@ -151,6 +152,20 @@ export const auth = betterAuth({
   database: prismaAdapter(prisma, {
     provider: "postgresql",
   }),
+  // Share the session cookie across subdomains (e.g. meals.jenanos.xyz +
+  // meals-mcp.jenanos.xyz) so the MCP server's OAuth provider can validate
+  // the same login. Skip in dev where the env var is unset.
+  ...(cookieDomain
+    ? {
+        advanced: {
+          crossSubDomainCookies: { enabled: true, domain: cookieDomain },
+          defaultCookieAttributes: {
+            sameSite: "lax",
+            secure: !isDev,
+          },
+        },
+      }
+    : {}),
   socialProviders: {
     google: {
       clientId: process.env.AUTH_GOOGLE_CLIENT_ID ?? "",

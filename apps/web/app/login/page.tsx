@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { signIn, emailOtp } from "../../lib/auth-client";
 import { Button, Input } from "@repo/ui";
 
@@ -11,9 +11,17 @@ type Stage = "enter-email" | "enter-otp" | "magic-link-sent";
 const PENDING_KEY = "butta:pending-login";
 const PENDING_TTL_MS = 10 * 60 * 1000; // OTP is valid for 5 min; give buffer.
 
+// Hosts allowed as `?callbackUrl=` targets. `same-host` is always implicitly
+// allowed; this explicit allowlist only extends that to the MCP server's OAuth
+// bounce hostname. The API's better-auth trustedOrigins independently validates
+// magic-link callbacks server-side, so this is a defense-in-depth layer
+// against open-redirects from the OTP success flow.
+const ALLOWED_CALLBACK_HOSTS = ["meals-mcp.jenanos.xyz"];
+
 type PendingState = {
   stage: "enter-otp" | "magic-link-sent";
   email: string;
+  callbackUrl: string | null;
   savedAt: number;
 };
 
@@ -27,6 +35,8 @@ function isPendingState(value: unknown): value is PendingState {
       candidate.stage === "magic-link-sent") &&
     typeof candidate.email === "string" &&
     candidate.email.trim().length > 0 &&
+    (candidate.callbackUrl === null ||
+      typeof candidate.callbackUrl === "string") &&
     typeof candidate.savedAt === "number" &&
     Number.isFinite(candidate.savedAt)
   );
@@ -74,6 +84,44 @@ function clearPendingState() {
   }
 }
 
+function isLocalhost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1";
+}
+
+/**
+ * Validate a `?callbackUrl=` value before redirecting to it. Rules:
+ *
+ * - HTTPS required, except `http://localhost`/`127.0.0.1` for dev.
+ * - Same-host is always allowed.
+ * - Cross-host is allowed only when the target hostname is explicitly listed
+ *   in `ALLOWED_CALLBACK_HOSTS`.
+ *
+ * Anything else is rejected. Notably, this does NOT do a public-suffix-aware
+ * "registrable domain" guess — that would require a PSL bundle, which we
+ * skip in favor of an explicit allowlist.
+ */
+function sanitizeCallbackUrl(raw: string | null): string | null {
+  if (!raw || typeof window === "undefined") return null;
+  try {
+    const target = new URL(raw, window.location.origin);
+
+    if (target.protocol === "http:") {
+      if (!isLocalhost(target.hostname)) return null;
+    } else if (target.protocol !== "https:") {
+      return null;
+    }
+
+    if (target.hostname === window.location.hostname) {
+      return target.toString();
+    }
+
+    const isAllowedHost = ALLOWED_CALLBACK_HOSTS.includes(target.hostname);
+    return isAllowedHost ? target.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 function describeSendError(message: string): string {
   const lower = message.toLowerCase();
   if (lower.includes("tilgang") || lower.includes("allowlist")) {
@@ -84,19 +132,41 @@ function describeSendError(message: string): string {
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [stage, setStage] = useState<Stage>("enter-email");
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [callbackUrl, setCallbackUrl] = useState<string | null>(null);
 
   useEffect(() => {
+    const fromQuery = sanitizeCallbackUrl(
+      searchParams?.get("callbackUrl") ?? null,
+    );
     const pending = loadPendingState();
     if (pending) {
       setEmail(pending.email);
       setStage(pending.stage);
+      // Prefer the just-arrived query value over the stored one so a fresh
+      // sign-in flow always uses the latest target.
+      setCallbackUrl(fromQuery ?? pending.callbackUrl ?? null);
+    } else if (fromQuery) {
+      setCallbackUrl(fromQuery);
     }
-  }, []);
+  }, [searchParams]);
+
+  function finishSignIn() {
+    clearPendingState();
+    if (callbackUrl) {
+      // Cross-origin (e.g. meals-mcp.jenanos.xyz) needs a full navigation –
+      // the Next.js router only handles same-origin pushes.
+      window.location.href = callbackUrl;
+      return;
+    }
+    router.push("/");
+    router.refresh();
+  }
 
   async function handleSendOtp(e: React.FormEvent) {
     e.preventDefault();
@@ -112,7 +182,11 @@ export default function LoginPage() {
         setError(describeSendError(result.error.message ?? ""));
         return;
       }
-      savePendingState({ stage: "enter-otp", email: email.trim() });
+      savePendingState({
+        stage: "enter-otp",
+        email: email.trim(),
+        callbackUrl,
+      });
       setStage("enter-otp");
     } catch {
       setError("Kunne ikke sende kode akkurat nå. Prøv igjen om litt.");
@@ -126,16 +200,20 @@ export default function LoginPage() {
     setLoading("magic-link");
     setError(null);
     try {
-      const callbackURL = new URL("/", window.location.origin).toString();
+      const fallbackCallback = new URL("/", window.location.origin).toString();
       const result = await signIn.magicLink({
         email: email.trim(),
-        callbackURL,
+        callbackURL: callbackUrl ?? fallbackCallback,
       });
       if (result.error) {
         setError(describeSendError(result.error.message ?? ""));
         return;
       }
-      savePendingState({ stage: "magic-link-sent", email: email.trim() });
+      savePendingState({
+        stage: "magic-link-sent",
+        email: email.trim(),
+        callbackUrl,
+      });
       setStage("magic-link-sent");
     } catch {
       setError("Kunne ikke sende innloggingslenke akkurat nå. Prøv igjen om litt.");
@@ -166,9 +244,7 @@ export default function LoginPage() {
         }
         return;
       }
-      clearPendingState();
-      router.push("/");
-      router.refresh();
+      finishSignIn();
     } catch {
       setError("Kunne ikke verifisere koden. Prøv igjen om litt.");
     } finally {

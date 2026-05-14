@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
-import { timingSafeEqual } from "node:crypto";
-import type { Request, Response } from "express";
+import { AsyncLocalStorage } from "node:async_hooks";
+import express, { type Request, type Response } from "express";
 import { createTRPCProxyClient, httpBatchLink } from "@trpc/client";
 import {
   ExtraItemSuggest,
@@ -24,6 +24,8 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import * as z from "zod";
+import { registerOAuthRoutes, type OAuthConfig } from "./oauth/routes.js";
+import { verifyAccessToken } from "./oauth/jwt.js";
 
 const weekStartSchema = WeekPlanInput.shape.weekStart;
 const weekDaysSchema = WeekPlanInput.shape.days;
@@ -37,7 +39,55 @@ const mealsApiOrigin =
   "http://localhost:4000";
 
 const mcpApiKey = process.env.MCP_API_KEY?.trim() || null;
-const mcpBearerToken = process.env.MCP_BEARER_TOKEN?.trim() || null;
+
+const oauthIssuer = process.env.MCP_OAUTH_ISSUER?.trim() || null;
+const oauthSigningSecret = process.env.MCP_OAUTH_SIGNING_SECRET?.trim() || null;
+const oauthLoginUrl = process.env.MCP_OAUTH_LOGIN_URL?.trim() || null;
+
+function parsePositiveIntEnv(
+  name: string,
+  raw: string | undefined,
+  fallback: number,
+): number {
+  if (raw === undefined || raw === "") return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) {
+    throw new Error(
+      `${name} must be a positive integer (seconds); got ${JSON.stringify(raw)}`,
+    );
+  }
+  return n;
+}
+
+const oauthAccessTokenTtl = parsePositiveIntEnv(
+  "MCP_OAUTH_ACCESS_TOKEN_TTL",
+  process.env.MCP_OAUTH_ACCESS_TOKEN_TTL,
+  3600,
+);
+const oauthRefreshTokenTtl = parsePositiveIntEnv(
+  "MCP_OAUTH_REFRESH_TOKEN_TTL",
+  process.env.MCP_OAUTH_REFRESH_TOKEN_TTL,
+  60 * 60 * 24 * 30,
+);
+
+if (!oauthIssuer || !oauthSigningSecret || !oauthLoginUrl) {
+  throw new Error(
+    "OAuth provider config missing. Set MCP_OAUTH_ISSUER, MCP_OAUTH_SIGNING_SECRET, MCP_OAUTH_LOGIN_URL.",
+  );
+}
+
+const oauthConfig: OAuthConfig = {
+  issuer: oauthIssuer,
+  signingSecret: oauthSigningSecret,
+  apiOrigin: mealsApiOrigin,
+  loginUrl: oauthLoginUrl,
+  accessTokenTtl: oauthAccessTokenTtl,
+  refreshTokenTtl: oauthRefreshTokenTtl,
+};
+
+// Per-request user identity, surfaced to tRPC's `headers` callback so each
+// MCP call propagates the authenticated user to the meals API.
+const onBehalfOfStorage = new AsyncLocalStorage<string>();
 
 const trpcUrl = new URL("/trpc", mealsApiOrigin).toString();
 
@@ -45,7 +95,13 @@ const trpcClient = createTRPCProxyClient<AppRouter>({
   links: [
     httpBatchLink({
       url: trpcUrl,
-      headers: mcpApiKey ? { "x-api-key": mcpApiKey } : undefined,
+      headers() {
+        const userId = onBehalfOfStorage.getStore();
+        const headers: Record<string, string> = {};
+        if (mcpApiKey) headers["x-api-key"] = mcpApiKey;
+        if (userId) headers["x-mcp-on-behalf-of"] = userId;
+        return headers;
+      },
     }),
   ],
 });
@@ -68,23 +124,14 @@ const unauthorizedResponse = {
   id: null,
 };
 
-function timingSafeStringEqual(candidate: string, expected: string): boolean {
-  const a = Buffer.from(candidate);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
-}
-
-function isAuthorized(req: Request): boolean {
-  if (!mcpBearerToken) return true;
+function extractBearerToken(req: Request): string | null {
   const header = req.headers.authorization;
-  if (typeof header !== "string") return false;
+  if (typeof header !== "string") return null;
   const spaceIndex = header.indexOf(" ");
-  if (spaceIndex === -1) return false;
-  if (header.slice(0, spaceIndex).toLowerCase() !== "bearer") return false;
+  if (spaceIndex === -1) return null;
+  if (header.slice(0, spaceIndex).toLowerCase() !== "bearer") return null;
   const token = header.slice(spaceIndex + 1).trim();
-  if (!token) return false;
-  return timingSafeStringEqual(token, mcpBearerToken);
+  return token || null;
 }
 
 const formatToolError = (error: unknown, context: string): CallToolResult => {
@@ -629,7 +676,7 @@ const buildServer = () => {
     "create-ingredient",
     {
       title: "Opprett ingrediens",
-      description: 
+      description:
         "Oppretter en ny ingrediens i databasen, eller oppdaterer en eksisterende basert på navn. " +
         "Bruk dette for å legge til nye ingredienser som ikke finnes fra før.",
       inputSchema: IngredientCreate,
@@ -651,7 +698,7 @@ const buildServer = () => {
     "update-ingredient",
     {
       title: "Oppdater ingrediens",
-      description: 
+      description:
         "Oppdaterer en eksisterende ingrediens i databasen. " +
         "Du MÅ oppgi ingrediens-ID (uuid). " +
         "Du kan oppdatere: navn, enhet (f.eks. 'stk', 'dl', 'g'), pantry-status, eller kategori. " +
@@ -728,7 +775,7 @@ const buildServer = () => {
     "create-recipe",
     {
       title: "Opprett oppskrift",
-      description: 
+      description:
         "Oppretter en ny oppskrift med tilknyttede ingredienser. " +
         "Ingredienser som ikke finnes i databasen vil bli opprettet automatisk.",
       inputSchema: RecipeCreate,
@@ -750,7 +797,7 @@ const buildServer = () => {
     "update-recipe",
     {
       title: "Oppdater oppskrift",
-      description: 
+      description:
         "Oppdaterer en eksisterende oppskrift. Kun oppgitte felter endres – " +
         "felter som utelates beholder sine nåværende verdier. " +
         "Du MÅ oppgi oppskrift-ID (uuid). " +
@@ -837,7 +884,7 @@ const buildServer = () => {
     "smart-add-extra-shopping-item",
     {
       title: "Legg til ekstra handleliste-element (smart)",
-      description: 
+      description:
         "Legger til et ekstra element på handlelisten for en uke. " +
         "Søker først etter eksisterende lignende elementer i katalogen og bruker disse om de finnes. " +
         "Oppretter kun nye elementer hvis det ikke finnes noe lignende fra før.",
@@ -854,33 +901,29 @@ const buildServer = () => {
       try {
         const trimmedName = name.trim();
         const normalizedInput = normalizeName(trimmedName);
-        
-        // Søk etter lignende elementer i katalogen
+
         const suggestions = await trpcClient.planner.extraSuggest.query({ search: trimmedName });
-        
-        // Finn eksakt match (case-insensitive)
+
         const exactMatch = suggestions.find(
           (s) => normalizeName(s.name) === normalizedInput
         );
-        
-        // Finn delvis match hvis ingen eksakt match
-        const partialMatch = !exactMatch 
-          ? suggestions.find((s) => 
-              normalizeName(s.name).includes(normalizedInput) || 
+
+        const partialMatch = !exactMatch
+          ? suggestions.find((s) =>
+              normalizeName(s.name).includes(normalizedInput) ||
               normalizedInput.includes(normalizeName(s.name))
             )
           : undefined;
-        
+
         const matchedName = exactMatch?.name ?? partialMatch?.name ?? trimmedName;
         const usedExisting = Boolean(exactMatch || partialMatch);
-        
-        // Legg til på handlelisten
+
         const data = await trpcClient.planner.extraToggle.mutate({
           weekStart,
           name: matchedName,
           checked: checked ?? false,
         });
-        
+
         return formatSuccess({
           ...data,
           name: matchedName,
@@ -898,7 +941,7 @@ const buildServer = () => {
     "batch-add-extra-shopping-items",
     {
       title: "Legg til flere ekstra handleliste-elementer",
-      description: 
+      description:
         "Legger til flere ekstra elementer på handlelisten for en uke. " +
         "Søker etter eksisterende lignende elementer og gjenbruker disse for å unngå duplikater.",
       inputSchema: z.object({
@@ -912,38 +955,38 @@ const buildServer = () => {
     async ({ weekStart, items }): Promise<CallToolResult> => {
       try {
         const results: Array<{ name: string; usedExisting: boolean; matchType: string }> = [];
-        
+
         for (const itemName of items) {
           const trimmedName = itemName.trim();
           const normalizedInput = normalizeName(trimmedName);
-          
+
           const suggestions = await trpcClient.planner.extraSuggest.query({ search: trimmedName });
-          
+
           const exactMatch = suggestions.find(
             (s) => normalizeName(s.name) === normalizedInput
           );
-          const partialMatch = !exactMatch 
-            ? suggestions.find((s) => 
-                normalizeName(s.name).includes(normalizedInput) || 
+          const partialMatch = !exactMatch
+            ? suggestions.find((s) =>
+                normalizeName(s.name).includes(normalizedInput) ||
                 normalizedInput.includes(normalizeName(s.name))
               )
             : undefined;
-          
+
           const matchedName = exactMatch?.name ?? partialMatch?.name ?? trimmedName;
-          
+
           await trpcClient.planner.extraToggle.mutate({
             weekStart,
             name: matchedName,
             checked: false,
           });
-          
+
           results.push({
             name: matchedName,
             usedExisting: Boolean(exactMatch || partialMatch),
             matchType: exactMatch ? "exact" : partialMatch ? "partial" : "new",
           });
         }
-        
+
         return formatSuccess({
           ok: true,
           added: results,
@@ -1010,21 +1053,56 @@ const app = createMcpExpressApp({
   allowedHosts: allowedHosts.length ? allowedHosts : undefined,
 });
 
+// Body parsing for OAuth endpoints (token uses x-www-form-urlencoded per
+// RFC 6749, register uses application/json). Mounted globally; harmless for
+// the streamable /mcp transport which reads its own JSON body.
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: false }));
+
+registerOAuthRoutes(app, oauthConfig);
+
 app.post("/mcp", async (req: Request, res: Response) => {
-  if (!isAuthorized(req)) {
-    res.status(401).json(unauthorizedResponse);
+  const token = extractBearerToken(req);
+  if (!token) {
+    res
+      .status(401)
+      .setHeader(
+        "WWW-Authenticate",
+        `Bearer resource_metadata="${oauthConfig.issuer}/.well-known/oauth-protected-resource"`,
+      )
+      .json(unauthorizedResponse);
+    return;
+  }
+  const claims = verifyAccessToken(
+    token,
+    oauthConfig.signingSecret,
+    oauthConfig.issuer,
+    oauthConfig.issuer,
+  );
+  if (!claims) {
+    res
+      .status(401)
+      .setHeader(
+        "WWW-Authenticate",
+        `Bearer error="invalid_token", resource_metadata="${oauthConfig.issuer}/.well-known/oauth-protected-resource"`,
+      )
+      .json(unauthorizedResponse);
     return;
   }
 
   try {
-    const server = buildServer();
-    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-    res.on("close", () => {
-      transport.close();
-      server.close();
+    await onBehalfOfStorage.run(claims.sub, async () => {
+      const server = buildServer();
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+      });
+      res.on("close", () => {
+        transport.close();
+        server.close();
+      });
+      await server.connect(transport);
+      await transport.handleRequest(req, res, req.body);
     });
-    await server.connect(transport);
-    await transport.handleRequest(req, res, req.body);
   } catch (error) {
     console.error("Error handling MCP request:", error);
     if (!res.headersSent) {
@@ -1063,14 +1141,8 @@ httpServer.on("error", (error: NodeJS.ErrnoException) => {
 httpServer.listen(port, () => {
   console.log(`Meal Planner MCP server listening on port ${port}`);
   console.log(`Using meals API origin: ${mealsApiOrigin}`);
-  if (mcpBearerToken) {
-    console.log("MCP bearer token enabled: /mcp requires Authorization: Bearer <token>");
-  } else {
-    console.warn(
-      "MCP bearer token NOT set. /mcp accepts unauthenticated requests — " +
-        "rely on an external gate (e.g. Cloudflare Access) or set MCP_BEARER_TOKEN.",
-    );
-  }
+  console.log(`OAuth issuer: ${oauthConfig.issuer}`);
+  console.log(`OAuth login URL: ${oauthConfig.loginUrl}`);
   if (!mcpApiKey) {
     console.warn(
       "MCP_API_KEY is not set. tRPC calls to the meals API will fail with UNAUTHORIZED.",

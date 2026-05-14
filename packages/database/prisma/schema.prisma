@@ -69,10 +69,12 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  sessions    Session[]
-  accounts    Account[]
-  memberships HouseholdMember[]
-  preference  UserPreference?
+  sessions           Session[]
+  accounts           Account[]
+  memberships        HouseholdMember[]
+  preference         UserPreference?
+  oauthCodes         OAuthAuthorizationCode[]
+  oauthRefreshTokens OAuthRefreshToken[]
 }
 
 /// Emails that are pre-approved to sign up / sign in.
@@ -120,6 +122,61 @@ model Verification {
   expiresAt  DateTime
   createdAt  DateTime? @default(now())
   updatedAt  DateTime? @updatedAt
+}
+
+// ─── OAuth 2.1 authorization-server models (used by mcp-server) ───
+//
+// The MCP server hosts its own OAuth 2.1 + PKCE provider so that ChatGPT
+// (and other MCP clients that only support OAuth) can connect to /mcp.
+// User authentication is delegated to better-auth via a shared session
+// cookie on the parent domain — these tables only hold the OAuth client
+// registrations, short-lived authorization codes, and refresh tokens.
+
+model OAuthClient {
+  id           String   @id @default(uuid()) @db.Uuid
+  clientId     String   @unique
+  name         String?
+  redirectUris String[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  authorizationCodes OAuthAuthorizationCode[]
+  refreshTokens      OAuthRefreshToken[]
+}
+
+model OAuthAuthorizationCode {
+  id                  String    @id @default(uuid()) @db.Uuid
+  code                String    @unique
+  clientId            String
+  userId              String
+  redirectUri         String
+  scope               String?
+  codeChallenge       String
+  codeChallengeMethod String
+  expiresAt           DateTime
+  consumedAt          DateTime?
+  createdAt           DateTime  @default(now())
+
+  client OAuthClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model OAuthRefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  token     String    @unique
+  clientId  String
+  userId    String
+  scope     String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  client OAuthClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 // ─── Household models ───

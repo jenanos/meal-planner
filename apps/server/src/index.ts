@@ -124,9 +124,9 @@ async function resolveActiveHouseholdId(userId: string) {
 }
 
 /**
- * Resolve a household ID for service-to-service calls (e.g. MCP server).
- * Uses the bootstrap household when configured, otherwise falls back to the
- * oldest household in the database.
+ * Resolve a household ID for service-to-service calls (e.g. MCP server with
+ * no `x-mcp-on-behalf-of` header). Uses the bootstrap household when
+ * configured, otherwise falls back to the oldest household in the database.
  */
 async function resolveServiceHouseholdId(): Promise<string | null> {
   if (BOOTSTRAP_HOUSEHOLD_NAME) {
@@ -235,10 +235,43 @@ function isValidApiKey(candidate: string, expected: string): boolean {
   return timingSafeEqual(a, b);
 }
 
+async function buildOnBehalfOfContext(userId: string): Promise<CreateContextOptions> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true, name: true, image: true, role: true },
+  });
+  if (!user) {
+    return { user: null, householdId: null };
+  }
+  const householdId = await resolveActiveHouseholdId(user.id);
+  return {
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      image: user.image ?? null,
+      role: (user.role as "USER" | "ADMIN") ?? "USER",
+    },
+    householdId,
+  };
+}
+
 async function createContext({ req }: { req: { headers: Record<string, string | string[] | undefined> } }): Promise<CreateContextOptions> {
   // ── Service-to-service auth via API key (e.g. MCP server) ──
   const apiKey = typeof req.headers["x-api-key"] === "string" ? req.headers["x-api-key"] : null;
   if (apiKey && MCP_API_KEY && isValidApiKey(apiKey, MCP_API_KEY)) {
+    // When the MCP server is acting on behalf of a real user (after OAuth),
+    // it forwards the user id here. The household is then resolved from the
+    // user's actual memberships, not the bootstrap fallback.
+    const onBehalfRaw = req.headers["x-mcp-on-behalf-of"];
+    const onBehalfUserId =
+      typeof onBehalfRaw === "string" && onBehalfRaw.trim().length > 0
+        ? onBehalfRaw.trim()
+        : null;
+    if (onBehalfUserId) {
+      return buildOnBehalfOfContext(onBehalfUserId);
+    }
+
     const householdId = await resolveServiceHouseholdId();
     return {
       user: {
