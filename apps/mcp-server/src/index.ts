@@ -1042,10 +1042,40 @@ const buildServer = () => {
   return server;
 };
 
-const allowedHosts = (process.env.MCP_ALLOWED_HOSTS ?? "")
+// Split "hostname[:port]" into its parts, lowercasing the hostname so the
+// comparison is case-insensitive (DNS labels are). Handles `[::1]:5050`-style
+// bracketed IPv6 too. Allowlist entries without an explicit port match any
+// port on the request side; entries that specify a port require an exact
+// match.
+function parseHost(value: string): { host: string; port: string | null } {
+  const trimmed = value.trim().toLowerCase();
+  if (trimmed.startsWith("[")) {
+    const closeIdx = trimmed.indexOf("]");
+    if (closeIdx === -1) return { host: trimmed, port: null };
+    const host = trimmed.slice(0, closeIdx + 1);
+    const rest = trimmed.slice(closeIdx + 1);
+    return { host, port: rest.startsWith(":") ? rest.slice(1) : null };
+  }
+  const colonIdx = trimmed.lastIndexOf(":");
+  if (colonIdx === -1) return { host: trimmed, port: null };
+  return { host: trimmed.slice(0, colonIdx), port: trimmed.slice(colonIdx + 1) };
+}
+
+const allowedHostEntries = (process.env.MCP_ALLOWED_HOSTS ?? "")
   .split(",")
   .map((h) => h.trim())
-  .filter(Boolean);
+  .filter(Boolean)
+  .map(parseHost);
+
+function isAllowedHost(headerValue: string): boolean {
+  if (allowedHostEntries.length === 0) return true;
+  const incoming = parseHost(headerValue);
+  return allowedHostEntries.some((entry) => {
+    if (entry.host !== incoming.host) return false;
+    if (entry.port === null) return true;
+    return entry.port === incoming.port;
+  });
+}
 
 // Build the Express app ourselves rather than using
 // `createMcpExpressApp` from the MCP SDK. The SDK helper mounts its own
@@ -1056,12 +1086,11 @@ const allowedHosts = (process.env.MCP_ALLOWED_HOSTS ?? "")
 // every route gets a freshly parsed body.
 const app = express();
 
-if (allowedHosts.length > 0) {
-  // DNS rebinding protection: mirror the host-header check the SDK
-  // helper would have done.
+if (allowedHostEntries.length > 0) {
+  // DNS rebinding protection.
   app.use((req, res, next) => {
     const host = typeof req.headers.host === "string" ? req.headers.host : "";
-    if (!allowedHosts.includes(host)) {
+    if (!isAllowedHost(host)) {
       res.status(421).json({ error: "Misdirected request" });
       return;
     }
