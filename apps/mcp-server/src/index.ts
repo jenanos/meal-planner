@@ -1,5 +1,4 @@
 import { createServer } from "node:http";
-import { AsyncLocalStorage } from "node:async_hooks";
 import express, { type Request, type Response } from "express";
 import { createTRPCProxyClient, httpBatchLink } from "@trpc/client";
 import {
@@ -84,26 +83,30 @@ const oauthConfig: OAuthConfig = {
   refreshTokenTtl: oauthRefreshTokenTtl,
 };
 
-// Per-request user identity, surfaced to tRPC's `headers` callback so each
-// MCP call propagates the authenticated user to the meals API.
-const onBehalfOfStorage = new AsyncLocalStorage<string>();
-
 const trpcUrl = new URL("/trpc", mealsApiOrigin).toString();
 
-const trpcClient = createTRPCProxyClient<AppRouter>({
-  links: [
-    httpBatchLink({
-      url: trpcUrl,
-      headers() {
-        const userId = onBehalfOfStorage.getStore();
-        const headers: Record<string, string> = {};
-        if (mcpApiKey) headers["x-api-key"] = mcpApiKey;
-        if (userId) headers["x-mcp-on-behalf-of"] = userId;
-        return headers;
-      },
-    }),
-  ],
-});
+// One tRPC client per authenticated MCP request, with the user identity
+// bound at creation time. A module-level shared client would be unsafe
+// here: `httpBatchLink` batches calls made in the same tick into a single
+// HTTP request with a single `headers()` evaluation, so concurrent MCP
+// requests from different users could have their tRPC calls coalesced
+// under one `x-mcp-on-behalf-of` header.
+const createTrpcClientForUser = (userId: string) =>
+  createTRPCProxyClient<AppRouter>({
+    links: [
+      httpBatchLink({
+        url: trpcUrl,
+        headers() {
+          const headers: Record<string, string> = {};
+          if (mcpApiKey) headers["x-api-key"] = mcpApiKey;
+          headers["x-mcp-on-behalf-of"] = userId;
+          return headers;
+        },
+      }),
+    ],
+  });
+
+type MealsTrpcClient = ReturnType<typeof createTrpcClientForUser>;
 
 const methodNotAllowedResponse = {
   jsonrpc: "2.0",
@@ -155,7 +158,7 @@ const formatSuccess = <T extends Record<string, unknown>>(payload: T): CallToolR
   structuredContent: payload,
 });
 
-const buildServer = () => {
+const buildServer = (trpcClient: MealsTrpcClient) => {
   const server = new McpServer({
     name: "meal-planner-mcp",
     version: "1.0.0",
@@ -1136,18 +1139,16 @@ app.post("/mcp", async (req: Request, res: Response) => {
   }
 
   try {
-    await onBehalfOfStorage.run(claims.sub, async () => {
-      const server = buildServer();
-      const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: undefined,
-      });
-      res.on("close", () => {
-        transport.close();
-        server.close();
-      });
-      await server.connect(transport);
-      await transport.handleRequest(req, res, req.body);
+    const server = buildServer(createTrpcClientForUser(claims.sub));
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
     });
+    res.on("close", () => {
+      transport.close();
+      server.close();
+    });
+    await server.connect(transport);
+    await transport.handleRequest(req, res, req.body);
   } catch (error) {
     console.error("Error handling MCP request:", error);
     if (!res.headersSent) {
@@ -1163,12 +1164,12 @@ app.post("/mcp", async (req: Request, res: Response) => {
   }
 });
 
-app.get("/mcp", async (_req: Request, res: Response) => {
-  res.writeHead(405).end(JSON.stringify(methodNotAllowedResponse));
+app.get("/mcp", (_req: Request, res: Response) => {
+  res.status(405).json(methodNotAllowedResponse);
 });
 
-app.delete("/mcp", async (_req: Request, res: Response) => {
-  res.writeHead(405).end(JSON.stringify(methodNotAllowedResponse));
+app.delete("/mcp", (_req: Request, res: Response) => {
+  res.status(405).json(methodNotAllowedResponse);
 });
 
 app.get("/health", (_req: Request, res: Response) => {

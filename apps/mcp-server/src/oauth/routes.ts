@@ -15,9 +15,24 @@ export interface OAuthConfig {
 }
 
 const AUTH_CODE_TTL_SECONDS = 600;
+const PENDING_APPROVAL_TTL_SECONDS = 300;
+
+// Registration is unauthenticated, so keep the stored payloads small.
+const MAX_REDIRECT_URIS = 10;
+const MAX_REDIRECT_URI_LENGTH = 2000;
+const MAX_CLIENT_NAME_LENGTH = 256;
 
 function generateOpaqueToken(byteLength = 32): string {
   return randomBytes(byteLength).toString("base64url");
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function isAcceptableRedirectUri(value: string): boolean {
@@ -64,6 +79,50 @@ function sendOAuthError(
     );
   }
   return res.status(400).json({ error, error_description: description });
+}
+
+function renderConsentPage(params: {
+  clientName: string;
+  redirectHost: string;
+  scope: string | null;
+  requestToken: string;
+}): string {
+  const clientName = escapeHtml(params.clientName);
+  const redirectHost = escapeHtml(params.redirectHost);
+  const scopeLine = params.scope
+    ? `<p class="meta">Forespurt tilgang: <code>${escapeHtml(params.scope)}</code></p>`
+    : "";
+  return `<!doctype html>
+<html lang="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Godkjenn tilkobling – Meal Planner</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #f6f6f4; color: #1a1a1a; display: flex; justify-content: center; padding: 3rem 1rem; }
+  .card { background: #fff; border: 1px solid #e2e2df; border-radius: 12px; padding: 2rem; max-width: 26rem; width: 100%; }
+  h1 { font-size: 1.2rem; margin: 0 0 1rem; }
+  p { line-height: 1.5; }
+  .meta { color: #555; font-size: 0.9rem; }
+  form { display: flex; gap: 0.75rem; margin-top: 1.5rem; }
+  button { flex: 1; padding: 0.6rem 1rem; border-radius: 8px; border: 1px solid #ccc; background: #fff; font-size: 1rem; cursor: pointer; }
+  button.approve { background: #1a7f37; border-color: #1a7f37; color: #fff; }
+</style>
+</head>
+<body>
+<main class="card">
+  <h1>Godkjenn tilkobling</h1>
+  <p><strong>${clientName}</strong> ber om tilgang til Meal Planner-kontoen din via MCP.</p>
+  <p class="meta">Etter godkjenning sendes du tilbake til <code>${redirectHost}</code>.</p>
+  ${scopeLine}
+  <form method="post" action="/oauth/authorize/decision">
+    <input type="hidden" name="request_token" value="${escapeHtml(params.requestToken)}">
+    <button type="submit" name="decision" value="deny">Avvis</button>
+    <button type="submit" name="decision" value="approve" class="approve">Godkjenn</button>
+  </form>
+</main>
+</body>
+</html>`;
 }
 
 function rebuildAuthorizeUrl(
@@ -117,21 +176,26 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig) {
     if (
       !Array.isArray(redirectUris) ||
       redirectUris.length === 0 ||
+      redirectUris.length > MAX_REDIRECT_URIS ||
       !redirectUris.every(
-        (u): u is string => typeof u === "string" && isAcceptableRedirectUri(u),
+        (u): u is string =>
+          typeof u === "string" &&
+          u.length <= MAX_REDIRECT_URI_LENGTH &&
+          isAcceptableRedirectUri(u),
       )
     ) {
       return res.status(400).json({
         error: "invalid_redirect_uri",
         error_description:
-          "redirect_uris must be a non-empty array of HTTPS URLs (http://localhost is allowed for development)",
+          `redirect_uris must be a non-empty array of at most ${MAX_REDIRECT_URIS} HTTPS URLs ` +
+          "(http://localhost is allowed for development)",
       });
     }
 
     const clientId = generateOpaqueToken(24);
     const name =
       typeof body.client_name === "string" && body.client_name.trim().length > 0
-        ? body.client_name.trim()
+        ? body.client_name.trim().slice(0, MAX_CLIENT_NAME_LENGTH)
         : null;
 
     const created = await db.createClient({
@@ -153,6 +217,10 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig) {
 
   // ── Authorize ──
   app.get("/oauth/authorize", async (req, res) => {
+    // Authorization responses (code redirects, error redirects, and the
+    // consent page) are sensitive and must never be cached.
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Pragma", "no-cache");
     const responseType = String(req.query.response_type ?? "");
     const clientId = String(req.query.client_id ?? "");
     const redirectUri = String(req.query.redirect_uri ?? "");
@@ -244,22 +312,118 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig) {
       );
     }
 
-    // Auto-approve consent: this MCP server is gated by the email allowlist
-    // upstream of better-auth, so any user who reaches this point with a
-    // valid session is already authorized to use the meal planner.
-    const code = generateOpaqueToken(32);
-    await db.createAuthorizationCode({
-      code,
+    // Explicit consent before issuing a code. Registration is open (DCR),
+    // so auto-approving would let any registered client obtain a code for
+    // a logged-in user via a single crafted link. Skip the screen only for
+    // clients this user has already approved in this process lifetime.
+    if (await db.hasApproval(session.id, client.clientId)) {
+      const code = generateOpaqueToken(32);
+      await db.createAuthorizationCode({
+        code,
+        clientId: client.clientId,
+        userId: session.id,
+        redirectUri,
+        scope,
+        codeChallenge,
+        codeChallengeMethod,
+        expiresAt: new Date(Date.now() + AUTH_CODE_TTL_SECONDS * 1000),
+      });
+      return res.redirect(appendQuery(redirectUri, { code, state }));
+    }
+
+    const requestToken = generateOpaqueToken(32);
+    await db.createPendingApproval({
+      token: requestToken,
       clientId: client.clientId,
       userId: session.id,
       redirectUri,
       scope,
+      state: state ?? null,
       codeChallenge,
       codeChallengeMethod,
+      expiresAt: new Date(Date.now() + PENDING_APPROVAL_TTL_SECONDS * 1000),
+    });
+
+    res.setHeader("Cache-Control", "no-store");
+    return res
+      .status(200)
+      .type("html")
+      .send(
+        renderConsentPage({
+          clientName: client.name ?? client.clientId,
+          redirectHost: new URL(redirectUri).host,
+          scope,
+          requestToken,
+        }),
+      );
+  });
+
+  // ── Consent decision ──
+  app.post("/oauth/authorize/decision", async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const requestToken =
+      typeof body.request_token === "string" ? body.request_token : "";
+    const decision = typeof body.decision === "string" ? body.decision : "";
+
+    if (!requestToken || (decision !== "approve" && decision !== "deny")) {
+      return res.status(400).json({
+        error: "invalid_request",
+        error_description: "Missing or invalid request_token/decision",
+      });
+    }
+
+    // Single-use: consumed even on deny, so the form can't be replayed.
+    const pending = await db.consumePendingApproval(requestToken);
+    if (!pending) {
+      return res.status(400).json({
+        error: "invalid_request",
+        error_description:
+          "Consent request is invalid or has expired. Restart the authorization flow.",
+      });
+    }
+
+    // CSRF/session binding: the decision must come from the same logged-in
+    // user the consent page was rendered for. The token alone is not
+    // enough — it must match a live better-auth session.
+    const session = await getSessionFromCookie(
+      config.apiOrigin,
+      req.headers.cookie,
+    );
+    if (!session || session.id !== pending.userId) {
+      return res.status(403).json({
+        error: "access_denied",
+        error_description: "Session does not match the consent request",
+      });
+    }
+
+    const state = pending.state ?? undefined;
+
+    if (decision === "deny") {
+      return res.redirect(
+        appendQuery(pending.redirectUri, {
+          error: "access_denied",
+          error_description: "The user denied the request",
+          state,
+        }),
+      );
+    }
+
+    await db.rememberApproval(pending.userId, pending.clientId);
+
+    const code = generateOpaqueToken(32);
+    await db.createAuthorizationCode({
+      code,
+      clientId: pending.clientId,
+      userId: pending.userId,
+      redirectUri: pending.redirectUri,
+      scope: pending.scope,
+      codeChallenge: pending.codeChallenge,
+      codeChallengeMethod: pending.codeChallengeMethod,
       expiresAt: new Date(Date.now() + AUTH_CODE_TTL_SECONDS * 1000),
     });
 
-    return res.redirect(appendQuery(redirectUri, { code, state }));
+    return res.redirect(appendQuery(pending.redirectUri, { code, state }));
   });
 
   // ── Token ──
