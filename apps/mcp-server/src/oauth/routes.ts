@@ -217,6 +217,10 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig) {
 
   // ── Authorize ──
   app.get("/oauth/authorize", async (req, res) => {
+    // Authorization responses (code redirects, error redirects, and the
+    // consent page) are sensitive and must never be cached.
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Pragma", "no-cache");
     const responseType = String(req.query.response_type ?? "");
     const clientId = String(req.query.client_id ?? "");
     const redirectUri = String(req.query.redirect_uri ?? "");
