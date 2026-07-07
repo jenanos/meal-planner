@@ -46,7 +46,7 @@ cp .env.example .env
 Required environment variables:
 
 - `MEALS_API_INTERNAL_ORIGIN` – base URL for the Meal Planner API. Used for both forwarded tRPC calls and for validating better-auth sessions during the OAuth login flow (the MCP server calls `${MEALS_API_INTERNAL_ORIGIN}/auth/get-session`). Default: `http://localhost:4000`.
-- `DATABASE_URL` – Postgres connection string. The MCP server uses this for OAuth provider state (clients, codes, refresh tokens). Point it at the same instance as `meals-api`.
+- `DATABASE_URL` – Postgres connection string. The MCP server never queries Postgres itself — OAuth provider state (clients, codes, refresh tokens, consent decisions) lives in memory and resets on restart. The variable is only required because importing `@repo/api` transitively loads `@repo/database`, which validates `DATABASE_URL` at module load. Point it at the same instance as `meals-api`.
 - `MCP_API_KEY` – shared secret sent as `x-api-key` to the Meal Planner API for service-to-service auth. Must match `MCP_API_KEY` in `apps/server/.env`. Generate with `openssl rand -base64 32`.
 - `MCP_OAUTH_ISSUER` – public origin of this MCP server, e.g. `https://meals-mcp.example.com`. Used as the OAuth issuer in tokens and discovery metadata.
 - `MCP_OAUTH_SIGNING_SECRET` – HMAC secret used to sign JWT access tokens. Generate with `openssl rand -base64 64`.
@@ -69,10 +69,11 @@ The MCP server hosts a complete OAuth 2.1 authorization server with PKCE and Dyn
 | `GET /.well-known/oauth-protected-resource`       | RFC 9728 resource metadata               |
 | `POST /oauth/register`                            | RFC 7591 Dynamic Client Registration     |
 | `GET /oauth/authorize`                            | Authorization endpoint (PKCE S256 only)  |
+| `POST /oauth/authorize/decision`                  | Consent form submission (approve/deny)   |
 | `POST /oauth/token`                               | Token endpoint (`authorization_code`, `refresh_token`) |
 | `POST /mcp`                                       | Protected MCP endpoint (`Authorization: Bearer <jwt>`) |
 
-When a client hits `/oauth/authorize` without a valid better-auth session cookie, the server redirects to `MCP_OAUTH_LOGIN_URL?callbackUrl=…`. The web app's login page authenticates the user (magic link or OTP via better-auth) and sends them back to `/oauth/authorize`, which then issues an authorization code. Token exchange validates PKCE and returns a JWT access token plus a rotating opaque refresh token.
+When a client hits `/oauth/authorize` without a valid better-auth session cookie, the server redirects to `MCP_OAUTH_LOGIN_URL?callbackUrl=…`. The web app's login page authenticates the user (magic link or OTP via better-auth) and sends them back to `/oauth/authorize`. Because client registration is open (DCR), the server then shows an explicit consent page before issuing an authorization code — otherwise any registered client could obtain a code for a logged-in user via a single crafted link. Approvals are remembered per user + client for the lifetime of the process, so subsequent authorizations for the same client skip the consent screen. Token exchange validates PKCE and returns a JWT access token plus a rotating opaque refresh token.
 
 For the cookie share to work, better-auth on `meals-api` must be configured with `BETTER_AUTH_COOKIE_DOMAIN` set to the parent domain (e.g. `.jenanos.xyz`).
 
@@ -133,4 +134,12 @@ Note: when both apps run on `localhost`, the cross-subdomain cookie share isn't 
 ```bash
 pnpm --filter mcp-server build
 pnpm --filter mcp-server start
+```
+
+## Tests
+
+The OAuth provider (PKCE, JWT signing/verification, token stores, and the full authorize → consent → token flow) is covered by vitest:
+
+```bash
+pnpm --filter mcp-server test
 ```

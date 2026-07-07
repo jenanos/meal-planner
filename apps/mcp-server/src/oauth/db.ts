@@ -47,9 +47,33 @@ interface OAuthRefreshTokenRow {
   createdAt: Date;
 }
 
+interface OAuthPendingApprovalRow {
+  token: string;
+  clientId: string;
+  userId: string;
+  redirectUri: string;
+  scope: string | null;
+  state: string | null;
+  codeChallenge: string;
+  codeChallengeMethod: string;
+  expiresAt: Date;
+  createdAt: Date;
+}
+
 const clients = new Map<string, OAuthClientRow>();
 const authorizationCodes = new Map<string, OAuthAuthorizationCodeRow>();
 const refreshTokens = new Map<string, OAuthRefreshTokenRow>();
+const pendingApprovals = new Map<string, OAuthPendingApprovalRow>();
+// Remembered consent decisions, keyed `${userId}::${clientId}`. Lets a
+// user skip the consent screen for clients they already approved in this
+// process lifetime.
+const approvedClients = new Set<string>();
+
+// Registration is unauthenticated (RFC 7591), so cap the number of stored
+// clients to keep a registration flood from exhausting memory. Map
+// iteration order is insertion order, so evicting the first key drops the
+// oldest registration.
+const MAX_CLIENTS = 1000;
 
 // Periodically prune expired rows so the maps don't grow unbounded.
 const PRUNE_INTERVAL_MS = 60 * 1000;
@@ -60,6 +84,9 @@ setInterval(() => {
   }
   for (const [token, row] of refreshTokens) {
     if (row.expiresAt.getTime() < now) refreshTokens.delete(token);
+  }
+  for (const [token, row] of pendingApprovals) {
+    if (row.expiresAt.getTime() < now) pendingApprovals.delete(token);
   }
 }, PRUNE_INTERVAL_MS).unref();
 
@@ -72,6 +99,11 @@ export async function createClient(input: {
   name: string | null;
   redirectUris: string[];
 }): Promise<OAuthClientRow> {
+  while (clients.size >= MAX_CLIENTS) {
+    const oldest = clients.keys().next().value;
+    if (oldest === undefined) break;
+    clients.delete(oldest);
+  }
   const row: OAuthClientRow = {
     clientId: input.clientId,
     name: input.name,
@@ -156,11 +188,69 @@ export async function consumeRefreshToken(
   return row;
 }
 
+export async function createPendingApproval(input: {
+  token: string;
+  clientId: string;
+  userId: string;
+  redirectUri: string;
+  scope: string | null;
+  state: string | null;
+  codeChallenge: string;
+  codeChallengeMethod: string;
+  expiresAt: Date;
+}): Promise<OAuthPendingApprovalRow> {
+  const row: OAuthPendingApprovalRow = {
+    ...input,
+    createdAt: new Date(),
+  };
+  pendingApprovals.set(input.token, row);
+  return row;
+}
+
+/**
+ * Atomically consume a pending consent request. Single-use: the row is
+ * deleted whether or not the caller ends up approving, so a replayed
+ * form submission can never issue a second code.
+ */
+export async function consumePendingApproval(
+  token: string,
+): Promise<OAuthPendingApprovalRow | null> {
+  const row = pendingApprovals.get(token);
+  if (!row) return null;
+  pendingApprovals.delete(token);
+  if (row.expiresAt.getTime() <= Date.now()) return null;
+  return row;
+}
+
+export async function rememberApproval(
+  userId: string,
+  clientId: string,
+): Promise<void> {
+  approvedClients.add(`${userId}::${clientId}`);
+}
+
+export async function hasApproval(
+  userId: string,
+  clientId: string,
+): Promise<boolean> {
+  return approvedClients.has(`${userId}::${clientId}`);
+}
+
 // Re-exported for tests that want to seed or inspect state directly.
 export const __internal = {
   clients,
   authorizationCodes,
   refreshTokens,
+  pendingApprovals,
+  approvedClients,
+  MAX_CLIENTS,
+  reset() {
+    clients.clear();
+    authorizationCodes.clear();
+    refreshTokens.clear();
+    pendingApprovals.clear();
+    approvedClients.clear();
+  },
   generateOpaqueToken: (byteLength = 32) =>
     randomBytes(byteLength).toString("base64url"),
 };
