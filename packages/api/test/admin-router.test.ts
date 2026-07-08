@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
+    $transaction: vi.fn(),
     allowedEmail: {
       findMany: vi.fn(),
       upsert: vi.fn(),
@@ -53,6 +54,13 @@ const createCaller = (user: typeof ADMIN_USER | typeof MEMBER_USER | null = ADMI
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Interactive transactions run the callback against the same mock client.
+  prismaMock.$transaction.mockImplementation(
+    async (arg: unknown) =>
+      typeof arg === "function"
+        ? (arg as (tx: typeof prismaMock) => Promise<unknown>)(prismaMock)
+        : Promise.all(arg as Promise<unknown>[]),
+  );
 });
 
 describe("admin router", () => {

@@ -29,17 +29,19 @@ export const adminRouter = router({
   removeAllowedEmail: adminProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => {
-      const entry = await prisma.allowedEmail.delete({
-        where: { id: input.id },
+      return prisma.$transaction(async (tx) => {
+        const entry = await tx.allowedEmail.delete({
+          where: { id: input.id },
+        });
+        // Without this, an existing 30-day session would keep working long
+        // after the address was removed from the allowlist.
+        await tx.session.deleteMany({
+          where: {
+            user: { email: { equals: entry.email, mode: "insensitive" } },
+          },
+        });
+        return entry;
       });
-      // Without this, an existing 30-day session would keep working long
-      // after the address was removed from the allowlist.
-      await prisma.session.deleteMany({
-        where: {
-          user: { email: { equals: entry.email, mode: "insensitive" } },
-        },
-      });
-      return entry;
     }),
 
   /** List all users */
@@ -71,22 +73,29 @@ export const adminRouter = router({
       }),
     )
     .mutation(async ({ input }) => {
-      if (input.role === "USER") {
-        const otherAdmins = await prisma.user.count({
-          where: { role: "ADMIN", id: { not: input.userId } },
-        });
-        if (otherAdmins === 0) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message:
-              "Kan ikke fjerne admin-rollen fra den siste administratoren.",
+      // Serializable so two concurrent demotions can't both pass the
+      // last-admin check and leave the system without any admin.
+      return prisma.$transaction(
+        async (tx) => {
+          if (input.role === "USER") {
+            const otherAdmins = await tx.user.count({
+              where: { role: "ADMIN", id: { not: input.userId } },
+            });
+            if (otherAdmins === 0) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message:
+                  "Kan ikke fjerne admin-rollen fra den siste administratoren.",
+              });
+            }
+          }
+          return tx.user.update({
+            where: { id: input.userId },
+            data: { role: input.role },
           });
-        }
-      }
-      return prisma.user.update({
-        where: { id: input.userId },
-        data: { role: input.role },
-      });
+        },
+        { isolationLevel: "Serializable" },
+      );
     }),
 
   /** List all households with members */
