@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { adminProcedure, authenticatedProcedure, router } from "../trpc.js";
 import { prisma } from "@repo/database";
 
@@ -24,13 +25,21 @@ export const adminRouter = router({
       });
     }),
 
-  /** Remove an email from the allowlist */
+  /** Remove an email from the allowlist and revoke the user's active sessions */
   removeAllowedEmail: adminProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => {
-      return prisma.allowedEmail.delete({
+      const entry = await prisma.allowedEmail.delete({
         where: { id: input.id },
       });
+      // Without this, an existing 30-day session would keep working long
+      // after the address was removed from the allowlist.
+      await prisma.session.deleteMany({
+        where: {
+          user: { email: { equals: entry.email, mode: "insensitive" } },
+        },
+      });
+      return entry;
     }),
 
   /** List all users */
@@ -62,6 +71,18 @@ export const adminRouter = router({
       }),
     )
     .mutation(async ({ input }) => {
+      if (input.role === "USER") {
+        const otherAdmins = await prisma.user.count({
+          where: { role: "ADMIN", id: { not: input.userId } },
+        });
+        if (otherAdmins === 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "Kan ikke fjerne admin-rollen fra den siste administratoren.",
+          });
+        }
+      }
       return prisma.user.update({
         where: { id: input.userId },
         data: { role: input.role },

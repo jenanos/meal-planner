@@ -1032,7 +1032,7 @@ const buildServer = (trpcClient: MealsTrpcClient) => {
         readOnlyHint: false,
       },
     },
-    async (input): Promise<CallToolResult> => {
+    async (input: z.infer<typeof ExtraItemUpsert>): Promise<CallToolResult> => {
       try {
         const data = await trpcClient.planner.extraAdd.mutate(input);
         return formatSuccess(data);

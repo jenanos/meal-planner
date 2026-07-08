@@ -23,7 +23,16 @@ export function Providers({ children }: { children: React.ReactNode }) {
     const [queryClient] = useState(() => new QueryClient());
     const [trpcClient] = useState(() =>
         trpc.createClient({
-            links: [httpBatchLink({ url: getTrpcUrl() })],
+            links: [
+                httpBatchLink({
+                    url: getTrpcUrl(),
+                    // Send the better-auth session cookie even when
+                    // NEXT_PUBLIC_API_URL points at a different origin than
+                    // the web app (same-origin requests are unaffected).
+                    fetch: (input, init) =>
+                        fetch(input, { ...init, credentials: "include" }),
+                }),
+            ],
         })
     );
 
