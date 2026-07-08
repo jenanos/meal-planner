@@ -32,7 +32,9 @@
     "studio": "prisma studio"
   },
   "dependencies": {
-    "@prisma/client": "^5.18.0"
+    "@electric-sql/pglite": "^0.2.17",
+    "@prisma/client": "^5.18.0",
+    "pglite-prisma-adapter": "0.3.0"
   },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",

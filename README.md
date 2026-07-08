@@ -60,6 +60,45 @@ This workspace is orchestrated by [Turborepo](https://turbo.build/repo), a high-
 
 ---
 
+## 🎭 Demo mode (open, self-contained demo)
+
+The web app can run as a fully interactive public demo with **no API server, no
+Postgres, and no login**. Set a single env variable:
+
+```bash
+NEXT_PUBLIC_DEMO_MODE=1
+```
+
+When enabled, the app:
+
+- serves the **real tRPC router** (`@repo/api`) from an in-app route handler at
+  `/api/demo` instead of proxying to the external `meals-api`,
+- runs it against an **embedded in-memory Postgres**
+  ([PGlite](https://pglite.dev)) that applies the real Prisma migrations and
+  seeds a realistic dataset (recipes, planned weeks, freezer items, extras) on
+  first request,
+- signs every visitor in as a shared demo user (no better-auth involved) and
+  shows a demo banner.
+
+Because the demo reuses the real routers, schema, migrations, and seed data, it
+can never drift out of sync with the app the way a hand-written mock would.
+The database lives in process memory: visitors can create, edit, and delete
+freely, and everything resets on the next cold start.
+
+**Try it locally:**
+
+```bash
+NEXT_PUBLIC_DEMO_MODE=1 pnpm --filter web dev
+```
+
+**Deploy on Vercel:** create/point a Vercel project at this repo (root
+directory `apps/web`, framework Next.js), set `NEXT_PUBLIC_DEMO_MODE=1` in the
+project's environment variables, and deploy from `main`. No other env vars are
+needed. This replaces the old approach of pinning Vercel to a stale mock
+branch — previews now build straight from `main`/PR branches.
+
+---
+
 ## 🗂️ Monorepo structure
 
 | Package | Path | Purpose |

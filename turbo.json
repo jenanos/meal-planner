@@ -4,6 +4,7 @@
   "globalEnv": [
     "API_URL",
     "NEXT_PUBLIC_API_URL",
+    "NEXT_PUBLIC_DEMO_MODE",
     "NODE_ENV",
     "CI",
     "MEALS_API_INTERNAL_ORIGIN",
