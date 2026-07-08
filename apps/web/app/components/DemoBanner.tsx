@@ -12,7 +12,7 @@ export function DemoBanner() {
       <a
         href={REPO_URL}
         target="_blank"
-        rel="noreferrer"
+        rel="noopener noreferrer"
         className="font-medium underline underline-offset-2"
       >
         Se kildekoden på GitHub

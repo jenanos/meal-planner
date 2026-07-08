@@ -3,8 +3,9 @@
   "name": "web",
   "version": "1.0.0",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "build:deps": "pnpm --filter @repo/database --filter @repo/api run build",
+    "dev": "pnpm run build:deps && next dev",
+    "build": "pnpm run build:deps && next build",
     "start": "next start -H 0.0.0.0 -p 3000",
     "lint": "eslint . --max-warnings 0",
     "check-types": "tsc --noEmit",

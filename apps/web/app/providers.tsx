@@ -13,12 +13,9 @@ function getApiUrl() {
 
 function getTrpcUrl() {
     // Demo mode talks to the embedded in-app demo API instead of the
-    // external meals-api service.
-    if (isDemoMode) {
-        if (typeof window !== "undefined") return "/api/demo";
-        const port = process.env.PORT ?? "3000";
-        return `http://localhost:${port}/api/demo`;
-    }
+    // external meals-api service. Keep the URL relative so server render
+    // and browser agree; no query ever fires during SSR in this app.
+    if (isDemoMode) return "/api/demo";
     return `${getApiUrl()}/trpc`;
 }
 
