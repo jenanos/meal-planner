@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { prismaMock } = vi.hoisted(() => {
   return {
@@ -110,6 +110,10 @@ beforeEach(() => {
   prismaMock.weekIndex.upsert.mockResolvedValue({ id: "week-index-1" });
   prismaMock.weekPlan.updateMany.mockResolvedValue({ count: 0 });
   prismaMock.$queryRaw.mockResolvedValue([]);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("planner.shoppingList", () => {

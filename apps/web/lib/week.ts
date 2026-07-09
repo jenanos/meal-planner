@@ -24,9 +24,15 @@ export function addDays(date: Date, days: number) {
 }
 
 export function formatWeekRange(weekStartISO: string) {
-  const formatter = new Intl.DateTimeFormat("nb-NO", { day: "2-digit", month: "short" });
+  // Week starts are UTC midnights; format in UTC so the range doesn't shift
+  // to the previous day for users in timezones behind UTC.
+  const formatter = new Intl.DateTimeFormat("nb-NO", {
+    day: "2-digit",
+    month: "short",
+    timeZone: "UTC",
+  });
   const start = new Date(weekStartISO);
-  const end = addDays(new Date(weekStartISO), 6);
+  const end = new Date(start.getTime() + 6 * MS_PER_DAY);
   return `${formatter.format(start)}–${formatter.format(end)}`;
 }
 
