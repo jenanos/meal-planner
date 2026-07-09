@@ -31,7 +31,7 @@ import { ShoppingListDisplayModal } from "./components/ShoppingListDisplayModal"
 import { FALL_BADGE_PALETTE, formatQuantity } from "./utils";
 import type { ShoppingListItem, ShoppingListOccurrence } from "./types";
 import { WeekSelector } from "../planner/components/WeekSelector";
-import { deriveWeekLabel, startOfWeekISO } from "../../lib/week";
+import { deriveWeekLabel, formatWeekRange, startOfWeekISO } from "../../lib/week";
 import type { TimelineWeekEntry, WeekTimelineResult } from "../planner/types";
 import {
   DEFAULT_VISIBLE_DAY_INDICES,
@@ -126,7 +126,10 @@ export default function ShoppingListPage() {
   const [debouncedExtra, setDebouncedExtra] = useState("");
   const [showCompletedExtras, setShowCompletedExtras] = useState(false);
 
-  const lookaheadWeeks = includeNextWeek ? (startDay > 0 ? 2 : 1) : 0;
+  // The visible day window never extends past the end of next week
+  // (offset < 14 in the day filter), so one week of lookahead is enough.
+  // Fetching more would leak week-after-next items into the alphabetical view.
+  const lookaheadWeeks = includeNextWeek ? 1 : 0;
 
   const shoppingSettingsQuery = trpc.planner.shoppingSettings.useQuery(
     undefined,
@@ -525,7 +528,7 @@ export default function ShoppingListPage() {
     const weeks =
       shoppingQuery.data?.includedWeekStarts ??
       (shoppingQuery.data?.weekStart ? [shoppingQuery.data.weekStart] : []);
-    return weeks;
+    return weeks.map((weekStart) => formatWeekRange(weekStart));
   }, [shoppingQuery.data?.includedWeekStarts, shoppingQuery.data?.weekStart]);
 
   const updateShoppingItem = trpc.planner.updateShoppingItem.useMutation();
@@ -1296,7 +1299,7 @@ export default function ShoppingListPage() {
                   Legg til element
                 </Button>
               </DialogTrigger>
-              <DialogContent className="isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground max-sm:w-[calc(100vw-2rem)]max-sm:mx-auto sm:max-w-md sm:max-h-[min(100vh-4rem,32rem)] sm:shadow-2xl sm:ring-1 sm:ring-border sm:rounded-xl max-sm:bg-background max-sm:!left-1/2 max-sm:!top-[calc(env(safe-area-inset-top)+1rem)] max-sm:!h-[50dvh] max-sm:!max-h-[50dvh] max-sm:!-translate-x-1/2 max-sm:!translate-y-0 max-sm:!rounded-2xl max-sm:!border-0 max-sm:!shadow-none max-sm:p-6">
+              <DialogContent className="isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground max-sm:w-[calc(100vw-2rem)] max-sm:mx-auto sm:max-w-md sm:max-h-[min(100vh-4rem,32rem)] sm:shadow-2xl sm:ring-1 sm:ring-border sm:rounded-xl max-sm:bg-background max-sm:!left-1/2 max-sm:!top-[calc(env(safe-area-inset-top)+1rem)] max-sm:!h-[50dvh] max-sm:!max-h-[50dvh] max-sm:!-translate-x-1/2 max-sm:!translate-y-0 max-sm:!rounded-2xl max-sm:!border-0 max-sm:!shadow-none max-sm:p-6">
                 <div className="flex h-full min-h-0 flex-col">
                   <DialogHeader className="sm:px-0 sm:pt-0">
                     <div className="mb-3 flex items-center justify-between">

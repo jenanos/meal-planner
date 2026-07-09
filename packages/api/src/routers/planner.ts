@@ -327,15 +327,22 @@ function addWeeks(date: Date, weeks: number) {
   return addDays(date, weeks * 7);
 }
 
-const WEEKDAY_FORMATTER = new Intl.DateTimeFormat("nb-NO", { weekday: "long" });
+// Week starts are stored as UTC midnights, so format in UTC to keep the
+// weekday labels stable regardless of the server's local timezone.
+const WEEKDAY_FORMATTER = new Intl.DateTimeFormat("nb-NO", {
+  weekday: "long",
+  timeZone: "UTC",
+});
 const WEEKDAY_WITH_DATE_FORMATTER = new Intl.DateTimeFormat("nb-NO", {
   weekday: "long",
   day: "numeric",
   month: "long",
+  timeZone: "UTC",
 });
 const SHORT_DATE_FORMATTER = new Intl.DateTimeFormat("nb-NO", {
   day: "numeric",
   month: "numeric",
+  timeZone: "UTC",
 });
 
 function capitalize(input: string) {
@@ -1373,12 +1380,9 @@ export const plannerRouter = router({
                 occurrence.weekStartISO,
                 occurrence.dayIndex,
               );
-              const statusKeyByDay = `${occurrence.weekStartISO}::${occurrence.dayIndex}::${item.ingredientId}::${item.unit ?? ""}`;
               const statusKeyByWeek = `${occurrence.weekStartISO}::${item.ingredientId}::${item.unit ?? ""}`;
-              const statusByDay = statusMap.get(statusKeyByDay);
               const statusByWeek = statusMap.get(statusKeyByWeek);
-              const isChecked =
-                statusByDay?.checked ?? statusByWeek?.checked ?? false;
+              const isChecked = statusByWeek?.checked ?? false;
               if (statusByWeek?.firstCheckedDayIndex != null) {
                 firstCheckedByWeek.set(
                   occurrence.weekStartISO,
@@ -1404,11 +1408,8 @@ export const plannerRouter = router({
           const isItemChecked =
             occurrenceArray.length > 0
               ? occurrenceArray.every((occurrence) => {
-                const statusKeyByDay = `${occurrence.weekStartISO}::${occurrence.dayIndex}::${item.ingredientId}::${item.unit ?? ""}`;
                 const statusKeyByWeek = `${occurrence.weekStartISO}::${item.ingredientId}::${item.unit ?? ""}`;
-                const statusByDay = statusMap.get(statusKeyByDay);
-                const statusByWeek = statusMap.get(statusKeyByWeek);
-                return statusByDay?.checked ?? statusByWeek?.checked ?? false;
+                return statusMap.get(statusKeyByWeek)?.checked ?? false;
               })
               : Array.from(item.weeks.values()).every(
                 (weekIso) =>
@@ -1816,7 +1817,7 @@ export const plannerRouter = router({
         }[];
       }
       const all = await prisma.extraItemCatalog.findMany({
-        where: { name: { contains: q }, householdId },
+        where: { name: { contains: q, mode: "insensitive" }, householdId },
         orderBy: { name: "asc" },
         take: 20,
       });
@@ -2041,7 +2042,7 @@ export const plannerRouter = router({
       const q = (input?.search ?? "").trim();
       if (!q) return [] as { id: string; name: string; itemCount: number }[];
       const packages = await prisma.shoppingPackage.findMany({
-        where: { name: { contains: q }, householdId },
+        where: { name: { contains: q, mode: "insensitive" }, householdId },
         orderBy: { name: "asc" },
         take: 10,
         include: { _count: { select: { items: true } } },
