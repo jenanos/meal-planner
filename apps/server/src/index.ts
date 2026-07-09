@@ -292,6 +292,10 @@ async function createContext({ req }: { req: { headers: Record<string, string | 
         return [[key, value] as [string, string]];
       }),
     ),
+    // Always validate against the Session table so revoked sessions (e.g.
+    // after allowlist removal) lose API access immediately instead of after
+    // the 5-minute cookie cache expires.
+    query: { disableCookieCache: true },
   });
 
   if (!session?.user) {

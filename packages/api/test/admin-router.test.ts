@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
+    $transaction: vi.fn(),
     allowedEmail: {
       findMany: vi.fn(),
       upsert: vi.fn(),
@@ -10,6 +11,10 @@ const { prismaMock } = vi.hoisted(() => ({
     user: {
       findMany: vi.fn(),
       update: vi.fn(),
+      count: vi.fn(),
+    },
+    session: {
+      deleteMany: vi.fn(),
     },
     household: {
       findMany: vi.fn(),
@@ -49,6 +54,13 @@ const createCaller = (user: typeof ADMIN_USER | typeof MEMBER_USER | null = ADMI
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Interactive transactions run the callback against the same mock client.
+  prismaMock.$transaction.mockImplementation(
+    async (arg: unknown) =>
+      typeof arg === "function"
+        ? (arg as (tx: typeof prismaMock) => Promise<unknown>)(prismaMock)
+        : Promise.all(arg as Promise<unknown>[]),
+  );
 });
 
 describe("admin router", () => {
@@ -87,13 +99,22 @@ describe("admin router", () => {
     expect(result.email).toBe("new@example.com");
   });
 
-  it("removes allowed emails", async () => {
-    prismaMock.allowedEmail.delete.mockResolvedValueOnce({ id: "ae3" });
+  it("removes allowed emails and revokes the user's sessions", async () => {
+    prismaMock.allowedEmail.delete.mockResolvedValueOnce({
+      id: "ae3",
+      email: "gone@example.com",
+    });
+    prismaMock.session.deleteMany.mockResolvedValueOnce({ count: 2 });
 
     await createCaller().removeAllowedEmail({ id: "ae3" });
 
     expect(prismaMock.allowedEmail.delete).toHaveBeenCalledWith({
       where: { id: "ae3" },
+    });
+    expect(prismaMock.session.deleteMany).toHaveBeenCalledWith({
+      where: {
+        user: { email: { equals: "gone@example.com", mode: "insensitive" } },
+      },
     });
   });
 
@@ -139,6 +160,31 @@ describe("admin router", () => {
       data: { role: "ADMIN" },
     });
     expect(result.role).toBe("ADMIN");
+  });
+
+  it("demotes an admin when another admin remains", async () => {
+    prismaMock.user.count.mockResolvedValueOnce(1);
+    prismaMock.user.update.mockResolvedValueOnce({ id: "u2", role: "USER" });
+
+    const result = await createCaller().updateUserRole({
+      userId: "u2",
+      role: "USER",
+    });
+
+    expect(prismaMock.user.count).toHaveBeenCalledWith({
+      where: { role: "ADMIN", id: { not: "u2" } },
+    });
+    expect(result.role).toBe("USER");
+  });
+
+  it("refuses to demote the last remaining admin", async () => {
+    prismaMock.user.count.mockResolvedValueOnce(0);
+
+    await expect(
+      createCaller().updateUserRole({ userId: "u2", role: "USER" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
   });
 
   it("lists households with members", async () => {
