@@ -218,8 +218,14 @@ Key settings:
 
 - **Planner logic** (`packages/api/src/routers/planner.ts`)
   - Distributes weekly category targets (fish, vegetarian, chicken, beef, other).
-  - Prioritizes recipes not used recently and balances everyday vs. weekend scores.
   - Tracks history across weeks and supports extra shopping items with persistence.
+- **Week generator** (`packages/api/src/week-generator.ts`)
+  - Lays out the week's categories before picking recipes, so the weekend gets a
+    real choice instead of whatever the quota left over.
+  - Scores candidates against an 8-week, weekday-aware history, so a recipe cannot
+    settle onto the same weekday week after week.
+  - Samples from the top candidates with a seeded softmax rather than taking the
+    single best one, so pressing "generer" again gives a genuinely different week.
 - **Recipes & ingredients** (`packages/api/src/routers/recipe.ts`, `.../ingredient.ts`)
   - Recipe CRUD with structured ingredient quantities and units.
   - Ingredient lookups reveal dependent recipes for easier pantry management.
