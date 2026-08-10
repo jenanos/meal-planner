@@ -221,7 +221,7 @@ Key settings:
   - Tracks history across weeks and supports extra shopping items with persistence.
 - **Week generator** (`packages/api/src/week-generator.ts`)
   - Lays out the week's categories before picking recipes, so the weekend gets a
-    real choice instead of whatever the quota left over.
+    real choice instead of whatever the quota left behind.
   - Scores candidates against an 8-week, weekday-aware history, so a recipe cannot
     settle onto the same weekday week after week.
   - Samples from the top candidates with a seeded softmax rather than taking the

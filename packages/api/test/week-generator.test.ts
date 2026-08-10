@@ -183,6 +183,41 @@ describe("generateWeek", () => {
     expect(new Set(week.map((r) => r.id)).size).toBe(5);
   });
 
+  it("never serves the same dinner two days running", () => {
+    // Five recipes over seven days forces repeats, but they must be spread out.
+    const pool = Array.from({ length: 5 }, (_, i) => makeRecipe(`r${i}`, "ANNET"));
+    for (let i = 0; i < 100; i += 1) {
+      const week = generateWeek(pool, NO_QUOTA, { seed: `adjacent-${i}` });
+      for (let day = 1; day < week.length; day += 1) {
+        expect(week[day]!.id).not.toBe(week[day - 1]!.id);
+      }
+    }
+  });
+
+  it("keeps a single-day target when the targets add up to more than a week", () => {
+    // Nine days requested across four categories. The surplus has to come off
+    // the categories asking for the most, not off the one asking for one day.
+    const pool = [
+      ...Array.from({ length: 5 }, (_, i) => makeRecipe(`f${i}`, "FISK")),
+      ...Array.from({ length: 5 }, (_, i) => makeRecipe(`c${i}`, "KYLLING")),
+      ...Array.from({ length: 5 }, (_, i) => makeRecipe(`v${i}`, "VEGETAR")),
+      ...Array.from({ length: 5 }, (_, i) => makeRecipe(`b${i}`, "STORFE")),
+    ];
+    const cfg: WeekGeneratorConfig = {
+      fish: 4,
+      chicken: 3,
+      vegetarian: 1,
+      beef: 1,
+      preferRecentGapDays: 21,
+    };
+
+    for (let i = 0; i < 40; i += 1) {
+      const counts = countByCategory(generateWeek(pool, cfg, { seed: `trim-${i}` }));
+      expect(counts.VEGETAR ?? 0).toBeGreaterThanOrEqual(1);
+      expect(counts.STORFE ?? 0).toBeGreaterThanOrEqual(1);
+    }
+  });
+
   it("keeps a recipe off the weekday it was recently served on", () => {
     // Every recipe was planned two weeks ago, so the general repeat penalty is
     // identical across the pool and the weekday term is the only thing that

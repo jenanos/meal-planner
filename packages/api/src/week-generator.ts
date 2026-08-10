@@ -105,6 +105,7 @@ const MAX_RARITY_BONUS = 1.5;
 const MAX_OVERLAP_CREDIT = 3;
 const OVERLAP_BONUS_PER_INGREDIENT = 0.5;
 const ADJACENT_CATEGORY_PENALTY = 2;
+const SAME_RECIPE_ADJACENT_PENALTY = 10;
 const CURRENTLY_PLANNED_PENALTY = 7;
 const OVER_BUDGET_PENALTY = 1.5;
 
@@ -255,20 +256,30 @@ function buildDayCategories(
   cfg: WeekGeneratorConfig,
   rng: Rng,
 ): (MealCategoryKey | null)[] {
-  const quota: (MealCategoryKey | null)[] = [];
-  const push = (category: MealCategoryKey, count: number) => {
-    for (let i = 0; i < Math.max(0, Math.floor(count)); i += 1) quota.push(category);
-  };
+  const requested = new Map<MealCategoryKey, number>([
+    ["FISK", Math.max(0, Math.floor(cfg.fish))],
+    ["VEGETAR", Math.max(0, Math.floor(cfg.vegetarian))],
+    ["KYLLING", Math.max(0, Math.floor(cfg.chicken))],
+    ["STORFE", Math.max(0, Math.floor(cfg.beef))],
+  ]);
 
-  push("FISK", cfg.fish);
-  push("VEGETAR", cfg.vegetarian);
-  push("KYLLING", cfg.chicken);
-  push("STORFE", cfg.beef);
+  // More targets than days: take the surplus off whichever category is asking
+  // for the most, so a category that only wanted a single day keeps it.
+  let total = Array.from(requested.values()).reduce((sum, n) => sum + n, 0);
+  while (total > DAYS_IN_WEEK) {
+    const largest = Math.max(...requested.values());
+    const contenders = Array.from(requested.entries())
+      .filter(([, count]) => count === largest)
+      .map(([category]) => category);
+    const victim = shuffle(contenders, rng)[0]!;
+    requested.set(victim, largest - 1);
+    total -= 1;
+  }
 
-  // More quota than days: drop the surplus at random rather than always
-  // sacrificing whichever category happens to be last in the list.
-  const slots =
-    quota.length > DAYS_IN_WEEK ? shuffle(quota, rng).slice(0, DAYS_IN_WEEK) : quota;
+  const slots: (MealCategoryKey | null)[] = [];
+  for (const [category, count] of requested) {
+    for (let i = 0; i < count; i += 1) slots.push(category);
+  }
   while (slots.length < DAYS_IN_WEEK) slots.push(null);
 
   return assignSlotsToDays(slots, rng);
@@ -404,10 +415,13 @@ function scoreCandidate(
     }
   }
 
-  // Keep two dinners of the same category off neighbouring days.
+  // Keep two dinners of the same category off neighbouring days, and the very
+  // same dinner off two days running. The latter matters when the collection
+  // is smaller than a week and the pool has to be reopened for repeats.
   for (const neighbour of [dayIndex - 1, dayIndex + 1]) {
     if (neighbour < 0 || neighbour >= DAYS_IN_WEEK) continue;
     const chosen = ctx.chosenByDay[neighbour];
+    if (chosen && chosen.id === recipe.id) score -= SAME_RECIPE_ADJACENT_PENALTY;
     const neighbourCategory = chosen ? chosen.category : ctx.layout[neighbour];
     if (neighbourCategory && neighbourCategory === recipe.category) {
       score -= ADJACENT_CATEGORY_PENALTY;

@@ -506,6 +506,41 @@ async function ensureDefaultStore(householdId: string) {
   });
 }
 
+/**
+ * Work out what a recipe's `lastUsed` should become after a week was rewritten.
+ *
+ * Adding an occurrence only ever moves the stamp forward, so editing an old
+ * week cannot make a recipe look freshly served. Removing one has to pull the
+ * stamp back to the newest occurrence that is still planned — otherwise a
+ * recipe dropped from a future week keeps a future `lastUsed`, and both the
+ * suggestion sorter and the generator go on treating it as already spoken for.
+ */
+async function resolveLastUsed(
+  tx: Prisma.TransactionClient,
+  recipe: { id: string; lastUsed: Date | null },
+  diff: number,
+  weekStart: Date,
+): Promise<{ lastUsed?: Date | null }> {
+  if (diff > 0) {
+    const isNewer = !recipe.lastUsed || recipe.lastUsed.getTime() < weekStart.getTime();
+    return isNewer ? { lastUsed: weekStart } : {};
+  }
+
+  // The stamp predates this week, so this removal cannot have been the latest
+  // occurrence. Leave it alone rather than second-guessing seeded data.
+  if (!recipe.lastUsed || recipe.lastUsed.getTime() < weekStart.getTime()) {
+    return {};
+  }
+
+  const latestRemaining = await tx.weekPlanEntry.findFirst({
+    where: { recipeId: recipe.id, entryType: "RECIPE" },
+    orderBy: { weekPlan: { weekStart: "desc" } },
+    select: { weekPlan: { select: { weekStart: true } } },
+  });
+
+  return { lastUsed: latestRemaining?.weekPlan.weekStart ?? null };
+}
+
 async function writeWeekPlan(weekStart: Date, days: WeekPlanDayEntryInput[], householdId: string) {
   if (days.length !== 7) {
     throw new Error("days must have length 7");
@@ -600,17 +635,14 @@ async function writeWeekPlan(weekStart: Date, days: WeekPlanDayEntryInput[], hou
       const diff = (newCounts.get(recipe.id) ?? 0) - (prevCounts.get(recipe.id) ?? 0);
       if (diff === 0) continue;
 
-      // `lastUsed` only ever moves forward: editing an old week must not make
-      // a recipe look freshly served.
-      const advanceLastUsed =
-        diff > 0 && (!recipe.lastUsed || recipe.lastUsed.getTime() < weekStart.getTime());
+      const lastUsedData = await resolveLastUsed(tx, recipe, diff, weekStart);
 
       await tx.recipe.update({
         where: { id: recipe.id },
         data: {
           // Stay an atomic increment, but never take the counter below zero.
           usageCount: { increment: Math.max(diff, -recipe.usageCount) },
-          ...(advanceLastUsed ? { lastUsed: weekStart } : {}),
+          ...lastUsedData,
         },
       });
     }
