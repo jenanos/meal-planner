@@ -16,19 +16,15 @@ import {
   ShoppingPackageById,
   ShoppingPackageSuggest,
 } from "../schemas.js";
+import {
+  generateWeek,
+  type MealCategoryKey,
+  type PlannedMeal,
+} from "../week-generator.js";
 import { z } from "zod";
 
 const DAYS = [0, 1, 2, 3, 4, 5, 6] as const;
 export type DayIndex = (typeof DAYS)[number];
-
-const CATEGORY_KEYS = [
-  "FISK",
-  "VEGETAR",
-  "KYLLING",
-  "STORFE",
-  "ANNET",
-] as const;
-type MealCategoryKey = (typeof CATEGORY_KEYS)[number];
 
 const INGREDIENT_CATEGORY_KEYS = [
   "FRUKT_OG_GRONT",
@@ -102,8 +98,6 @@ type WeekPlanDayEntryInput =
   | { type: "TAKEAWAY" }
   | { type: "FREEZER"; recipeId: string }
   | { type: "EMPTY" };
-
-type PlannerConfig = ReturnType<typeof resolveConstraints>;
 
 function normalizeIngredientCategory(
   value: string | null | undefined,
@@ -512,6 +506,41 @@ async function ensureDefaultStore(householdId: string) {
   });
 }
 
+/**
+ * Work out what a recipe's `lastUsed` should become after a week was rewritten.
+ *
+ * Adding an occurrence only ever moves the stamp forward, so editing an old
+ * week cannot make a recipe look freshly served. Removing one has to pull the
+ * stamp back to the newest occurrence that is still planned — otherwise a
+ * recipe dropped from a future week keeps a future `lastUsed`, and both the
+ * suggestion sorter and the generator go on treating it as already spoken for.
+ */
+async function resolveLastUsed(
+  tx: Prisma.TransactionClient,
+  recipe: { id: string; lastUsed: Date | null },
+  diff: number,
+  weekStart: Date,
+): Promise<{ lastUsed?: Date | null }> {
+  if (diff > 0) {
+    const isNewer = !recipe.lastUsed || recipe.lastUsed.getTime() < weekStart.getTime();
+    return isNewer ? { lastUsed: weekStart } : {};
+  }
+
+  // The stamp predates this week, so this removal cannot have been the latest
+  // occurrence. Leave it alone rather than second-guessing seeded data.
+  if (!recipe.lastUsed || recipe.lastUsed.getTime() < weekStart.getTime()) {
+    return {};
+  }
+
+  const latestRemaining = await tx.weekPlanEntry.findFirst({
+    where: { recipeId: recipe.id, entryType: "RECIPE" },
+    orderBy: { weekPlan: { weekStart: "desc" } },
+    select: { weekPlan: { select: { weekStart: true } } },
+  });
+
+  return { lastUsed: latestRemaining?.weekPlan.weekStart ?? null };
+}
+
 async function writeWeekPlan(weekStart: Date, days: WeekPlanDayEntryInput[], householdId: string) {
   if (days.length !== 7) {
     throw new Error("days must have length 7");
@@ -592,18 +621,30 @@ async function writeWeekPlan(weekStart: Date, days: WeekPlanDayEntryInput[], hou
         )
         .map((entry) => entry.recipeId),
     );
-    for (const [recipeId, newCount] of Array.from(newCounts.entries())) {
-      const prevCount = prevCounts.get(recipeId) ?? 0;
-      const diff = newCount - prevCount;
-      if (diff > 0) {
-        await tx.recipe.update({
-          where: { id: recipeId },
-          data: {
-            usageCount: { increment: diff },
-            lastUsed: weekStart,
-          },
-        });
-      }
+    // Keep usage stats in step with what the week actually contains. Only
+    // counting additions made `usageCount` drift upwards every time a week was
+    // regenerated, which skewed both the "ofte brukt" suggestions and the
+    // generator's own rarity signal.
+    const touchedIds = new Set([...prevCounts.keys(), ...newCounts.keys()]);
+    const touched = await tx.recipe.findMany({
+      where: { id: { in: Array.from(touchedIds) } },
+      select: { id: true, usageCount: true, lastUsed: true },
+    });
+
+    for (const recipe of touched) {
+      const diff = (newCounts.get(recipe.id) ?? 0) - (prevCounts.get(recipe.id) ?? 0);
+      if (diff === 0) continue;
+
+      const lastUsedData = await resolveLastUsed(tx, recipe, diff, weekStart);
+
+      await tx.recipe.update({
+        where: { id: recipe.id },
+        data: {
+          // Stay an atomic increment, but never take the counter below zero.
+          usageCount: { increment: Math.max(diff, -recipe.usageCount) },
+          ...lastUsedData,
+        },
+      });
     }
 
     const entries = await tx.weekPlanEntry.findMany({
@@ -664,71 +705,6 @@ async function fetchAllRecipes() {
   return all.map(toDTO);
 }
 
-function scoreRecipe(
-  r: RecipeDTO,
-  dayIndex: DayIndex,
-  cfg: ReturnType<typeof resolveConstraints>,
-  usedIngredients: Set<string>,
-  target: Record<MealCategoryKey, number>,
-  previousWeekRecipeIds: Set<string>,
-  selectedSoFar: RecipeDTO[],
-) {
-  let s = 0;
-
-  // Day-based scoring: Friday(4) and Saturday(5) want high everydayScore (weekend food)
-  const isFriSat = dayIndex === 4 || dayIndex === 5;
-  const isMonThu = dayIndex <= 3;
-
-  if (isFriSat) {
-    // Weekend: prefer high everyday score (comfort/indulgent food)
-    s += r.everydayScore >= 4 ? 4 : r.everydayScore >= 3 ? 1 : -2;
-  } else if (isMonThu) {
-    // Weekdays Mon-Thu: prefer healthy food
-    s += r.healthScore >= 4 ? 3 : r.healthScore >= 3 ? 1 : -1;
-    // Slightly prefer simpler everyday food on weekdays
-    s += r.everydayScore <= 3 ? 1 : 0;
-  } else {
-    // Sunday: open, slight preference for balanced meals
-    s += r.healthScore >= 3 ? 1 : 0;
-    s += r.everydayScore >= 3 ? 1 : 0;
-  }
-
-  // Ingredient overlap bonus (reduces shopping complexity)
-  const overlap = r.ingredients.reduce(
-    (acc, ingredient) =>
-      acc + (usedIngredients.has(ingredient.ingredientId) ? 1 : 0),
-    0,
-  );
-  s += overlap * 1.0;
-
-  // Recency: prefer recipes not used recently
-  const ds = daysSince(r.lastUsed);
-  if (ds >= cfg.preferRecentGapDays) s += 3;
-  else if (ds >= 14) s += 1;
-  else if (ds < 7) s -= 3;
-
-  // Category target: penalize recipes whose category quota is already filled
-  if (target[r.category] <= 0 && r.category !== "ANNET") s -= 6;
-  // Bonus for categories that still need filling
-  if (target[r.category] > 0) s += 2;
-
-  // Penalize repeats from previous week
-  if (previousWeekRecipeIds.has(r.id)) s -= 4;
-
-  // Penalize same recipe as the day before (no back-to-back)
-  if (selectedSoFar.length > 0) {
-    const prev = selectedSoFar[selectedSoFar.length - 1];
-    if (prev && prev.id === r.id) s -= 10;
-    // Also penalize same category as previous day (more variety)
-    if (prev && prev.category === r.category) s -= 2;
-  }
-
-  // Randomness factor to ensure different plans on regeneration
-  s += Math.random() * 3;
-
-  return s;
-}
-
 function resolveConstraints(input?: z.infer<typeof PlannerConstraints>) {
   return {
     fish: input?.fish ?? 2,
@@ -739,90 +715,60 @@ function resolveConstraints(input?: z.infer<typeof PlannerConstraints>) {
   };
 }
 
-function makeTargetMap(cfg: PlannerConfig): Record<MealCategoryKey, number> {
-  return {
-    FISK: cfg.fish,
-    VEGETAR: cfg.vegetarian,
-    KYLLING: cfg.chicken,
-    STORFE: cfg.beef,
-    ANNET: 0,
-  };
-}
+/**
+ * How far back (and forward) the generator looks when spreading recipes out.
+ * Longer than the old one-week horizon, which was the main reason favourites
+ * came back every other week.
+ */
+const HISTORY_WINDOW_WEEKS = 8;
 
-function pickWeekRecipes(
-  pool: RecipeDTO[],
-  cfg: PlannerConfig,
-  previousWeekRecipeIds?: Set<string>,
-) {
-  const usedIngredients = new Set<string>();
-  const selected: RecipeDTO[] = [];
-  const target = makeTargetMap(cfg);
-  const prevIds = previousWeekRecipeIds ?? new Set<string>();
-  const usedRecipeIds = new Set<string>();
+const WEEK_MS = 7 * 86_400_000;
 
-  for (const dayIndex of DAYS) {
-    // Exclude already-selected recipes from pool for this day
-    const available = pool.filter((r) => !usedRecipeIds.has(r.id));
-    if (!available.length) {
-      // Fallback: allow duplicates if pool is too small
-      if (!pool.length) {
-        throw new Error("No recipes available for planner selection");
-      }
-      const candidates = pool.map((recipe) => ({
-        recipe,
-        score: scoreRecipe(
-          recipe,
-          dayIndex,
-          cfg,
-          usedIngredients,
-          target,
-          prevIds,
-          selected,
-        ),
-      }));
-      const pick = candidates.sort((a, b) => b.score - a.score)[0]?.recipe;
-      if (!pick) throw new Error("Failed to select recipe for day");
-      selected.push(pick);
-      target[pick.category] = Math.max(0, target[pick.category] - 1);
-      pick.ingredients.forEach((ingredient) =>
-        usedIngredients.add(ingredient.ingredientId),
-      );
-      continue;
-    }
+/**
+ * Collect what the household has actually eaten around `weekStart`, as weekday
+ * aware history. Weeks on both sides count: planning backwards into a gap
+ * should still avoid clashing with the weeks that surround it.
+ */
+async function fetchPlanHistory(
+  householdId: string,
+  weekStart: Date,
+): Promise<PlannedMeal[]> {
+  const plans = await prisma.weekPlan.findMany({
+    where: {
+      householdId,
+      weekStart: {
+        gte: addWeeks(weekStart, -HISTORY_WINDOW_WEEKS),
+        lte: addWeeks(weekStart, HISTORY_WINDOW_WEEKS),
+      },
+    },
+    select: {
+      weekStart: true,
+      entries: {
+        select: { dayIndex: true, recipeId: true, entryType: true },
+      },
+    },
+  });
 
-    const wantsCategory = (recipe: RecipeDTO) =>
-      target[recipe.category] > 0 || recipe.category === "ANNET";
-
-    const prioritized = available.filter(wantsCategory);
-    const candidates = (prioritized.length ? prioritized : available).map(
-      (recipe) => ({
-        recipe,
-        score: scoreRecipe(
-          recipe,
-          dayIndex,
-          cfg,
-          usedIngredients,
-          target,
-          prevIds,
-          selected,
-        ),
-      }),
+  const meals: PlannedMeal[] = [];
+  for (const plan of plans) {
+    const weeksAgo = Math.round(
+      (weekStart.getTime() - plan.weekStart.getTime()) / WEEK_MS,
     );
+    // The week being generated is about to be replaced, so it is not history.
+    if (weeksAgo === 0) continue;
 
-    const pick = candidates.sort((a, b) => b.score - a.score)[0]?.recipe;
-    if (!pick) {
-      throw new Error("Failed to select recipe for day");
+    for (const entry of plan.entries) {
+      if (!entry.recipeId) continue;
+      if (entry.entryType !== "RECIPE" && entry.entryType !== "FREEZER") continue;
+      meals.push({
+        recipeId: entry.recipeId,
+        dayIndex: entry.dayIndex,
+        weeksAgo: Math.abs(weeksAgo),
+      });
     }
-
-    selected.push(pick);
-    usedRecipeIds.add(pick.id);
-    target[pick.category] = Math.max(0, target[pick.category] - 1);
-    pick.ingredients.forEach((ingredient) =>
-      usedIngredients.add(ingredient.ingredientId),
-    );
   }
 
-  return selected;
+  return meals;
 }
 
 type SimpleRecipeInput = { id: string; diet: string } & Record<string, unknown>;
@@ -841,6 +787,7 @@ function normalizeDiet(value: string): MealCategoryKey {
 export function selectRecipes(
   recipes: SimpleRecipeInput[],
   targets: Record<string, number>,
+  options?: { seed?: number | string },
 ) {
   const pool: RecipeDTO[] = recipes.map((recipe) => {
     const category = normalizeDiet(String(recipe.diet));
@@ -864,7 +811,7 @@ export function selectRecipes(
     preferRecentGapDays: 21,
   });
 
-  const selected = pickWeekRecipes(pool, cfg);
+  const selected = generateWeek(pool, cfg, { seed: options?.seed });
   const lookup = new Map(recipes.map((r) => [r.id, r]));
   return selected.map((recipe) => {
     const base = lookup.get(recipe.id);
@@ -912,6 +859,8 @@ async function ensureWeekPlanResponse(
 const GenerateWeekInput = z.object({
   weekStart: z.string().optional(),
   constraints: PlannerConstraints.optional(),
+  /** Pass a stable value to reproduce a plan; omit for a fresh one each time. */
+  seed: z.string().max(64).optional(),
 });
 
 type GenerateWeekInput = z.infer<typeof GenerateWeekInput>;
@@ -925,16 +874,15 @@ export const plannerRouter = router({
       enforceFutureLimit(weekStart);
       const cfg = resolveConstraints(input?.constraints);
 
-      // Fetch the previous week's plan to avoid repetition
-      const prevWeekStart = addWeeks(weekStart, -1);
-      const [pool, prevPlan] = await Promise.all([
+      // Look at the surrounding weeks to spread recipes out, and at what the
+      // target week already holds so pressing "generer" again gives something
+      // genuinely new instead of re-proposing the plan on screen.
+      const [pool, history, currentPlan] = await Promise.all([
         fetchAllRecipes(),
+        fetchPlanHistory(householdId, weekStart),
         prisma.weekPlan.findUnique({
           where: {
-            weekStart_householdId: {
-              weekStart: prevWeekStart,
-              householdId,
-            },
+            weekStart_householdId: { weekStart, householdId },
           },
           include: {
             entries: { select: { recipeId: true } },
@@ -942,13 +890,15 @@ export const plannerRouter = router({
         }),
       ]);
 
-      const previousWeekRecipeIds = new Set<string>(
-        (prevPlan?.entries ?? [])
-          .map((e) => e.recipeId)
-          .filter((id): id is string => id != null),
-      );
+      const avoidRecipeIds = (currentPlan?.entries ?? [])
+        .map((entry) => entry.recipeId)
+        .filter((id): id is string => id != null);
 
-      const selected = pickWeekRecipes(pool, cfg, previousWeekRecipeIds);
+      const selected = generateWeek(pool, cfg, {
+        history,
+        avoidRecipeIds,
+        seed: input?.seed,
+      });
       const days = selected.map((recipe) => ({
         type: "RECIPE" as const,
         recipeId: recipe.id,
