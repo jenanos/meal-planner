@@ -59,6 +59,7 @@ const STANDARD_STORE_CATEGORY_ORDER: IngredientCategoryKey[] = [
 type RecipeDTO = {
   id: string;
   name: string;
+  description?: string;
   category: MealCategoryKey;
   everydayScore: number;
   healthScore: number;
@@ -198,6 +199,7 @@ function toDTO(r: any): RecipeDTO {
   return {
     id: r.id,
     name: r.name,
+    description: r.description ?? undefined,
     category: normalizeDiet(String(r.category)),
     everydayScore: r.everydayScore,
     healthScore: r.healthScore,

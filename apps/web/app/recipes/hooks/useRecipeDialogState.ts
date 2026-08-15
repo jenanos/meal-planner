@@ -176,11 +176,35 @@ export function useRecipeDialogState({
 
   const trimmedIngSearch = ingSearch.trim();
   const normalizedIngKey = trimmedIngSearch.toLowerCase();
+  const debouncedIngKey = debouncedIngSearch.trim().toLowerCase();
+  const searchIsDebouncing = debouncedIngKey !== normalizedIngKey;
 
   const ingredientSuggestions = useMemo(() => {
     if (!trimmedIngSearch) return [] as IngredientSuggestion[];
+    // While the debounce is still catching up, `ingredientData` belongs to the
+    // previous search term, so prefer a cached result for the term on screen.
+    if (searchIsDebouncing) {
+      return ingredientSuggestionCache[normalizedIngKey] ?? ingredientData ?? [];
+    }
     return ingredientData ?? ingredientSuggestionCache[normalizedIngKey] ?? [];
-  }, [ingredientData, ingredientSuggestionCache, normalizedIngKey, trimmedIngSearch]);
+  }, [
+    ingredientData,
+    ingredientSuggestionCache,
+    normalizedIngKey,
+    searchIsDebouncing,
+    trimmedIngSearch,
+  ]);
+
+  /**
+   * Whether `ingredientSuggestions` is known to describe the search term currently
+   * on screen. Creating an ingredient off stale results can silently overwrite an
+   * existing one via the upsert in `ingredient.create`, so callers must not offer
+   * the "create" path until this is true.
+   */
+  const ingredientResultsAreCurrent =
+    trimmedIngSearch.length > 0 &&
+    (Boolean(ingredientSuggestionCache[normalizedIngKey]) ||
+      (!searchIsDebouncing && !ingredientQuery.isFetching && ingredientData !== undefined));
 
   const knownIngredientNames = useMemo(() => {
     const set = new Set<string>();
@@ -195,25 +219,29 @@ export function useRecipeDialogState({
     (rawName: string, unit?: string, id?: string) => {
       const trimmed = rawName.trim();
       if (!trimmed) return;
-      setIngList((prev) => {
-        if (prev.some((item) => item.name.toLowerCase() === trimmed.toLowerCase())) {
-          return prev;
-        }
-        const existsInDb = knownIngredientNames.has(trimmed.toLowerCase());
-        if (existsInDb) {
-          // If we have full ingredient data from search, we could populate isPantryItem/id here,
-          // but simplistic addition just by name usually lacks ID until refined or saved.
-          return [...prev, { id, name: trimmed, unit }];
-        }
-        if (!createIngredient.isPending) {
-          createIngredient.mutate({ name: trimmed });
-        }
-        return prev;
-      });
+      const lowered = trimmed.toLowerCase();
       setIngSearch("");
       setDebouncedIngSearch("");
+      if (ingList.some((item) => item.name.toLowerCase() === lowered)) return;
+
+      // An explicit id means the caller picked an existing suggestion; otherwise fall
+      // back to the names we have seen in search results. Only an exact name match
+      // counts as existing — a partial match such as "aspargesbønner" for "asparges"
+      // must still create the new ingredient.
+      const existsInDb = Boolean(id) || knownIngredientNames.has(lowered);
+      if (existsInDb) {
+        setIngList((prev) =>
+          prev.some((item) => item.name.toLowerCase() === lowered)
+            ? prev
+            : [...prev, { id, name: trimmed, unit }]
+        );
+        return;
+      }
+      if (!createIngredient.isPending) {
+        createIngredient.mutate({ name: trimmed });
+      }
     },
-    [createIngredient, knownIngredientNames]
+    [createIngredient, ingList, knownIngredientNames]
   );
 
   const removeIngredient = useCallback((nameToRemove: string) => {
@@ -487,7 +515,8 @@ export function useRecipeDialogState({
     setIngSearch,
     trimmedIngSearch,
     ingredientSuggestions,
-    isIngredientQueryFetching: ingredientQuery.isFetching,
+    ingredientResultsAreCurrent,
+    isIngredientQueryFetching: ingredientQuery.isFetching || searchIsDebouncing,
     ingList,
     addIngredientByName,
     removeIngredient,

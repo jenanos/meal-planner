@@ -65,6 +65,8 @@ interface RecipeFormDialogProps {
   onIngSearchChange: (_value: string) => void;
   trimmedIngSearch: string;
   ingredientSuggestions: IngredientSuggestion[];
+  /** True once the suggestions are known to describe the search term on screen. */
+  ingredientResultsAreCurrent: boolean;
   isIngredientQueryFetching: boolean;
   ingList: FormIngredient[];
   addIngredientByName: (_name: string, _unit?: string, _id?: string) => void;
@@ -108,6 +110,7 @@ export function RecipeFormDialog({
   onIngSearchChange,
   trimmedIngSearch,
   ingredientSuggestions,
+  ingredientResultsAreCurrent,
   isIngredientQueryFetching,
   ingList,
   addIngredientByName,
@@ -329,37 +332,40 @@ export function RecipeFormDialog({
                                     !ingList.some((ingredient) => ingredient.name.toLowerCase() === suggestion.name.toLowerCase())
                                 );
 
-                                if (available.length > 0) {
-                                  return (
-                                    <div className="flex flex-wrap gap-2">
-                                      {available.map((suggestion) => (
-                                        <Badge
-                                          key={suggestion.id}
-                                          className="cursor-pointer"
-                                          onClick={() => addIngredientByName(suggestion.name, suggestion.unit, suggestion.id)}
-                                        >
-                                          {suggestion.name}
-                                          {suggestion.unit ? <span className="opacity-60">&nbsp;({suggestion.unit})</span> : null}
-                                        </Badge>
-                                      ))}
-                                    </div>
-                                  );
-                                }
-
-                                if (
-                                  !isIngredientQueryFetching &&
-                                  trimmedIngSearch.length > 0 &&
+                                // Partial matches (e.g. "aspargesbønner" when searching for
+                                // "asparges") must not hide the option to create the new
+                                // ingredient — only an exact name match does. Offering it
+                                // requires results for the term actually on screen: creating
+                                // off stale results would upsert over an existing ingredient.
+                                const canCreate =
+                                  ingredientResultsAreCurrent &&
                                   !ingredientSuggestions.some((suggestion) => suggestion.name.toLowerCase() === normalized) &&
-                                  !ingList.some((ingredient) => ingredient.name.toLowerCase() === normalized)
-                                ) {
-                                  return (
-                                    <Badge className="cursor-pointer" onClick={() => addIngredientByName(trimmedIngSearch)}>
-                                      Legg til "{trimmedIngSearch}"
-                                    </Badge>
-                                  );
+                                  !ingList.some((ingredient) => ingredient.name.toLowerCase() === normalized);
+
+                                if (available.length === 0 && !canCreate) {
+                                  return null;
                                 }
 
-                                return null;
+                                return (
+                                  <div className="flex flex-wrap gap-2">
+                                    {canCreate ? (
+                                      <Badge className="cursor-pointer" onClick={() => addIngredientByName(trimmedIngSearch)}>
+                                        Legg til &quot;{trimmedIngSearch}&quot;
+                                      </Badge>
+                                    ) : null}
+                                    {available.map((suggestion) => (
+                                      <Badge
+                                        key={suggestion.id}
+                                        variant={canCreate ? "secondary" : "default"}
+                                        className="cursor-pointer"
+                                        onClick={() => addIngredientByName(suggestion.name, suggestion.unit, suggestion.id)}
+                                      >
+                                        {suggestion.name}
+                                        {suggestion.unit ? <span className="opacity-60">&nbsp;({suggestion.unit})</span> : null}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                );
                               })()}
                             </div>
                           ) : ingList.length === 0 ? (
