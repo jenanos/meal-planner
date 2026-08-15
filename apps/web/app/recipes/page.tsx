@@ -65,6 +65,7 @@ export default function RecipesPage() {
     setIngSearch,
     trimmedIngSearch,
     ingredientSuggestions,
+    ingredientResultsAreCurrent,
     isIngredientQueryFetching,
     ingList,
     addIngredientByName,
@@ -153,6 +154,7 @@ export default function RecipesPage() {
           onIngSearchChange={setIngSearch}
           trimmedIngSearch={trimmedIngSearch}
           ingredientSuggestions={ingredientSuggestions}
+          ingredientResultsAreCurrent={ingredientResultsAreCurrent}
           isIngredientQueryFetching={isIngredientQueryFetching}
           ingList={ingList}
           addIngredientByName={addIngredientByName}

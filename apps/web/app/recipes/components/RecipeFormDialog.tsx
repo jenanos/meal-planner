@@ -65,6 +65,8 @@ interface RecipeFormDialogProps {
   onIngSearchChange: (_value: string) => void;
   trimmedIngSearch: string;
   ingredientSuggestions: IngredientSuggestion[];
+  /** True once the suggestions are known to describe the search term on screen. */
+  ingredientResultsAreCurrent: boolean;
   isIngredientQueryFetching: boolean;
   ingList: FormIngredient[];
   addIngredientByName: (_name: string, _unit?: string, _id?: string) => void;
@@ -108,6 +110,7 @@ export function RecipeFormDialog({
   onIngSearchChange,
   trimmedIngSearch,
   ingredientSuggestions,
+  ingredientResultsAreCurrent,
   isIngredientQueryFetching,
   ingList,
   addIngredientByName,
@@ -331,9 +334,11 @@ export function RecipeFormDialog({
 
                                 // Partial matches (e.g. "aspargesbønner" when searching for
                                 // "asparges") must not hide the option to create the new
-                                // ingredient — only an exact name match does.
+                                // ingredient — only an exact name match does. Offering it
+                                // requires results for the term actually on screen: creating
+                                // off stale results would upsert over an existing ingredient.
                                 const canCreate =
-                                  !isIngredientQueryFetching &&
+                                  ingredientResultsAreCurrent &&
                                   !ingredientSuggestions.some((suggestion) => suggestion.name.toLowerCase() === normalized) &&
                                   !ingList.some((ingredient) => ingredient.name.toLowerCase() === normalized);
 

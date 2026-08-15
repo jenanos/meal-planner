@@ -176,11 +176,35 @@ export function useRecipeDialogState({
 
   const trimmedIngSearch = ingSearch.trim();
   const normalizedIngKey = trimmedIngSearch.toLowerCase();
+  const debouncedIngKey = debouncedIngSearch.trim().toLowerCase();
+  const searchIsDebouncing = debouncedIngKey !== normalizedIngKey;
 
   const ingredientSuggestions = useMemo(() => {
     if (!trimmedIngSearch) return [] as IngredientSuggestion[];
+    // While the debounce is still catching up, `ingredientData` belongs to the
+    // previous search term, so prefer a cached result for the term on screen.
+    if (searchIsDebouncing) {
+      return ingredientSuggestionCache[normalizedIngKey] ?? ingredientData ?? [];
+    }
     return ingredientData ?? ingredientSuggestionCache[normalizedIngKey] ?? [];
-  }, [ingredientData, ingredientSuggestionCache, normalizedIngKey, trimmedIngSearch]);
+  }, [
+    ingredientData,
+    ingredientSuggestionCache,
+    normalizedIngKey,
+    searchIsDebouncing,
+    trimmedIngSearch,
+  ]);
+
+  /**
+   * Whether `ingredientSuggestions` is known to describe the search term currently
+   * on screen. Creating an ingredient off stale results can silently overwrite an
+   * existing one via the upsert in `ingredient.create`, so callers must not offer
+   * the "create" path until this is true.
+   */
+  const ingredientResultsAreCurrent =
+    trimmedIngSearch.length > 0 &&
+    (Boolean(ingredientSuggestionCache[normalizedIngKey]) ||
+      (!searchIsDebouncing && !ingredientQuery.isFetching && ingredientData !== undefined));
 
   const knownIngredientNames = useMemo(() => {
     const set = new Set<string>();
@@ -491,7 +515,8 @@ export function useRecipeDialogState({
     setIngSearch,
     trimmedIngSearch,
     ingredientSuggestions,
-    isIngredientQueryFetching: ingredientQuery.isFetching,
+    ingredientResultsAreCurrent,
+    isIngredientQueryFetching: ingredientQuery.isFetching || searchIsDebouncing,
     ingList,
     addIngredientByName,
     removeIngredient,

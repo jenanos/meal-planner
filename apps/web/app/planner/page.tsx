@@ -182,6 +182,7 @@ export default function PlannerPage() {
     setIngSearch,
     trimmedIngSearch,
     ingredientSuggestions,
+    ingredientResultsAreCurrent,
     isIngredientQueryFetching,
     ingList,
     addIngredientByName,
@@ -739,6 +740,7 @@ export default function PlannerPage() {
         onIngSearchChange={setIngSearch}
         trimmedIngSearch={trimmedIngSearch}
         ingredientSuggestions={ingredientSuggestions}
+        ingredientResultsAreCurrent={ingredientResultsAreCurrent}
         isIngredientQueryFetching={isIngredientQueryFetching}
         ingList={ingList}
         addIngredientByName={addIngredientByName}
