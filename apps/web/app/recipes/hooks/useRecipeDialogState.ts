@@ -195,25 +195,29 @@ export function useRecipeDialogState({
     (rawName: string, unit?: string, id?: string) => {
       const trimmed = rawName.trim();
       if (!trimmed) return;
-      setIngList((prev) => {
-        if (prev.some((item) => item.name.toLowerCase() === trimmed.toLowerCase())) {
-          return prev;
-        }
-        const existsInDb = knownIngredientNames.has(trimmed.toLowerCase());
-        if (existsInDb) {
-          // If we have full ingredient data from search, we could populate isPantryItem/id here,
-          // but simplistic addition just by name usually lacks ID until refined or saved.
-          return [...prev, { id, name: trimmed, unit }];
-        }
-        if (!createIngredient.isPending) {
-          createIngredient.mutate({ name: trimmed });
-        }
-        return prev;
-      });
+      const lowered = trimmed.toLowerCase();
       setIngSearch("");
       setDebouncedIngSearch("");
+      if (ingList.some((item) => item.name.toLowerCase() === lowered)) return;
+
+      // An explicit id means the caller picked an existing suggestion; otherwise fall
+      // back to the names we have seen in search results. Only an exact name match
+      // counts as existing — a partial match such as "aspargesbønner" for "asparges"
+      // must still create the new ingredient.
+      const existsInDb = Boolean(id) || knownIngredientNames.has(lowered);
+      if (existsInDb) {
+        setIngList((prev) =>
+          prev.some((item) => item.name.toLowerCase() === lowered)
+            ? prev
+            : [...prev, { id, name: trimmed, unit }]
+        );
+        return;
+      }
+      if (!createIngredient.isPending) {
+        createIngredient.mutate({ name: trimmed });
+      }
     },
-    [createIngredient, knownIngredientNames]
+    [createIngredient, ingList, knownIngredientNames]
   );
 
   const removeIngredient = useCallback((nameToRemove: string) => {
