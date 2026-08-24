@@ -1,6 +1,9 @@
 {
   "extends": "../../tsconfig.json",
-  "references": [{ "path": "../../packages/api" }],
+  "references": [
+    { "path": "../../packages/api" },
+    { "path": "../../packages/database" }
+  ],
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",

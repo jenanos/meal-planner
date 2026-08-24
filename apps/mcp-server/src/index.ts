@@ -23,6 +23,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import * as z from "zod";
 import { registerOAuthRoutes, type OAuthConfig } from "./oauth/routes.js";
+import { pruneExpired as pruneExpiredOAuthState } from "./oauth/db.js";
 import { verifyAccessToken } from "./oauth/jwt.js";
 
 const weekStartSchema = WeekPlanInput.shape.weekStart;
@@ -1108,6 +1109,18 @@ app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: false }));
 
 registerOAuthRoutes(app, oauthConfig);
+
+// Expired OAuth rows are harmless but accumulate, so sweep them
+// periodically. Failures are logged and retried on the next tick — a
+// cleanup problem must never take the server down.
+const OAUTH_PRUNE_INTERVAL_MS = 15 * 60 * 1000;
+const pruneOAuthState = () => {
+  pruneExpiredOAuthState().catch((error) => {
+    console.error("Failed to prune expired OAuth state:", error);
+  });
+};
+setInterval(pruneOAuthState, OAUTH_PRUNE_INTERVAL_MS).unref();
+pruneOAuthState();
 
 app.post("/mcp", async (req: Request, res: Response) => {
   const token = extractBearerToken(req);

@@ -61,21 +61,23 @@ enum AppRole {
 // ─── Auth models (managed by better-auth) ───
 
 model User {
-  id            String    @id
+  id            String   @id
   name          String
-  email         String    @unique
-  emailVerified Boolean   @default(false)
+  email         String   @unique
+  emailVerified Boolean  @default(false)
   image         String?
-  role          AppRole   @default(USER)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  role          AppRole  @default(USER)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  sessions           Session[]
-  accounts           Account[]
-  memberships        HouseholdMember[]
-  preference         UserPreference?
-  oauthCodes         OAuthAuthorizationCode[]
-  oauthRefreshTokens OAuthRefreshToken[]
+  sessions              Session[]
+  accounts              Account[]
+  memberships           HouseholdMember[]
+  preference            UserPreference?
+  oauthCodes            OAuthAuthorizationCode[]
+  oauthRefreshTokens    OAuthRefreshToken[]
+  oauthPendingApprovals OAuthPendingApproval[]
+  oauthClientApprovals  OAuthClientApproval[]
 }
 
 /// Emails that are pre-approved to sign up / sign in.
@@ -143,6 +145,8 @@ model OAuthClient {
 
   authorizationCodes OAuthAuthorizationCode[]
   refreshTokens      OAuthRefreshToken[]
+  pendingApprovals   OAuthPendingApproval[]
+  approvals          OAuthClientApproval[]
 }
 
 model OAuthAuthorizationCode {
@@ -174,10 +178,54 @@ model OAuthRefreshToken {
   revokedAt DateTime?
   createdAt DateTime  @default(now())
 
+  /// Token that replaced this one during rotation. Lets a client that
+  /// never received the rotation response (dropped connection, or two
+  /// refreshes racing) retry with the old token inside a short grace
+  /// window and get the same replacement back instead of being logged out.
+  replacedByToken String?
+
   client OAuthClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
   user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([clientId])
+}
+
+/// A consent request that has been rendered but not yet answered. Single-use:
+/// the row is deleted when the user approves or denies.
+model OAuthPendingApproval {
+  id                  String   @id @default(uuid()) @db.Uuid
+  token               String   @unique
+  clientId            String
+  userId              String
+  redirectUri         String
+  scope               String?
+  state               String?
+  codeChallenge       String
+  codeChallengeMethod String
+  expiresAt           DateTime
+  createdAt           DateTime @default(now())
+
+  client OAuthClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([clientId])
+}
+
+/// A remembered consent decision: this user has approved this client, so
+/// later authorization requests skip the consent screen.
+model OAuthClientApproval {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String
+  clientId  String
+  createdAt DateTime @default(now())
+
+  client OAuthClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clientId])
+  @@index([clientId])
 }
 
 // ─── Household models ───
@@ -251,16 +299,16 @@ model UserPreference {
 // ─── Shared data (global, not household-scoped) ───
 
 model Recipe {
-  id            String         @id @default(uuid()) @db.Uuid
-  name          String         @unique @db.Citext
-  description   String?        @db.Text
+  id            String       @id @default(uuid()) @db.Uuid
+  name          String       @unique @db.Citext
+  description   String?      @db.Text
   category      MealCategory
   everydayScore Int
   healthScore   Int
   lastUsed      DateTime?
-  usageCount    Int            @default(0)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  usageCount    Int          @default(0)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 
   ingredients  RecipeIngredient[]
   weekEntries  WeekPlanEntry[]
@@ -271,13 +319,13 @@ model Recipe {
 }
 
 model Ingredient {
-  id   String  @id @default(uuid()) @db.Uuid
-  name String  @unique @db.Citext
-  unit String? @db.VarChar(32)
-  isPantryItem Boolean @default(false)
-  category IngredientCategory @default(ANNET)
+  id           String             @id @default(uuid()) @db.Uuid
+  name         String             @unique @db.Citext
+  unit         String?            @db.VarChar(32)
+  isPantryItem Boolean            @default(false)
+  category     IngredientCategory @default(ANNET)
 
-  recipes RecipeIngredient[]
+  recipes      RecipeIngredient[]
   packageItems ShoppingPackageItem[]
 
   @@index([category])
@@ -326,10 +374,10 @@ model WeekIndex {
 }
 
 model WeekPlanEntry {
-  id         String @id @default(uuid()) @db.Uuid
-  weekPlanId String @db.Uuid
+  id         String            @id @default(uuid()) @db.Uuid
+  weekPlanId String            @db.Uuid
   dayIndex   Int
-  recipeId   String? @db.Uuid
+  recipeId   String?           @db.Uuid
   entryType  WeekPlanEntryType @default(RECIPE)
 
   weekPlan WeekPlan @relation(fields: [weekPlanId], references: [id], onDelete: Cascade)
@@ -365,7 +413,7 @@ model ExtraItemCatalog {
 
   extras       ExtraShoppingItem[]
   packageItems ShoppingPackageItem[]
-  household    Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  household    Household             @relation(fields: [householdId], references: [id], onDelete: Cascade)
 
   @@unique([name, householdId])
   @@index([category])
@@ -396,7 +444,7 @@ model ShoppingStore {
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
 
-  household   Household          @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  household   Household        @relation(fields: [householdId], references: [id], onDelete: Cascade)
   preferences UserPreference[]
 
   @@unique([name, householdId])

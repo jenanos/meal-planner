@@ -521,38 +521,38 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig) {
         });
       }
 
-      // Atomically consume the old refresh token. Two concurrent refreshes
-      // can't both pass: only one updateMany flips revokedAt; the other
-      // gets null here. The returned row carries the bound user/client/scope.
-      const consumed = await db.consumeRefreshToken(refreshToken);
-      if (!consumed) {
+      // Rotate the refresh token. The store revokes the old token and
+      // issues the new one in a single transaction, so two concurrent
+      // refreshes can't both mint a token. The loser of that race — and a
+      // client retrying because the previous response never arrived — gets
+      // `replayed` and the same replacement token back, instead of being
+      // logged out over a dropped HTTP response.
+      const rotation = await db.rotateRefreshToken({
+        token: refreshToken,
+        clientId,
+        newToken: generateOpaqueToken(48),
+        expiresAt: new Date(Date.now() + config.refreshTokenTtl * 1000),
+      });
+
+      if (rotation.kind === "client_mismatch") {
+        return res.status(400).json({
+          error: "invalid_grant",
+          error_description: "client_id mismatch",
+        });
+      }
+      if (rotation.kind === "invalid") {
         return res.status(400).json({
           error: "invalid_grant",
           error_description:
             "Refresh token is invalid, expired, or already used",
         });
       }
-      if (consumed.clientId !== clientId) {
-        return res.status(400).json({
-          error: "invalid_grant",
-          error_description: "client_id mismatch",
-        });
-      }
-
-      const newRefresh = generateOpaqueToken(48);
-      await db.createRefreshToken({
-        token: newRefresh,
-        clientId: consumed.clientId,
-        userId: consumed.userId,
-        scope: consumed.scope,
-        expiresAt: new Date(Date.now() + config.refreshTokenTtl * 1000),
-      });
 
       const accessToken = signAccessToken(
         {
-          sub: consumed.userId,
-          client_id: consumed.clientId,
-          scope: consumed.scope ?? undefined,
+          sub: rotation.userId,
+          client_id: rotation.clientId,
+          scope: rotation.scope ?? undefined,
           iss: config.issuer,
           aud: config.issuer,
         },
@@ -564,8 +564,8 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig) {
         access_token: accessToken,
         token_type: "Bearer",
         expires_in: config.accessTokenTtl,
-        refresh_token: newRefresh,
-        scope: consumed.scope ?? undefined,
+        refresh_token: rotation.refreshToken,
+        scope: rotation.scope ?? undefined,
       });
     }
 

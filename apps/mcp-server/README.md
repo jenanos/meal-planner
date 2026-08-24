@@ -46,7 +46,7 @@ cp .env.example .env
 Required environment variables:
 
 - `MEALS_API_INTERNAL_ORIGIN` – base URL for the Meal Planner API. Used for both forwarded tRPC calls and for validating better-auth sessions during the OAuth login flow (the MCP server calls `${MEALS_API_INTERNAL_ORIGIN}/auth/get-session`). Default: `http://localhost:4000`.
-- `DATABASE_URL` – Postgres connection string. The MCP server never queries Postgres itself — OAuth provider state (clients, codes, refresh tokens, consent decisions) lives in memory and resets on restart. The variable is only required because importing `@repo/api` transitively loads `@repo/database`, which validates `DATABASE_URL` at module load. Point it at the same instance as `meals-api`.
+- `DATABASE_URL` – Postgres connection string. OAuth provider state (registered clients, authorization codes, refresh tokens, consent decisions) is stored here, so connected clients survive restarts and deploys. Point it at the same instance as `meals-api`; the tables are created by the same Prisma migrations.
 - `MCP_API_KEY` – shared secret sent as `x-api-key` to the Meal Planner API for service-to-service auth. Must match `MCP_API_KEY` in `apps/server/.env`. Generate with `openssl rand -base64 32`.
 - `MCP_OAUTH_ISSUER` – public origin of this MCP server, e.g. `https://meals-mcp.example.com`. Used as the OAuth issuer in tokens and discovery metadata.
 - `MCP_OAUTH_SIGNING_SECRET` – HMAC secret used to sign JWT access tokens. Generate with `openssl rand -base64 64`.
@@ -73,7 +73,16 @@ The MCP server hosts a complete OAuth 2.1 authorization server with PKCE and Dyn
 | `POST /oauth/token`                               | Token endpoint (`authorization_code`, `refresh_token`) |
 | `POST /mcp`                                       | Protected MCP endpoint (`Authorization: Bearer <jwt>`) |
 
-When a client hits `/oauth/authorize` without a valid better-auth session cookie, the server redirects to `MCP_OAUTH_LOGIN_URL?callbackUrl=…`. The web app's login page authenticates the user (magic link or OTP via better-auth) and sends them back to `/oauth/authorize`. Because client registration is open (DCR), the server then shows an explicit consent page before issuing an authorization code — otherwise any registered client could obtain a code for a logged-in user via a single crafted link. Approvals are remembered per user + client for the lifetime of the process, so subsequent authorizations for the same client skip the consent screen. Token exchange validates PKCE and returns a JWT access token plus a rotating opaque refresh token.
+When a client hits `/oauth/authorize` without a valid better-auth session cookie, the server redirects to `MCP_OAUTH_LOGIN_URL?callbackUrl=…`. The web app's login page authenticates the user (magic link or OTP via better-auth) and sends them back to `/oauth/authorize`. Because client registration is open (DCR), the server then shows an explicit consent page before issuing an authorization code — otherwise any registered client could obtain a code for a logged-in user via a single crafted link. Approvals are remembered per user + client, so subsequent authorizations for the same client skip the consent screen. Token exchange validates PKCE and returns a JWT access token plus a rotating opaque refresh token.
+
+### State persistence
+
+Registered clients, authorization codes, refresh tokens, and consent decisions live in Postgres (`DATABASE_URL`), not in process memory. That matters for two failure modes that otherwise show up within days:
+
+- A client such as ChatGPT caches the `client_id` it got from Dynamic Client Registration. If the registration is gone after a restart, re-authorizing fails with `invalid_client: Unknown client_id` and the only way out is deleting and re-adding the connector.
+- Refresh tokens that vanish on restart log every connected client out, regardless of `MCP_OAUTH_REFRESH_TOKEN_TTL`.
+
+Refresh tokens rotate on every use, and the old token keeps working for 60 seconds after rotation. Within that window it returns the *same* replacement token instead of a new one, so a client whose rotation response was lost — or two refreshes racing — recovers instead of losing its session. After the window, reuse is rejected as normal. Expired rows are swept every 15 minutes; registrations that were never connected through are dropped after 24 hours.
 
 For the cookie share to work, better-auth on `meals-api` must be configured with `BETTER_AUTH_COOKIE_DOMAIN` set to the parent domain (e.g. `.jenanos.xyz`).
 

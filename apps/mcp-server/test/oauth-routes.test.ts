@@ -5,7 +5,13 @@ import express from "express";
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { registerOAuthRoutes, type OAuthConfig } from "../src/oauth/routes";
 import { verifyAccessToken } from "../src/oauth/jwt";
+import type { PrismaClient } from "@repo/database";
 import * as db from "../src/oauth/db";
+import {
+  resetOAuthTestDb,
+  setupOAuthTestDb,
+  teardownOAuthTestDb,
+} from "./helpers/oauth-db";
 
 const ISSUER = "https://mcp.test";
 const LOGIN_URL = "https://meals.test/login";
@@ -18,11 +24,14 @@ const SESSION_USERS: Record<string, { id: string; email: string }> = {
   "session=user-2": { id: "user-2", email: "user2@example.com" },
 };
 
+let prisma: PrismaClient;
 let fakeApi: Server;
 let mcp: Server;
 let mcpOrigin: string;
 
 beforeAll(async () => {
+  prisma = await setupOAuthTestDb();
+
   fakeApi = createServer((req, res) => {
     if (req.url?.startsWith("/auth/get-session")) {
       const user = SESSION_USERS[req.headers.cookie ?? ""] ?? null;
@@ -53,16 +62,29 @@ beforeAll(async () => {
   mcp = createServer(app);
   await new Promise<void>((resolve) => mcp.listen(0, resolve));
   mcpOrigin = `http://127.0.0.1:${(mcp.address() as AddressInfo).port}`;
-});
+}, 60_000);
 
 afterAll(async () => {
   await new Promise((resolve) => mcp.close(resolve));
   await new Promise((resolve) => fakeApi.close(resolve));
+  await teardownOAuthTestDb();
 });
 
-beforeEach(() => {
-  db.__internal.reset();
+beforeEach(async () => {
+  await resetOAuthTestDb();
 });
+
+function refreshWith(clientId: string, refreshToken: string) {
+  return fetch(`${mcpOrigin}/oauth/token`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+      client_id: clientId,
+    }),
+  });
+}
 
 function makePkce() {
   const verifier = randomBytes(32).toString("base64url");
@@ -382,22 +404,11 @@ describe("token endpoint", () => {
     expect(res.status).toBe(400);
   });
 
-  it("rotates refresh tokens and rejects reuse of the old one", async () => {
+  it("rotates refresh tokens", async () => {
     const { client_id, verifier, code } = await fullAuthorization();
     const tokenBody = await (await exchangeCode(client_id, code, verifier)).json();
 
-    const refresh = (refreshToken: string) =>
-      fetch(`${mcpOrigin}/oauth/token`, {
-        method: "POST",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          grant_type: "refresh_token",
-          refresh_token: refreshToken,
-          client_id,
-        }),
-      });
-
-    const first = await refresh(tokenBody.refresh_token);
+    const first = await refreshWith(client_id, tokenBody.refresh_token);
     expect(first.status).toBe(200);
     const firstBody = await first.json();
     expect(firstBody.refresh_token).not.toBe(tokenBody.refresh_token);
@@ -406,7 +417,46 @@ describe("token endpoint", () => {
         ?.sub,
     ).toBe("user-1");
 
-    const replay = await refresh(tokenBody.refresh_token);
+    // The replacement is what works from here on.
+    expect((await refreshWith(client_id, firstBody.refresh_token)).status).toBe(
+      200,
+    );
+  });
+
+  it("hands the same replacement back when a rotation response was lost", async () => {
+    const { client_id, verifier, code } = await fullAuthorization();
+    const tokenBody = await (await exchangeCode(client_id, code, verifier)).json();
+
+    const firstBody = await (
+      await refreshWith(client_id, tokenBody.refresh_token)
+    ).json();
+
+    // The client never saw the response and retries with the old token:
+    // it must stay connected, not be logged out.
+    const retry = await refreshWith(client_id, tokenBody.refresh_token);
+    expect(retry.status).toBe(200);
+    const retryBody = await retry.json();
+    expect(retryBody.refresh_token).toBe(firstBody.refresh_token);
+  });
+
+  it("rejects reuse of a refresh token once the grace window has passed", async () => {
+    const { client_id, verifier, code } = await fullAuthorization();
+    const tokenBody = await (await exchangeCode(client_id, code, verifier)).json();
+
+    expect((await refreshWith(client_id, tokenBody.refresh_token)).status).toBe(
+      200,
+    );
+
+    await prisma.oAuthRefreshToken.update({
+      where: { token: tokenBody.refresh_token },
+      data: {
+        revokedAt: new Date(
+          Date.now() - db.__internal.REFRESH_REPLAY_GRACE_MS - 1000,
+        ),
+      },
+    });
+
+    const replay = await refreshWith(client_id, tokenBody.refresh_token);
     expect(replay.status).toBe(400);
   });
 
