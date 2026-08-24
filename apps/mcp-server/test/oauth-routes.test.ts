@@ -353,9 +353,17 @@ describe("authorization + consent", () => {
     const consentRes = await authorize(client_id, challenge, "session=user-1");
     const requestToken = extractRequestToken(await consentRes.text());
 
-    const first = await submitDecision(requestToken, "approve", "session=user-1");
+    const first = await submitDecision(
+      requestToken,
+      "approve",
+      "session=user-1",
+    );
     expect(first.status).toBe(302);
-    const second = await submitDecision(requestToken, "approve", "session=user-1");
+    const second = await submitDecision(
+      requestToken,
+      "approve",
+      "session=user-1",
+    );
     expect(second.status).toBe(400);
   });
 
@@ -406,7 +414,9 @@ describe("token endpoint", () => {
 
   it("rotates refresh tokens", async () => {
     const { client_id, verifier, code } = await fullAuthorization();
-    const tokenBody = await (await exchangeCode(client_id, code, verifier)).json();
+    const tokenBody = await (
+      await exchangeCode(client_id, code, verifier)
+    ).json();
 
     const first = await refreshWith(client_id, tokenBody.refresh_token);
     expect(first.status).toBe(200);
@@ -425,7 +435,9 @@ describe("token endpoint", () => {
 
   it("hands the same replacement back when a rotation response was lost", async () => {
     const { client_id, verifier, code } = await fullAuthorization();
-    const tokenBody = await (await exchangeCode(client_id, code, verifier)).json();
+    const tokenBody = await (
+      await exchangeCode(client_id, code, verifier)
+    ).json();
 
     const firstBody = await (
       await refreshWith(client_id, tokenBody.refresh_token)
@@ -441,7 +453,9 @@ describe("token endpoint", () => {
 
   it("rejects reuse of a refresh token once the grace window has passed", async () => {
     const { client_id, verifier, code } = await fullAuthorization();
-    const tokenBody = await (await exchangeCode(client_id, code, verifier)).json();
+    const tokenBody = await (
+      await exchangeCode(client_id, code, verifier)
+    ).json();
 
     expect((await refreshWith(client_id, tokenBody.refresh_token)).status).toBe(
       200,
@@ -458,6 +472,25 @@ describe("token endpoint", () => {
 
     const replay = await refreshWith(client_id, tokenBody.refresh_token);
     expect(replay.status).toBe(400);
+  });
+
+  it("answers 500 instead of crashing when the database is unreachable", async () => {
+    const { client_id } = await registerClient();
+    // Express 4 does not catch rejections from async handlers, so a failing
+    // query here used to be an unhandled rejection — process down.
+    db.__internal.setPrismaClient({
+      oAuthRefreshToken: {
+        findUnique: () => Promise.reject(new Error("connection terminated")),
+      },
+    } as unknown as PrismaClient);
+
+    try {
+      const res = await refreshWith(client_id, "whatever");
+      expect(res.status).toBe(500);
+      expect((await res.json()).error).toBe("server_error");
+    } finally {
+      db.__internal.setPrismaClient(prisma);
+    }
   });
 
   it("rejects unsupported grant types", async () => {

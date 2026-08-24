@@ -1,4 +1,12 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  afterEach,
+  beforeEach,
+} from "vitest";
 import type { PrismaClient } from "@repo/database";
 import * as db from "../src/oauth/db";
 import {
@@ -176,7 +184,9 @@ describe("refresh token rotation", () => {
     );
     // Still usable by its real client — a wrong client_id must not log the
     // user out.
-    expect((await rotate("rt-mismatch", "rt-mismatch-new")).kind).toBe("rotated");
+    expect((await rotate("rt-mismatch", "rt-mismatch-new")).kind).toBe(
+      "rotated",
+    );
   });
 });
 
@@ -287,5 +297,80 @@ describe("pruning", () => {
     await db.rememberApproval("user-1", "client-1");
     await db.pruneExpired();
     expect(await db.findClient("client-1")).not.toBeNull();
+  });
+});
+
+describe("client registration cap", () => {
+  const register = (clientId: string) =>
+    db.createClient({
+      clientId,
+      name: null,
+      redirectUris: ["https://client.example/cb"],
+    });
+
+  afterEach(() => {
+    db.__internal.setMaxClients(1000);
+  });
+
+  it("evicts the oldest unused registration once the cap is reached", async () => {
+    // client-1 and client-2 are seeded by beforeEach.
+    db.__internal.setMaxClients(2);
+    await register("client-overflow");
+
+    expect(await db.findClient("client-1")).toBeNull();
+    expect(await db.findClient("client-overflow")).not.toBeNull();
+  });
+
+  it("never evicts a registration someone is connected through or mid-flow", async () => {
+    await db.rememberApproval("user-1", "client-1");
+    await db.createPendingApproval({
+      token: "pa-inflight",
+      clientId: "client-2",
+      userId: "user-1",
+      redirectUri: "https://client.example/cb",
+      scope: null,
+      state: null,
+      codeChallenge: "challenge",
+      codeChallengeMethod: "S256",
+      expiresAt: future(),
+    });
+    await seedClient("client-3");
+    await db.createAuthorizationCode({
+      code: "code-inflight",
+      clientId: "client-3",
+      userId: "user-1",
+      redirectUri: "https://client.example/cb",
+      scope: null,
+      codeChallenge: "challenge",
+      codeChallengeMethod: "S256",
+      expiresAt: future(),
+    });
+
+    // A registration flood arrives while all three are in use.
+    db.__internal.setMaxClients(3);
+    await register("flood-1");
+    await register("flood-2");
+
+    expect(await db.findClient("client-1")).not.toBeNull();
+    expect(await db.findClient("client-2")).not.toBeNull();
+    expect(await db.findClient("client-3")).not.toBeNull();
+    // The in-flight rows they were protecting are still usable.
+    expect(await db.consumePendingApproval("pa-inflight")).not.toBeNull();
+    expect(await db.consumeAuthorizationCode("code-inflight")).not.toBeNull();
+  });
+});
+
+describe("database failures", () => {
+  it("surfaces unexpected errors instead of reporting an expired consent", async () => {
+    const boom = new Error("connection terminated");
+    db.__internal.setPrismaClient({
+      oAuthPendingApproval: { delete: () => Promise.reject(boom) },
+    } as unknown as PrismaClient);
+
+    await expect(db.consumePendingApproval("whatever")).rejects.toThrow(
+      "connection terminated",
+    );
+
+    db.__internal.setPrismaClient(prisma);
   });
 });

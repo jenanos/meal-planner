@@ -125,10 +125,7 @@ function renderConsentPage(params: {
 </html>`;
 }
 
-function rebuildAuthorizeUrl(
-  issuer: string,
-  query: Request["query"],
-): string {
+function rebuildAuthorizeUrl(issuer: string, query: Request["query"]): string {
   const params = new URLSearchParams();
   for (const [key, raw] of Object.entries(query)) {
     if (typeof raw === "string") params.set(key, raw);
@@ -137,6 +134,28 @@ function rebuildAuthorizeUrl(
     }
   }
   return `${issuer}/oauth/authorize?${params.toString()}`;
+}
+
+type AsyncRequestHandler = (req: Request, res: Response) => Promise<unknown>;
+
+/**
+ * Express 4 does not catch rejections from async handlers: an unhandled
+ * rejection tears down the process (Node's default since v15). Now that
+ * these handlers hit the database, a brief Postgres outage during a token
+ * refresh would take the whole MCP server down instead of returning a 5xx,
+ * so every async route goes through here.
+ */
+function asyncRoute(handler: AsyncRequestHandler) {
+  return (req: Request, res: Response) => {
+    handler(req, res).catch((error: unknown) => {
+      console.error(`OAuth request failed (${req.method} ${req.path}):`, error);
+      if (res.headersSent) return;
+      res.status(500).json({
+        error: "server_error",
+        error_description: "Internal error while handling the request",
+      });
+    });
+  };
 }
 
 export function registerOAuthRoutes(app: Express, config: OAuthConfig) {
@@ -170,408 +189,421 @@ export function registerOAuthRoutes(app: Express, config: OAuthConfig) {
   });
 
   // ── Dynamic Client Registration (RFC 7591, public PKCE clients only) ──
-  app.post("/oauth/register", async (req, res) => {
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    const redirectUris = body.redirect_uris;
-    if (
-      !Array.isArray(redirectUris) ||
-      redirectUris.length === 0 ||
-      redirectUris.length > MAX_REDIRECT_URIS ||
-      !redirectUris.every(
-        (u): u is string =>
-          typeof u === "string" &&
-          u.length <= MAX_REDIRECT_URI_LENGTH &&
-          isAcceptableRedirectUri(u),
-      )
-    ) {
-      return res.status(400).json({
-        error: "invalid_redirect_uri",
-        error_description:
-          `redirect_uris must be a non-empty array of at most ${MAX_REDIRECT_URIS} HTTPS URLs ` +
-          "(http://localhost is allowed for development)",
+  app.post(
+    "/oauth/register",
+    asyncRoute(async (req, res) => {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const redirectUris = body.redirect_uris;
+      if (
+        !Array.isArray(redirectUris) ||
+        redirectUris.length === 0 ||
+        redirectUris.length > MAX_REDIRECT_URIS ||
+        !redirectUris.every(
+          (u): u is string =>
+            typeof u === "string" &&
+            u.length <= MAX_REDIRECT_URI_LENGTH &&
+            isAcceptableRedirectUri(u),
+        )
+      ) {
+        return res.status(400).json({
+          error: "invalid_redirect_uri",
+          error_description:
+            `redirect_uris must be a non-empty array of at most ${MAX_REDIRECT_URIS} HTTPS URLs ` +
+            "(http://localhost is allowed for development)",
+        });
+      }
+
+      const clientId = generateOpaqueToken(24);
+      const name =
+        typeof body.client_name === "string" &&
+        body.client_name.trim().length > 0
+          ? body.client_name.trim().slice(0, MAX_CLIENT_NAME_LENGTH)
+          : null;
+
+      const created = await db.createClient({
+        clientId,
+        name,
+        redirectUris,
       });
-    }
 
-    const clientId = generateOpaqueToken(24);
-    const name =
-      typeof body.client_name === "string" && body.client_name.trim().length > 0
-        ? body.client_name.trim().slice(0, MAX_CLIENT_NAME_LENGTH)
-        : null;
-
-    const created = await db.createClient({
-      clientId,
-      name,
-      redirectUris,
-    });
-
-    return res.status(201).json({
-      client_id: created.clientId,
-      client_id_issued_at: Math.floor(created.createdAt.getTime() / 1000),
-      redirect_uris: created.redirectUris,
-      grant_types: ["authorization_code", "refresh_token"],
-      response_types: ["code"],
-      token_endpoint_auth_method: "none",
-      client_name: created.name ?? undefined,
-    });
-  });
+      return res.status(201).json({
+        client_id: created.clientId,
+        client_id_issued_at: Math.floor(created.createdAt.getTime() / 1000),
+        redirect_uris: created.redirectUris,
+        grant_types: ["authorization_code", "refresh_token"],
+        response_types: ["code"],
+        token_endpoint_auth_method: "none",
+        client_name: created.name ?? undefined,
+      });
+    }),
+  );
 
   // ── Authorize ──
-  app.get("/oauth/authorize", async (req, res) => {
-    // Authorization responses (code redirects, error redirects, and the
-    // consent page) are sensitive and must never be cached.
-    res.setHeader("Cache-Control", "no-store");
-    res.setHeader("Pragma", "no-cache");
-    const responseType = String(req.query.response_type ?? "");
-    const clientId = String(req.query.client_id ?? "");
-    const redirectUri = String(req.query.redirect_uri ?? "");
-    const scope = req.query.scope ? String(req.query.scope) : null;
-    const state = req.query.state ? String(req.query.state) : undefined;
-    const codeChallenge = req.query.code_challenge
-      ? String(req.query.code_challenge)
-      : "";
-    const codeChallengeMethod = (
-      req.query.code_challenge_method
-        ? String(req.query.code_challenge_method)
-        : "S256"
-    ) as CodeChallengeMethod;
+  app.get(
+    "/oauth/authorize",
+    asyncRoute(async (req, res) => {
+      // Authorization responses (code redirects, error redirects, and the
+      // consent page) are sensitive and must never be cached.
+      res.setHeader("Cache-Control", "no-store");
+      res.setHeader("Pragma", "no-cache");
+      const responseType = String(req.query.response_type ?? "");
+      const clientId = String(req.query.client_id ?? "");
+      const redirectUri = String(req.query.redirect_uri ?? "");
+      const scope = req.query.scope ? String(req.query.scope) : null;
+      const state = req.query.state ? String(req.query.state) : undefined;
+      const codeChallenge = req.query.code_challenge
+        ? String(req.query.code_challenge)
+        : "";
+      const codeChallengeMethod = (
+        req.query.code_challenge_method
+          ? String(req.query.code_challenge_method)
+          : "S256"
+      ) as CodeChallengeMethod;
 
-    if (responseType !== "code") {
-      return sendOAuthError(
-        null,
-        state,
-        "unsupported_response_type",
-        "Only response_type=code is supported",
-        res,
-      );
-    }
-    if (!clientId) {
-      return sendOAuthError(
-        null,
-        state,
-        "invalid_request",
-        "client_id is required",
-        res,
-      );
-    }
-    if (!redirectUri) {
-      return sendOAuthError(
-        null,
-        state,
-        "invalid_request",
-        "redirect_uri is required",
-        res,
-      );
-    }
+      if (responseType !== "code") {
+        return sendOAuthError(
+          null,
+          state,
+          "unsupported_response_type",
+          "Only response_type=code is supported",
+          res,
+        );
+      }
+      if (!clientId) {
+        return sendOAuthError(
+          null,
+          state,
+          "invalid_request",
+          "client_id is required",
+          res,
+        );
+      }
+      if (!redirectUri) {
+        return sendOAuthError(
+          null,
+          state,
+          "invalid_request",
+          "redirect_uri is required",
+          res,
+        );
+      }
 
-    const client = await db.findClient(clientId);
-    if (!client) {
-      return sendOAuthError(
-        null,
-        state,
-        "invalid_client",
-        "Unknown client_id",
-        res,
-      );
-    }
-    if (!client.redirectUris.includes(redirectUri)) {
-      return sendOAuthError(
-        null,
-        state,
-        "invalid_request",
-        "redirect_uri is not registered for this client",
-        res,
-      );
-    }
-    if (!codeChallenge) {
-      return sendOAuthError(
-        redirectUri,
-        state,
-        "invalid_request",
-        "code_challenge is required (PKCE)",
-        res,
-      );
-    }
-    if (codeChallengeMethod !== "S256") {
-      return sendOAuthError(
-        redirectUri,
-        state,
-        "invalid_request",
-        "code_challenge_method must be S256",
-        res,
-      );
-    }
+      const client = await db.findClient(clientId);
+      if (!client) {
+        return sendOAuthError(
+          null,
+          state,
+          "invalid_client",
+          "Unknown client_id",
+          res,
+        );
+      }
+      if (!client.redirectUris.includes(redirectUri)) {
+        return sendOAuthError(
+          null,
+          state,
+          "invalid_request",
+          "redirect_uri is not registered for this client",
+          res,
+        );
+      }
+      if (!codeChallenge) {
+        return sendOAuthError(
+          redirectUri,
+          state,
+          "invalid_request",
+          "code_challenge is required (PKCE)",
+          res,
+        );
+      }
+      if (codeChallengeMethod !== "S256") {
+        return sendOAuthError(
+          redirectUri,
+          state,
+          "invalid_request",
+          "code_challenge_method must be S256",
+          res,
+        );
+      }
 
-    const session = await getSessionFromCookie(
-      config.apiOrigin,
-      req.headers.cookie,
-    );
-    if (!session) {
-      const callback = rebuildAuthorizeUrl(config.issuer, req.query);
-      return res.redirect(
-        appendQuery(config.loginUrl, { callbackUrl: callback }),
+      const session = await getSessionFromCookie(
+        config.apiOrigin,
+        req.headers.cookie,
       );
-    }
+      if (!session) {
+        const callback = rebuildAuthorizeUrl(config.issuer, req.query);
+        return res.redirect(
+          appendQuery(config.loginUrl, { callbackUrl: callback }),
+        );
+      }
 
-    // Explicit consent before issuing a code. Registration is open (DCR),
-    // so auto-approving would let any registered client obtain a code for
-    // a logged-in user via a single crafted link. Skip the screen only for
-    // clients this user has already approved in this process lifetime.
-    if (await db.hasApproval(session.id, client.clientId)) {
-      const code = generateOpaqueToken(32);
-      await db.createAuthorizationCode({
-        code,
+      // Explicit consent before issuing a code. Registration is open (DCR),
+      // so auto-approving would let any registered client obtain a code for
+      // a logged-in user via a single crafted link. Skip the screen only for
+      // clients this user has already approved in this process lifetime.
+      if (await db.hasApproval(session.id, client.clientId)) {
+        const code = generateOpaqueToken(32);
+        await db.createAuthorizationCode({
+          code,
+          clientId: client.clientId,
+          userId: session.id,
+          redirectUri,
+          scope,
+          codeChallenge,
+          codeChallengeMethod,
+          expiresAt: new Date(Date.now() + AUTH_CODE_TTL_SECONDS * 1000),
+        });
+        return res.redirect(appendQuery(redirectUri, { code, state }));
+      }
+
+      const requestToken = generateOpaqueToken(32);
+      await db.createPendingApproval({
+        token: requestToken,
         clientId: client.clientId,
         userId: session.id,
         redirectUri,
         scope,
+        state: state ?? null,
         codeChallenge,
         codeChallengeMethod,
-        expiresAt: new Date(Date.now() + AUTH_CODE_TTL_SECONDS * 1000),
+        expiresAt: new Date(Date.now() + PENDING_APPROVAL_TTL_SECONDS * 1000),
       });
-      return res.redirect(appendQuery(redirectUri, { code, state }));
-    }
 
-    const requestToken = generateOpaqueToken(32);
-    await db.createPendingApproval({
-      token: requestToken,
-      clientId: client.clientId,
-      userId: session.id,
-      redirectUri,
-      scope,
-      state: state ?? null,
-      codeChallenge,
-      codeChallengeMethod,
-      expiresAt: new Date(Date.now() + PENDING_APPROVAL_TTL_SECONDS * 1000),
-    });
-
-    res.setHeader("Cache-Control", "no-store");
-    return res
-      .status(200)
-      .type("html")
-      .send(
-        renderConsentPage({
-          clientName: client.name ?? client.clientId,
-          redirectHost: new URL(redirectUri).host,
-          scope,
-          requestToken,
-        }),
-      );
-  });
+      res.setHeader("Cache-Control", "no-store");
+      return res
+        .status(200)
+        .type("html")
+        .send(
+          renderConsentPage({
+            clientName: client.name ?? client.clientId,
+            redirectHost: new URL(redirectUri).host,
+            scope,
+            requestToken,
+          }),
+        );
+    }),
+  );
 
   // ── Consent decision ──
-  app.post("/oauth/authorize/decision", async (req, res) => {
-    res.setHeader("Cache-Control", "no-store");
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    const requestToken =
-      typeof body.request_token === "string" ? body.request_token : "";
-    const decision = typeof body.decision === "string" ? body.decision : "";
+  app.post(
+    "/oauth/authorize/decision",
+    asyncRoute(async (req, res) => {
+      res.setHeader("Cache-Control", "no-store");
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const requestToken =
+        typeof body.request_token === "string" ? body.request_token : "";
+      const decision = typeof body.decision === "string" ? body.decision : "";
 
-    if (!requestToken || (decision !== "approve" && decision !== "deny")) {
-      return res.status(400).json({
-        error: "invalid_request",
-        error_description: "Missing or invalid request_token/decision",
-      });
-    }
+      if (!requestToken || (decision !== "approve" && decision !== "deny")) {
+        return res.status(400).json({
+          error: "invalid_request",
+          error_description: "Missing or invalid request_token/decision",
+        });
+      }
 
-    // Single-use: consumed even on deny, so the form can't be replayed.
-    const pending = await db.consumePendingApproval(requestToken);
-    if (!pending) {
-      return res.status(400).json({
-        error: "invalid_request",
-        error_description:
-          "Consent request is invalid or has expired. Restart the authorization flow.",
-      });
-    }
+      // Single-use: consumed even on deny, so the form can't be replayed.
+      const pending = await db.consumePendingApproval(requestToken);
+      if (!pending) {
+        return res.status(400).json({
+          error: "invalid_request",
+          error_description:
+            "Consent request is invalid or has expired. Restart the authorization flow.",
+        });
+      }
 
-    // CSRF/session binding: the decision must come from the same logged-in
-    // user the consent page was rendered for. The token alone is not
-    // enough — it must match a live better-auth session.
-    const session = await getSessionFromCookie(
-      config.apiOrigin,
-      req.headers.cookie,
-    );
-    if (!session || session.id !== pending.userId) {
-      return res.status(403).json({
-        error: "access_denied",
-        error_description: "Session does not match the consent request",
-      });
-    }
-
-    const state = pending.state ?? undefined;
-
-    if (decision === "deny") {
-      return res.redirect(
-        appendQuery(pending.redirectUri, {
-          error: "access_denied",
-          error_description: "The user denied the request",
-          state,
-        }),
+      // CSRF/session binding: the decision must come from the same logged-in
+      // user the consent page was rendered for. The token alone is not
+      // enough — it must match a live better-auth session.
+      const session = await getSessionFromCookie(
+        config.apiOrigin,
+        req.headers.cookie,
       );
-    }
+      if (!session || session.id !== pending.userId) {
+        return res.status(403).json({
+          error: "access_denied",
+          error_description: "Session does not match the consent request",
+        });
+      }
 
-    await db.rememberApproval(pending.userId, pending.clientId);
+      const state = pending.state ?? undefined;
 
-    const code = generateOpaqueToken(32);
-    await db.createAuthorizationCode({
-      code,
-      clientId: pending.clientId,
-      userId: pending.userId,
-      redirectUri: pending.redirectUri,
-      scope: pending.scope,
-      codeChallenge: pending.codeChallenge,
-      codeChallengeMethod: pending.codeChallengeMethod,
-      expiresAt: new Date(Date.now() + AUTH_CODE_TTL_SECONDS * 1000),
-    });
+      if (decision === "deny") {
+        return res.redirect(
+          appendQuery(pending.redirectUri, {
+            error: "access_denied",
+            error_description: "The user denied the request",
+            state,
+          }),
+        );
+      }
 
-    return res.redirect(appendQuery(pending.redirectUri, { code, state }));
-  });
+      await db.rememberApproval(pending.userId, pending.clientId);
+
+      const code = generateOpaqueToken(32);
+      await db.createAuthorizationCode({
+        code,
+        clientId: pending.clientId,
+        userId: pending.userId,
+        redirectUri: pending.redirectUri,
+        scope: pending.scope,
+        codeChallenge: pending.codeChallenge,
+        codeChallengeMethod: pending.codeChallengeMethod,
+        expiresAt: new Date(Date.now() + AUTH_CODE_TTL_SECONDS * 1000),
+      });
+
+      return res.redirect(appendQuery(pending.redirectUri, { code, state }));
+    }),
+  );
 
   // ── Token ──
-  app.post("/oauth/token", async (req, res) => {
-    res.setHeader("Cache-Control", "no-store");
-    res.setHeader("Pragma", "no-cache");
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    const grantType = String(body.grant_type ?? "");
+  app.post(
+    "/oauth/token",
+    asyncRoute(async (req, res) => {
+      res.setHeader("Cache-Control", "no-store");
+      res.setHeader("Pragma", "no-cache");
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const grantType = String(body.grant_type ?? "");
 
-    if (grantType === "authorization_code") {
-      const code = typeof body.code === "string" ? body.code : "";
-      const clientId =
-        typeof body.client_id === "string" ? body.client_id : "";
-      const redirectUri =
-        typeof body.redirect_uri === "string" ? body.redirect_uri : "";
-      const codeVerifier =
-        typeof body.code_verifier === "string" ? body.code_verifier : "";
+      if (grantType === "authorization_code") {
+        const code = typeof body.code === "string" ? body.code : "";
+        const clientId =
+          typeof body.client_id === "string" ? body.client_id : "";
+        const redirectUri =
+          typeof body.redirect_uri === "string" ? body.redirect_uri : "";
+        const codeVerifier =
+          typeof body.code_verifier === "string" ? body.code_verifier : "";
 
-      if (!code || !clientId || !redirectUri || !codeVerifier) {
-        return res.status(400).json({
-          error: "invalid_request",
-          error_description: "Missing required parameters",
-        });
-      }
+        if (!code || !clientId || !redirectUri || !codeVerifier) {
+          return res.status(400).json({
+            error: "invalid_request",
+            error_description: "Missing required parameters",
+          });
+        }
 
-      const stored = await db.consumeAuthorizationCode(code);
-      if (!stored) {
-        return res.status(400).json({
-          error: "invalid_grant",
-          error_description:
-            "Authorization code is invalid, expired, or already used",
-        });
-      }
-      if (
-        stored.clientId !== clientId ||
-        stored.redirectUri !== redirectUri
-      ) {
-        return res.status(400).json({
-          error: "invalid_grant",
-          error_description: "client_id/redirect_uri mismatch",
-        });
-      }
-      if (
-        !verifyPkce(
-          codeVerifier,
-          stored.codeChallenge,
-          stored.codeChallengeMethod as CodeChallengeMethod,
-        )
-      ) {
-        return res.status(400).json({
-          error: "invalid_grant",
-          error_description: "PKCE verifier mismatch",
-        });
-      }
+        const stored = await db.consumeAuthorizationCode(code);
+        if (!stored) {
+          return res.status(400).json({
+            error: "invalid_grant",
+            error_description:
+              "Authorization code is invalid, expired, or already used",
+          });
+        }
+        if (
+          stored.clientId !== clientId ||
+          stored.redirectUri !== redirectUri
+        ) {
+          return res.status(400).json({
+            error: "invalid_grant",
+            error_description: "client_id/redirect_uri mismatch",
+          });
+        }
+        if (
+          !verifyPkce(
+            codeVerifier,
+            stored.codeChallenge,
+            stored.codeChallengeMethod as CodeChallengeMethod,
+          )
+        ) {
+          return res.status(400).json({
+            error: "invalid_grant",
+            error_description: "PKCE verifier mismatch",
+          });
+        }
 
-      const accessToken = signAccessToken(
-        {
-          sub: stored.userId,
-          client_id: stored.clientId,
+        const accessToken = signAccessToken(
+          {
+            sub: stored.userId,
+            client_id: stored.clientId,
+            scope: stored.scope ?? undefined,
+            iss: config.issuer,
+            aud: config.issuer,
+          },
+          config.signingSecret,
+          config.accessTokenTtl,
+        );
+
+        const refreshToken = generateOpaqueToken(48);
+        await db.createRefreshToken({
+          token: refreshToken,
+          clientId: stored.clientId,
+          userId: stored.userId,
+          scope: stored.scope,
+          expiresAt: new Date(Date.now() + config.refreshTokenTtl * 1000),
+        });
+
+        return res.json({
+          access_token: accessToken,
+          token_type: "Bearer",
+          expires_in: config.accessTokenTtl,
+          refresh_token: refreshToken,
           scope: stored.scope ?? undefined,
-          iss: config.issuer,
-          aud: config.issuer,
-        },
-        config.signingSecret,
-        config.accessTokenTtl,
-      );
-
-      const refreshToken = generateOpaqueToken(48);
-      await db.createRefreshToken({
-        token: refreshToken,
-        clientId: stored.clientId,
-        userId: stored.userId,
-        scope: stored.scope,
-        expiresAt: new Date(Date.now() + config.refreshTokenTtl * 1000),
-      });
-
-      return res.json({
-        access_token: accessToken,
-        token_type: "Bearer",
-        expires_in: config.accessTokenTtl,
-        refresh_token: refreshToken,
-        scope: stored.scope ?? undefined,
-      });
-    }
-
-    if (grantType === "refresh_token") {
-      const refreshToken =
-        typeof body.refresh_token === "string" ? body.refresh_token : "";
-      const clientId =
-        typeof body.client_id === "string" ? body.client_id : "";
-      if (!refreshToken || !clientId) {
-        return res.status(400).json({
-          error: "invalid_request",
-          error_description: "Missing required parameters",
         });
       }
 
-      // Rotate the refresh token. The store revokes the old token and
-      // issues the new one in a single transaction, so two concurrent
-      // refreshes can't both mint a token. The loser of that race — and a
-      // client retrying because the previous response never arrived — gets
-      // `replayed` and the same replacement token back, instead of being
-      // logged out over a dropped HTTP response.
-      const rotation = await db.rotateRefreshToken({
-        token: refreshToken,
-        clientId,
-        newToken: generateOpaqueToken(48),
-        expiresAt: new Date(Date.now() + config.refreshTokenTtl * 1000),
-      });
+      if (grantType === "refresh_token") {
+        const refreshToken =
+          typeof body.refresh_token === "string" ? body.refresh_token : "";
+        const clientId =
+          typeof body.client_id === "string" ? body.client_id : "";
+        if (!refreshToken || !clientId) {
+          return res.status(400).json({
+            error: "invalid_request",
+            error_description: "Missing required parameters",
+          });
+        }
 
-      if (rotation.kind === "client_mismatch") {
-        return res.status(400).json({
-          error: "invalid_grant",
-          error_description: "client_id mismatch",
+        // Rotate the refresh token. The store revokes the old token and
+        // issues the new one in a single transaction, so two concurrent
+        // refreshes can't both mint a token. The loser of that race — and a
+        // client retrying because the previous response never arrived — gets
+        // `replayed` and the same replacement token back, instead of being
+        // logged out over a dropped HTTP response.
+        const rotation = await db.rotateRefreshToken({
+          token: refreshToken,
+          clientId,
+          newToken: generateOpaqueToken(48),
+          expiresAt: new Date(Date.now() + config.refreshTokenTtl * 1000),
         });
-      }
-      if (rotation.kind === "invalid") {
-        return res.status(400).json({
-          error: "invalid_grant",
-          error_description:
-            "Refresh token is invalid, expired, or already used",
-        });
-      }
 
-      const accessToken = signAccessToken(
-        {
-          sub: rotation.userId,
-          client_id: rotation.clientId,
+        if (rotation.kind === "client_mismatch") {
+          return res.status(400).json({
+            error: "invalid_grant",
+            error_description: "client_id mismatch",
+          });
+        }
+        if (rotation.kind === "invalid") {
+          return res.status(400).json({
+            error: "invalid_grant",
+            error_description:
+              "Refresh token is invalid, expired, or already used",
+          });
+        }
+
+        const accessToken = signAccessToken(
+          {
+            sub: rotation.userId,
+            client_id: rotation.clientId,
+            scope: rotation.scope ?? undefined,
+            iss: config.issuer,
+            aud: config.issuer,
+          },
+          config.signingSecret,
+          config.accessTokenTtl,
+        );
+
+        return res.json({
+          access_token: accessToken,
+          token_type: "Bearer",
+          expires_in: config.accessTokenTtl,
+          refresh_token: rotation.refreshToken,
           scope: rotation.scope ?? undefined,
-          iss: config.issuer,
-          aud: config.issuer,
-        },
-        config.signingSecret,
-        config.accessTokenTtl,
-      );
+        });
+      }
 
-      return res.json({
-        access_token: accessToken,
-        token_type: "Bearer",
-        expires_in: config.accessTokenTtl,
-        refresh_token: rotation.refreshToken,
-        scope: rotation.scope ?? undefined,
+      return res.status(400).json({
+        error: "unsupported_grant_type",
+        error_description: `Unsupported grant_type: ${grantType}`,
       });
-    }
-
-    return res.status(400).json({
-      error: "unsupported_grant_type",
-      error_description: `Unsupported grant_type: ${grantType}`,
-    });
-  });
+    }),
+  );
 }

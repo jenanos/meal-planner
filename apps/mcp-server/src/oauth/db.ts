@@ -83,7 +83,7 @@ const REVOKED_RETENTION_MS = 60 * 60 * 1000;
 // Registration is unauthenticated (RFC 7591), so cap the number of stored
 // clients to keep a registration flood from filling the table. Only clients
 // nobody is actually using are evicted (see makeRoomForClient).
-const MAX_CLIENTS = 1000;
+let maxClients = 1000;
 
 // An unused registration older than this is garbage from an abandoned or
 // hostile registration attempt.
@@ -95,6 +95,20 @@ let client: PrismaClient = sharedPrisma;
 
 function db(): PrismaClient {
   return client;
+}
+
+/**
+ * Prisma's "record not found" for a delete/update targeting a missing row.
+ * Matched on the error code rather than `instanceof` so it still holds for
+ * errors raised by a different Prisma client instance (the tests run
+ * against a PGlite-backed one).
+ */
+function isRecordNotFound(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === "P2025"
+  );
 }
 
 export async function findClient(
@@ -111,23 +125,29 @@ export async function findClient(
 }
 
 /**
- * Drop registrations that no one is connected through: no remembered
- * consent and no live refresh token. A real connection is therefore never
+ * Drop registrations that no one is using: no remembered consent, no live
+ * refresh token, and nothing in flight. The last part matters because the
+ * foreign keys cascade — evicting a client mid-authorization would delete
+ * its pending consent request or unconsumed code and break the flow the
+ * user is standing in. A real or in-progress connection is therefore never
  * evicted by a registration flood.
  */
 async function makeRoomForClient(): Promise<void> {
   const total = await db().oAuthClient.count();
-  if (total < MAX_CLIENTS) return;
+  if (total < maxClients) return;
 
+  const now = new Date();
   const evictable = await db().oAuthClient.findMany({
     where: {
       approvals: { none: {} },
-      refreshTokens: {
-        none: { revokedAt: null, expiresAt: { gt: new Date() } },
+      refreshTokens: { none: { revokedAt: null, expiresAt: { gt: now } } },
+      pendingApprovals: { none: { expiresAt: { gt: now } } },
+      authorizationCodes: {
+        none: { consumedAt: null, expiresAt: { gt: now } },
       },
     },
     orderBy: { createdAt: "asc" },
-    take: total - MAX_CLIENTS + 1,
+    take: total - maxClients + 1,
     select: { clientId: true },
   });
   if (evictable.length === 0) return;
@@ -320,7 +340,11 @@ export async function consumePendingApproval(
   let row;
   try {
     row = await db().oAuthPendingApproval.delete({ where: { token } });
-  } catch {
+  } catch (error) {
+    // Only "no such row" means the request was already consumed or never
+    // existed. Anything else (connectivity, permissions, schema) must
+    // surface as a 500 rather than masquerade as an expired consent.
+    if (!isRecordNotFound(error)) throw error;
     return null;
   }
   if (row.expiresAt.getTime() <= Date.now()) return null;
@@ -360,9 +384,10 @@ export async function hasApproval(
 }
 
 /**
- * Delete rows that can no longer be used: expired codes and approvals,
- * expired or long-rotated refresh tokens, and registrations that were never
- * connected through.
+ * Delete rows that can no longer be used: expired authorization codes and
+ * pending consent requests, refresh tokens that expired or were rotated
+ * long enough ago that the replay window is gone, and registrations that
+ * were never connected through.
  */
 export async function pruneExpired(): Promise<void> {
   const now = new Date();
@@ -392,11 +417,14 @@ export async function pruneExpired(): Promise<void> {
 }
 
 export const __internal = {
-  MAX_CLIENTS,
   REFRESH_REPLAY_GRACE_MS,
   REVOKED_RETENTION_MS,
   UNUSED_CLIENT_TTL_MS,
   setPrismaClient(next: PrismaClient) {
     client = next;
+  },
+  /** Lets the eviction tests reach the cap without inserting 1000 rows. */
+  setMaxClients(next: number) {
+    maxClients = next;
   },
 };
