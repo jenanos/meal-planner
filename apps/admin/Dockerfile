@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.4
 
-FROM node:20-slim AS base
+FROM node:24-slim AS base
 ENV PNPM_HOME=/usr/local/share/pnpm
 ENV PATH="${PNPM_HOME}:$PATH"
 RUN corepack enable
@@ -52,10 +52,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm --filter admin run build
 RUN pnpm prune --prod
 
-FROM node:20-slim AS runner
+FROM node:24-slim AS runner
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN corepack enable
 
 WORKDIR /app
 

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.4
 
-FROM node:20-slim AS base
+FROM node:24-slim AS base
 ENV PNPM_HOME=/usr/local/share/pnpm
 ENV PATH="${PNPM_HOME}:$PATH"
 RUN corepack enable
@@ -51,18 +51,20 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm --filter web run build
 RUN pnpm prune --prod
 
-FROM node:20-slim AS runner
+FROM node:24-slim AS runner
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN corepack enable
 
 WORKDIR /app
 
-## Copy Next standalone output
-COPY --from=builder /app/apps/web/.next/standalone ./
-COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
+## Copy Next standalone output. Owned by the runtime user so Next.js can
+## write its cache (.next/cache), same pattern as apps/admin.
+COPY --from=builder --chown=node:node /app/apps/web/.next/standalone ./
+COPY --from=builder --chown=node:node /app/apps/web/.next/static ./apps/web/.next/static
 # public folder is optional; copy if it exists in future
 
+# Built-in unprivileged user from the node image (uid/gid 1000)
+USER node
 WORKDIR /app/apps/web
 
 EXPOSE 3000

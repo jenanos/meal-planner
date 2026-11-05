@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.4
 
-FROM node:20-slim AS base
+FROM node:24-slim AS base
 ENV PNPM_HOME=/usr/local/share/pnpm
 ENV PATH="${PNPM_HOME}:$PATH"
 RUN corepack enable
@@ -39,30 +39,30 @@ RUN rm -f packages/database/tsconfig.tsbuildinfo && \
 # Build @repo/api (depends on @repo/database)
 RUN rm -f packages/api/tsconfig.tsbuildinfo && pnpm --filter @repo/api run build
 
-FROM node:20-slim AS runner
+FROM node:24-slim AS runner
 ENV NODE_ENV=production
-ENV PNPM_HOME=/usr/local/share/pnpm
-ENV PATH="${PNPM_HOME}:$PATH"
-RUN corepack enable
 
-# Prisma query engine needs OpenSSL at runtime
+# Prisma query/schema engines need OpenSSL at runtime
 RUN apt-get update -y && apt-get install -y --no-install-recommends openssl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
+# Application files stay owned by root (read-only for the runtime user).
+# Prisma engines were downloaded in the builder stage, so `prisma migrate
+# deploy` never needs to write to node_modules at startup.
 COPY --from=builder /app/node_modules ./node_modules
-# Workspace root files needed by pnpm and the entrypoint (prisma, seeding)
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
-COPY --from=builder /app/pnpm-lock.yaml ./pnpm-lock.yaml
 # Include workspace sources (for linked packages) and server sources
 COPY --from=builder /app/packages ./packages
 COPY --from=builder /app/apps/server ./apps/server
 
-EXPOSE 4000
+COPY --chmod=755 apps/server/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
-COPY apps/server/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+# Built-in unprivileged user from the node image (uid/gid 1000)
+USER node
+
+EXPOSE 4000
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
