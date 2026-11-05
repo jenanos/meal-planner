@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.4
 
-FROM node:20-slim AS base
+FROM node:24-slim AS base
 ENV PNPM_HOME=/usr/local/share/pnpm
 ENV PATH="${PNPM_HOME}:$PATH"
 RUN corepack enable
@@ -42,11 +42,8 @@ RUN rm -f packages/api/tsconfig.tsbuildinfo && pnpm --filter @repo/api run build
 # Build mcp-server
 RUN pnpm --filter mcp-server run build
 
-FROM node:20-slim AS runner
+FROM node:24-slim AS runner
 ENV NODE_ENV=production
-ENV PNPM_HOME=/usr/local/share/pnpm
-ENV PATH="${PNPM_HOME}:$PATH"
-RUN corepack enable
 
 # Prisma query engine needs OpenSSL at runtime
 RUN apt-get update -y && apt-get install -y --no-install-recommends openssl \
@@ -54,10 +51,14 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends openssl \
 
 WORKDIR /app
 
+# Application files stay owned by root (read-only for the runtime user).
 COPY --from=builder /app/node_modules ./node_modules
 # Include workspace sources (for linked packages) and mcp-server sources
 COPY --from=builder /app/packages ./packages
 COPY --from=builder /app/apps/mcp-server ./apps/mcp-server
+
+# Built-in unprivileged user from the node image (uid/gid 1000)
+USER node
 
 EXPOSE 5050
 

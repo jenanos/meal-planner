@@ -28,7 +28,7 @@
     "turbo": "^2.5.6"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "name": "with-prisma",
   "dependencies": {
