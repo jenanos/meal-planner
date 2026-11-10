@@ -2,7 +2,6 @@ import "./globals.css";
 import { Providers } from "./providers";
 import { DynamicNav } from "./components/DynamicNav";
 import { AuthGuard } from "./components/AuthGuard";
-import { DemoBanner } from "./components/DemoBanner";
 
 export const metadata = {
   title: "Butta – Måltidsplanlegger",
@@ -17,7 +16,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="min-h-screen antialiased">
-        <DemoBanner />
         <Providers>
           <AuthGuard
             shell={

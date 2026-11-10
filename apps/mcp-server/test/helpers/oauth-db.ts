@@ -9,8 +9,7 @@ import { __internal } from "../../src/oauth/db";
 
 /**
  * The OAuth store talks to Postgres, so the tests run against a real one:
- * PGlite, the embedded Postgres the app already uses for demo mode, with the
- * repo's own migrations applied. Mocking Prisma here would leave the parts
+ * PGlite, an embedded Postgres, with the repo's own migrations applied. Mocking Prisma here would leave the parts
  * that actually matter — the guarded updates that make code consumption and
  * token rotation atomic — untested.
  */

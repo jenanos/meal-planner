@@ -3,7 +3,6 @@
 import { useEffect, createContext, useContext, type ReactNode } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useSession } from "../../lib/auth-client";
-import { isDemoMode } from "../../lib/demo";
 import { trpc } from "../../lib/trpcClient";
 
 interface AuthContextValue {
@@ -75,14 +74,6 @@ function AuthGuardInner({
     enabled: !!session?.user,
   });
 
-  // In demo mode everyone is signed in as the demo user, so the login page
-  // has nothing to offer — send visitors straight to the app.
-  useEffect(() => {
-    if (isDemoMode && isPublic) {
-      router.replace("/");
-    }
-  }, [isPublic, router]);
-
   useEffect(() => {
     if (isPending) return;
     if (!session?.user && !isPublic) {
@@ -131,9 +122,6 @@ function AuthGuardInner({
     : null;
 
   // On public pages, show page content without app shell (no nav/header)
-  if (isDemoMode && isPublic) {
-    return null; // Will redirect to "/" in useEffect
-  }
   if (isPublic) {
     return (
       <AuthContext.Provider value={{ user, isLoading: false }}>

@@ -1,6 +1,5 @@
 import { PrismaClient } from "@prisma/client";
 export { Prisma } from "@prisma/client";
-import { getDemoDb, isDemoMode } from "./demo.js";
 
 function ensureDatabaseUrl() {
   const url = process.env.DATABASE_URL?.trim();
@@ -24,11 +23,6 @@ function ensureDatabaseUrl() {
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 function createPrismaClient(): PrismaClient {
-  // Demo mode swaps the real Postgres for an embedded in-memory PGlite
-  // instance, so the app runs without DATABASE_URL or any external services.
-  if (isDemoMode()) {
-    return getDemoDb().prisma;
-  }
   ensureDatabaseUrl();
   return new PrismaClient({ log: ["warn", "error"] });
 }
