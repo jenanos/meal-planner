@@ -111,6 +111,14 @@ export default function PlannerPage() {
     { weekStart: nextWeekStart },
     { enabled: Boolean(nextWeekStart) && (showNextWeek || startDay > 0) },
   );
+  // Per-user preference: should tapping a planned meal open the recipe directly?
+  const userSettingsQuery = trpc.planner.shoppingSettings.useQuery(undefined, {
+    staleTime: 60_000,
+  });
+  const tapOpensRecipe = Boolean(
+    (userSettingsQuery.data?.settings as { plannerTapOpensRecipe?: boolean } | undefined)
+      ?.plannerTapOpensRecipe,
+  );
   const timelineQuery = trpc.planner.weekTimeline.useQuery({
     around: currentWeekStart,
   });
@@ -780,6 +788,8 @@ export default function PlannerPage() {
             onRequestChange={handleRequestChange}
             onSetTakeaway={handleSetTakeaway}
             onClearEntry={handleClearEntry}
+            onRecipeClick={handleRecipeClick}
+            tapOpensRecipe={tapOpensRecipe}
           />
 
           {showNextWeek && startDay === 0 && (
@@ -799,6 +809,8 @@ export default function PlannerPage() {
                 onRequestChange={handleRequestChange}
                 onSetTakeaway={handleSetTakeaway}
                 onClearEntry={handleClearEntry}
+                onRecipeClick={handleRecipeClick}
+                tapOpensRecipe={tapOpensRecipe}
               />
             </>
           )}

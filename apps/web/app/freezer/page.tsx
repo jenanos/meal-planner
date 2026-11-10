@@ -281,7 +281,7 @@ function AddFreezerItemDialog({
             autoFocus
           />
         </div>
-        <ScrollArea className="flex-1 min-h-0">
+        <ScrollArea className="flex-1 min-h-0" viewportClassName="[&>div]:block!">
           <div className="p-4 space-y-2">
             {recipesQuery.isLoading ? (
               <p className="text-center text-muted-foreground py-4">

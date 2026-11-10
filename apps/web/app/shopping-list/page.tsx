@@ -62,6 +62,7 @@ type ShoppingUserSettings = {
   startDay: number;
   includeNextWeek: boolean;
   showPantryWithIngredients: boolean;
+  compactShoppingList?: boolean;
   visibleDayIndices: number[];
   defaultStoreId: string | null;
 };
@@ -125,6 +126,9 @@ export default function ShoppingListPage() {
   const [extraInput, setExtraInput] = useState("");
   const [debouncedExtra, setDebouncedExtra] = useState("");
   const [showCompletedExtras, setShowCompletedExtras] = useState(false);
+  // Compact mode drops the framed sections and their headings so the list
+  // reads as one continuous list and nothing below the first block is missed.
+  const compact = Boolean(activeSettings.compactShoppingList);
 
   // The visible day window never extends past the end of next week
   // (offset < 14 in the day filter), so one week of lookahead is enough.
@@ -1440,13 +1444,26 @@ export default function ShoppingListPage() {
           Ingen oppskrifter valgt for denne uken ennå.
         </p>
       ) : (
-        <div className="max-w-2xl mx-auto w-full space-y-6">
-          <section className="rounded-2xl border border-emerald-200/60 bg-emerald-50/40 p-4">
-            <h2 className="text-sm font-semibold mb-2">
-              {viewMode === "by-category"
-                ? "Egne elementer uten kategori"
-                : "Egne elementer"}
-            </h2>
+        <div
+          className={`max-w-2xl mx-auto w-full ${compact ? "space-y-3" : "space-y-6"}`}
+        >
+          {compact &&
+            uncheckedExtras.length === 0 &&
+            checkedExtras.length === 0 ? null : (
+          <section
+            className={
+              compact
+                ? undefined
+                : "rounded-2xl border border-emerald-200/60 bg-emerald-50/40 p-4"
+            }
+          >
+            {compact ? null : (
+              <h2 className="text-sm font-semibold mb-2">
+                {viewMode === "by-category"
+                  ? "Egne elementer uten kategori"
+                  : "Egne elementer"}
+              </h2>
+            )}
             {uncheckedExtras.length === 0 && checkedExtras.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 {viewMode === "by-category"
@@ -1594,14 +1611,23 @@ export default function ShoppingListPage() {
               </div>
             )}
           </section>
-          <section className="rounded-2xl border border-orange-200/60 bg-orange-50/40 p-4">
-            <h2 className="text-sm font-semibold mb-2">
-              {viewMode === "by-day"
-                ? "Ukesplan"
-                : viewMode === "by-category"
-                  ? `Kategorier${activeStore ? ` · ${activeStore.name}` : ""}`
-                  : "Alfabetisk"}
-            </h2>
+          )}
+          <section
+            className={
+              compact
+                ? undefined
+                : "rounded-2xl border border-orange-200/60 bg-orange-50/40 p-4"
+            }
+          >
+            {compact ? null : (
+              <h2 className="text-sm font-semibold mb-2">
+                {viewMode === "by-day"
+                  ? "Ukesplan"
+                  : viewMode === "by-category"
+                    ? `Kategorier${activeStore ? ` · ${activeStore.name}` : ""}`
+                    : "Alfabetisk"}
+              </h2>
+            )}
             {displayStyle === "grid" ? (
               viewMode === "alphabetical" ? (
                 <div className="grid grid-cols-4 gap-1.5">
@@ -1644,7 +1670,13 @@ export default function ShoppingListPage() {
             )}
           </section>
           {!showPantryWithIngredients ? (
-            <section className="rounded-2xl border border-slate-200/70 bg-slate-50/50 p-4">
+            <section
+              className={
+                compact
+                  ? "pt-3"
+                  : "rounded-2xl border border-slate-200/70 bg-slate-50/50 p-4"
+              }
+            >
               <h2 className="text-sm font-semibold mb-2">Basisvarer</h2>
               {pantryItems.length === 0 ? (
                 <p className="text-sm text-muted-foreground">

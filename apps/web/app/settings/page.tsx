@@ -57,6 +57,8 @@ type UserSettings = {
   startDay: number;
   includeNextWeek: boolean;
   showPantryWithIngredients: boolean;
+  compactShoppingList: boolean;
+  plannerTapOpensRecipe: boolean;
   visibleDayIndices: number[];
   defaultStoreId: string | null;
 };
@@ -98,6 +100,8 @@ export default function SettingsPage() {
     startDay: 0,
     includeNextWeek: false,
     showPantryWithIngredients: false,
+    compactShoppingList: false,
+    plannerTapOpensRecipe: false,
     visibleDayIndices: [...DEFAULT_VISIBLE_DAY_INDICES],
     defaultStoreId: null,
   });
@@ -140,6 +144,8 @@ export default function SettingsPage() {
     const s = data.settings;
     setSettings({
       ...s,
+      compactShoppingList: Boolean(s.compactShoppingList),
+      plannerTapOpensRecipe: Boolean(s.plannerTapOpensRecipe),
       visibleDayIndices: Array.from(
         new Set(s.visibleDayIndices),
       ).sort((a, b) => a - b),
@@ -183,6 +189,8 @@ export default function SettingsPage() {
       startDay: settings.startDay,
       includeNextWeek: settings.includeNextWeek,
       showPantryWithIngredients: settings.showPantryWithIngredients,
+      compactShoppingList: settings.compactShoppingList,
+      plannerTapOpensRecipe: settings.plannerTapOpensRecipe,
       visibleDayIndices: settings.visibleDayIndices,
       defaultStoreId:
         settings.defaultStoreId ??
@@ -262,6 +270,29 @@ export default function SettingsPage() {
           >
             <LogOut className="mr-1.5 h-3.5 w-3.5" />
             Logg ut
+          </Button>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-violet-200/60 bg-violet-50/40 p-4 space-y-4">
+        <h2 className="text-sm font-semibold">Ukesplan</h2>
+        <label className="flex items-center justify-between gap-3 border rounded-lg p-2.5 cursor-pointer hover:bg-accent">
+          <span className="text-sm">
+            Trykk på en middag åpner oppskriften
+            <span className="block text-xs text-muted-foreground">
+              Bytt oppskrift med egen knapp på kortet i stedet
+            </span>
+          </span>
+          <Checkbox
+            checked={settings.plannerTapOpensRecipe}
+            onCheckedChange={(checked) =>
+              patchSettings({ plannerTapOpensRecipe: Boolean(checked) })
+            }
+          />
+        </label>
+        <div className="flex justify-end">
+          <Button type="button" onClick={saveSettings} disabled={isBusy}>
+            Lagre innstillinger
           </Button>
         </div>
       </section>
@@ -381,6 +412,20 @@ export default function SettingsPage() {
                   patchSettings({
                     showPantryWithIngredients: Boolean(checked),
                   })
+                }
+              />
+            </label>
+            <label className="flex items-center justify-between gap-3 border rounded-lg p-2.5 cursor-pointer hover:bg-accent">
+              <span className="text-sm">
+                Kompakt handleliste
+                <span className="block text-xs text-muted-foreground">
+                  Uten rammer og overskrifter, så hele listen henger sammen
+                </span>
+              </span>
+              <Checkbox
+                checked={settings.compactShoppingList}
+                onCheckedChange={(checked) =>
+                  patchSettings({ compactShoppingList: Boolean(checked) })
                 }
               />
             </label>

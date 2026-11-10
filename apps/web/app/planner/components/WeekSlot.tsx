@@ -15,18 +15,25 @@ type WeekSlotProps = {
   onRequestChange?: (_index: number) => void;
   onSetTakeaway?: (_index: number) => void;
   onClearEntry?: (_index: number) => void;
+  /** When true, tapping a meal opens the recipe and a separate button opens the picker. */
+  tapOpensRecipe?: boolean;
 };
 
-export function WeekSlot({ index, dayName, dateLabel, entry, weekOffset = 0, onRecipeClick, onRequestChange, onSetTakeaway, onClearEntry }: WeekSlotProps & { dateLabel?: string }) {
+export function WeekSlot({ index, dayName, dateLabel, entry, weekOffset = 0, onRecipeClick, onRequestChange, onSetTakeaway, onClearEntry, tapOpensRecipe = false }: WeekSlotProps & { dateLabel?: string }) {
   const recipe = entry?.type === "RECIPE" ? entry.recipe : (entry?.type === "FREEZER" ? entry.recipe : null);
   const entryKey = entry?.type === "TAKEAWAY" ? "takeaway" : entry?.type === "FREEZER" ? `freezer-${recipe?.id}` : recipe?.id || "empty";
   // Use the same format as draggable IDs so parseDragId works
   const dropId = makeDragId({ source: "week", index, recipeId: entryKey, weekOffset });
   const { isOver, setNodeRef } = useDroppable({ id: dropId });
 
+  const opensRecipe = tapOpensRecipe && Boolean(recipe && onRecipeClick && onRequestChange);
+  const handleChangeRecipe = opensRecipe ? () => onRequestChange?.(index) : undefined;
+
   // Handler for click - use onRequestChange if available, otherwise onRecipeClick
   const handleClick = () => {
-    if (onRequestChange) {
+    if (opensRecipe && recipe) {
+      onRecipeClick?.(recipe);
+    } else if (onRequestChange) {
       onRequestChange(index);
     } else if (recipe && onRecipeClick) {
       onRecipeClick(recipe);
@@ -44,6 +51,7 @@ export function WeekSlot({ index, dayName, dateLabel, entry, weekOffset = 0, onR
           entryType={entry?.type ?? "EMPTY"}
           isDraggingTarget={isOver}
           onClick={onRequestChange ? handleClick : undefined}
+          onChangeRecipe={handleChangeRecipe}
           onSetTakeaway={onSetTakeaway ? () => onSetTakeaway(index) : undefined}
           onClearEntry={onClearEntry ? () => onClearEntry(index) : undefined}
         />
@@ -64,6 +72,7 @@ export function WeekSlot({ index, dayName, dateLabel, entry, weekOffset = 0, onR
               entryType="RECIPE"
               isDraggingTarget={isOver}
               onClick={handleClick}
+              onChangeRecipe={handleChangeRecipe}
               onSetTakeaway={onSetTakeaway ? () => onSetTakeaway(index) : undefined}
             />
           </div>
