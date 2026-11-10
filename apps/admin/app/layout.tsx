@@ -1,5 +1,6 @@
 import "./globals.css";
 import { Providers } from "./providers";
+import { AuthGate } from "./AuthGate";
 
 export const metadata = {
   title: "Butta – Admin",
@@ -19,7 +20,9 @@ export default function RootLayout({
               🛠️ Butta Admin
             </h1>
           </header>
-          <main className="mx-auto w-full px-4 py-6">{children}</main>
+          <main className="mx-auto w-full px-4 py-6">
+            <AuthGate>{children}</AuthGate>
+          </main>
         </Providers>
       </body>
     </html>
