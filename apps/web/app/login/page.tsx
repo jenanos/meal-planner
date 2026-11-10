@@ -13,10 +13,14 @@ const PENDING_TTL_MS = 10 * 60 * 1000; // OTP is valid for 5 min; give buffer.
 
 // Hosts allowed as `?callbackUrl=` targets. `same-host` is always implicitly
 // allowed; this explicit allowlist only extends that to the MCP server's OAuth
-// bounce hostname. The API's better-auth trustedOrigins independently validates
-// magic-link callbacks server-side, so this is a defense-in-depth layer
-// against open-redirects from the OTP success flow.
-const ALLOWED_CALLBACK_HOSTS = ["meals-mcp.jenanos.xyz"];
+// bounce hostname and the admin app, which has no login of its own. The API's
+// better-auth trustedOrigins independently validates magic-link callbacks
+// server-side, so this is a defense-in-depth layer against open-redirects
+// from the OTP success flow.
+const ALLOWED_CALLBACK_HOSTS = [
+  "meals-mcp.jenanos.xyz",
+  "meals-admin.jenanos.xyz",
+];
 
 type PendingState = {
   stage: "enter-otp" | "magic-link-sent";
