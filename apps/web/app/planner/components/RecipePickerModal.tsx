@@ -261,7 +261,9 @@ export function RecipePickerModal({
                 )}
 
                 {/* Recipe list */}
-                <ScrollArea className="flex-1 min-h-0">
+                {/* Radix wraps the viewport content in display:table, which stops long
+                    names from truncating and pushes the cards past the dialog edge. */}
+                <ScrollArea className="flex-1 min-h-0" viewportClassName="[&>div]:block!">
                     <div className="p-4 space-y-2">
                         {activeTab === "freezer" ? (
                             freezerItems.length === 0 ? (

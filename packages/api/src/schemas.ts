@@ -178,6 +178,8 @@ export const UserPreferenceUpdate = z.object({
   startDay: z.number().int().min(0).max(6),
   includeNextWeek: z.boolean(),
   showPantryWithIngredients: z.boolean(),
+  compactShoppingList: z.boolean().optional(),
+  plannerTapOpensRecipe: z.boolean().optional(),
   visibleDayIndices: z
     .array(z.number().int().min(0).max(6))
     .min(1)

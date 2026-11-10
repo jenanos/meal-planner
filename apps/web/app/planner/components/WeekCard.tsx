@@ -27,6 +27,8 @@ export type Props = {
     onDragOver?: React.DragEventHandler;
     onDragLeave?: React.DragEventHandler;
     onClick?: () => void;
+    /** Opens the recipe picker; shown when tapping the card opens the recipe instead. */
+    onChangeRecipe?: () => void;
     onSetTakeaway?: () => void;
     onClearEntry?: () => void;
 };
@@ -42,6 +44,7 @@ export function WeekCard({
     onDragOver,
     onDragLeave,
     onClick,
+    onChangeRecipe,
     onSetTakeaway,
     onClearEntry,
 }: Props) {
@@ -72,6 +75,8 @@ export function WeekCard({
             onKeyDown={
                 onClick
                     ? (event) => {
+                        // Leave key presses on nested buttons (e.g. "Bytt oppskrift") to those buttons.
+                        if (event.target !== event.currentTarget) return;
                         if (event.key === "Enter" || event.key === " ") {
                             event.preventDefault();
                             onClick();
@@ -103,17 +108,33 @@ export function WeekCard({
                 ) : (
                     <div className="text-sm text-muted-foreground/60">Ingen valgt</div>
                 )}
-                {entryType === "RECIPE" && onSetTakeaway ? (
-                    <button
-                        type="button"
-                        className="mt-1 rounded-md border border-amber-300/70 bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-800 hover:bg-amber-100"
-                        onClick={(event) => {
-                            event.stopPropagation();
-                            onSetTakeaway();
-                        }}
-                    >
-                        Bytt til takeaway
-                    </button>
+                {(onChangeRecipe && (entryType === "RECIPE" || isFreezer)) || (entryType === "RECIPE" && onSetTakeaway) ? (
+                    <div className="mt-1 flex flex-wrap items-center justify-center gap-1.5">
+                        {(entryType === "RECIPE" || isFreezer) && onChangeRecipe ? (
+                            <button
+                                type="button"
+                                className="rounded-md border border-foreground/20 bg-white/70 px-2 py-1 text-[10px] font-medium text-foreground hover:bg-white"
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    onChangeRecipe();
+                                }}
+                            >
+                                Bytt oppskrift
+                            </button>
+                        ) : null}
+                        {entryType === "RECIPE" && onSetTakeaway ? (
+                            <button
+                                type="button"
+                                className="rounded-md border border-amber-300/70 bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-800 hover:bg-amber-100"
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    onSetTakeaway();
+                                }}
+                            >
+                                Bytt til takeaway
+                            </button>
+                        ) : null}
+                    </div>
                 ) : null}
                 {isEmpty && onSetTakeaway ? (
                     <button

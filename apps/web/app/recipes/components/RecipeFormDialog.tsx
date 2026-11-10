@@ -377,7 +377,7 @@ export function RecipeFormDialog({
 
                         {/* Scrollable ingredients list */}
                         {ingList.length > 0 ? (
-                          <ScrollArea className="flex-1 min-h-0">
+                          <ScrollArea className="flex-1 min-h-0" viewportClassName="[&>div]:block!">
                             <div className="flex flex-col pr-2 pb-2">
                               {[...ingList].reverse().map((ingredient) => (
                                 <div

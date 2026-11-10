@@ -1,7 +1,7 @@
 "use client";
 
 import { WeekSlot } from "./WeekSlot";
-import type { WeekEntry, DayName } from "../types";
+import type { WeekEntry, DayName, RecipeDTO } from "../types";
 
 export type MobileEditorItem = {
   entry: WeekEntry | null;
@@ -16,11 +16,15 @@ export type MobileEditorProps = {
   onRequestChange: (dayIndex: number, weekOffset: number) => void;
   onSetTakeaway: (index: number, weekOffset: number) => void;
   onClearEntry: (index: number, weekOffset: number) => void;
+  onRecipeClick?: (recipe: RecipeDTO) => void;
+  /** User preference: tap opens the recipe, a button on the card opens the picker. */
+  tapOpensRecipe?: boolean;
 };
 
 /**
  * Simplified mobile editor that shows the week plan.
- * Tapping a slot opens the RecipePickerModal (handled by parent).
+ * Tapping a slot opens the RecipePickerModal (handled by parent), or the
+ * recipe itself when the user has chosen that in settings.
  * Drag-drop is handled by DndContext in page.tsx for reordering.
  */
 export function MobileEditor({
@@ -28,6 +32,8 @@ export function MobileEditor({
   onRequestChange,
   onSetTakeaway,
   onClearEntry,
+  onRecipeClick,
+  tapOpensRecipe = false,
 }: MobileEditorProps) {
   return (
     <div className="space-y-3">
@@ -41,6 +47,8 @@ export function MobileEditor({
             entry={item.entry}
             weekOffset={item.weekOffset}
             onRequestChange={(idx) => onRequestChange(idx, item.weekOffset)}
+            onRecipeClick={onRecipeClick}
+            tapOpensRecipe={tapOpensRecipe}
             onSetTakeaway={() => onSetTakeaway(item.realIdx, item.weekOffset)}
             onClearEntry={() => onClearEntry(item.realIdx, item.weekOffset)}
           />

@@ -473,6 +473,8 @@ function serializeUserPreference(
     startDay: number;
     includeNextWeek: boolean;
     showPantryWithIngredients: boolean;
+    compactShoppingList?: boolean | null;
+    plannerTapOpensRecipe?: boolean | null;
     visibleDayIndices: number[];
     defaultStoreId: string | null;
   },
@@ -486,6 +488,8 @@ function serializeUserPreference(
     showPantryWithIngredients: Boolean(
       preference.showPantryWithIngredients,
     ),
+    compactShoppingList: Boolean(preference.compactShoppingList),
+    plannerTapOpensRecipe: Boolean(preference.plannerTapOpensRecipe),
     visibleDayIndices: sanitizeVisibleDayIndices(preference.visibleDayIndices),
     defaultStoreId: preference.defaultStoreId ?? fallbackStoreId,
   };
@@ -1028,6 +1032,8 @@ export const plannerRouter = router({
             startDay: 0,
             includeNextWeek: false,
             showPantryWithIngredients: false,
+            compactShoppingList: false,
+            plannerTapOpensRecipe: false,
             visibleDayIndices: [...DEFAULT_VISIBLE_DAY_INDICES],
             defaultStoreId: fallbackStoreId,
           };
@@ -1070,6 +1076,8 @@ export const plannerRouter = router({
           startDay: input.startDay,
           includeNextWeek: input.includeNextWeek,
           showPantryWithIngredients: input.showPantryWithIngredients,
+          compactShoppingList: input.compactShoppingList ?? false,
+          plannerTapOpensRecipe: input.plannerTapOpensRecipe ?? false,
           visibleDayIndices,
           defaultStoreId,
         },
@@ -1079,6 +1087,9 @@ export const plannerRouter = router({
           startDay: input.startDay,
           includeNextWeek: input.includeNextWeek,
           showPantryWithIngredients: input.showPantryWithIngredients,
+          // Optional so older clients that omit them leave the stored value alone.
+          compactShoppingList: input.compactShoppingList,
+          plannerTapOpensRecipe: input.plannerTapOpensRecipe,
           visibleDayIndices,
           defaultStoreId,
         },
