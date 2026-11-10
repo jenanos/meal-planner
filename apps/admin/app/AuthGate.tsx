@@ -15,7 +15,9 @@ function getLoginUrl(): string {
   if (configured) return configured;
   const host = window.location.hostname;
   if (host === "localhost" || host === "127.0.0.1") {
-    return "http://localhost:3000/login";
+    // Keep the loopback host: the login page only accepts a callback on its
+    // own hostname (or the allowlisted production hosts).
+    return `http://${host}:3000/login`;
   }
   return "https://meals.jenanos.xyz/login";
 }

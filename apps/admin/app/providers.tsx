@@ -32,7 +32,15 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
   const [trpcClient] = useState(() =>
     trpc.createClient({
-      links: [httpBatchLink({ url: `${getApiUrl()}/trpc` })],
+      links: [
+        httpBatchLink({
+          url: `${getApiUrl()}/trpc`,
+          // Send the session cookie when the API is on another origin
+          // (locally admin is on :3001 and the API on :4000).
+          fetch: (input, init) =>
+            fetch(input, { ...init, credentials: "include" }),
+        }),
+      ],
     }),
   );
 
