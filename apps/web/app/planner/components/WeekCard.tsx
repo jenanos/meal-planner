@@ -75,6 +75,8 @@ export function WeekCard({
             onKeyDown={
                 onClick
                     ? (event) => {
+                        // Leave key presses on nested buttons (e.g. "Bytt oppskrift") to those buttons.
+                        if (event.target !== event.currentTarget) return;
                         if (event.key === "Enter" || event.key === " ") {
                             event.preventDefault();
                             onClick();
