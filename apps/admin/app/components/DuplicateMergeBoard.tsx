@@ -17,7 +17,9 @@ type Props = {
   allItems: MergeItem[] | undefined;
   isLoading: boolean;
   formatUsage: (count: number) => string;
-  onMerge: (keepId: string, mergeIds: string[]) => Promise<unknown>;
+  onMerge: (keepId: string, mergeIds: string[]) => Promise<{ mergedCount: number }>;
+  /** Explains what is lost when several merged items are used in the same place. */
+  overlapWarning: (keepName: string) => string;
   /** localStorage key for suggestions marked as «ikke duplikater». */
   dismissedStorageKey: string;
   /** Warn when the selected items have different units. */
@@ -62,6 +64,7 @@ export function DuplicateMergeBoard({
   isLoading,
   formatUsage,
   onMerge,
+  overlapWarning,
   dismissedStorageKey,
   warnOnUnitMismatch = false,
 }: Props) {
@@ -143,7 +146,8 @@ export function DuplicateMergeBoard({
       const names = mergeIds.map((id) => `«${byId.get(id)?.name ?? "?"}»`).join(", ");
       const ok = window.confirm(
         `Slå sammen ${names} inn i «${keep.name}»?\n\n` +
-          `Alt som bruker disse peker deretter til «${keep.name}», og de andre slettes. Dette kan ikke angres.`,
+          `Alt som bruker disse peker deretter til «${keep.name}», og de andre slettes. ` +
+          `${overlapWarning(keep.name)}\n\nDette kan ikke angres.`,
       );
       if (!ok) return;
 
@@ -151,9 +155,13 @@ export function DuplicateMergeBoard({
       setError(null);
       setNotice(null);
       try {
-        await onMerge(keepId, mergeIds);
+        const { mergedCount } = await onMerge(keepId, mergeIds);
+        const skipped = mergeIds.length - mergedCount;
         setNotice(
-          `Slo sammen ${mergeIds.length} ${mergeIds.length === 1 ? noun.one : noun.many} inn i «${keep.name}».`,
+          `Slo sammen ${mergedCount} ${mergedCount === 1 ? noun.one : noun.many} inn i «${keep.name}».` +
+            (skipped > 0
+              ? ` ${skipped} fantes ikke lenger og ble hoppet over.`
+              : ""),
         );
         if (key === MANUAL_KEY) {
           setManualIds([]);
@@ -169,7 +177,7 @@ export function DuplicateMergeBoard({
         setPendingKey(null);
       }
     },
-    [byId, noun, onMerge],
+    [byId, noun, onMerge, overlapWarning],
   );
 
   const toggleDismissed = (key: string) => {

@@ -43,6 +43,9 @@ describe("namesLookLikeDuplicates", () => {
     ["laks", "laksefilet"],
     ["Melk (laktosefri)", "Melk (hel)"],
     ["Tomat (hakket)", "Tomat (puré)"],
+    ["Tomater (hakkede)", "Tomater (soltørkede)"],
+    ["kokosmel", "kokosmelk"],
+    ["hvetemel", "hvetemelk"],
   ])("keeps «%s» and «%s» apart", (a, b) => {
     expect(namesLookLikeDuplicates(a, b)).toBe(false);
   });
@@ -79,5 +82,12 @@ describe("editDistance", () => {
     expect(editDistance("melk", "mlek")).toBe(1);
     expect(editDistance("abc", "abc")).toBe(0);
     expect(editDistance("kitten", "sitting")).toBe(3);
+    expect(editDistance("riseddik", "risedikk")).toBe(2);
+  });
+
+  it("stops early once the distance exceeds the limit", () => {
+    const a = "a".repeat(10_000);
+    const b = "b".repeat(10_000);
+    expect(editDistance(a, b, 2)).toBe(3);
   });
 });

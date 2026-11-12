@@ -90,33 +90,34 @@ export function nameSignature(name: string): NameSignature | null {
     };
 }
 
-/** Optimal string alignment distance (Levenshtein + adjacent transpositions). */
+/**
+ * Optimal string alignment distance (Levenshtein + adjacent transpositions).
+ * Keeps only three rows in memory and stops as soon as the distance is known
+ * to exceed `max`, so long names cannot blow up time or memory.
+ */
 export function editDistance(a: string, b: string, max = Infinity): number {
     if (a === b) return 0;
     if (Math.abs(a.length - b.length) > max) return max + 1;
-    const rows = a.length + 1;
     const cols = b.length + 1;
-    const d: number[][] = Array.from({ length: rows }, () => new Array<number>(cols).fill(0));
-    for (let i = 0; i < rows; i++) d[i]![0] = i;
-    for (let j = 0; j < cols; j++) d[0]![j] = j;
-    for (let i = 1; i < rows; i++) {
-        let rowMin = Infinity;
+    let prev2 = new Array<number>(cols).fill(0);
+    let prev = Array.from({ length: cols }, (_, j) => j);
+    let curr = new Array<number>(cols).fill(0);
+    for (let i = 1; i <= a.length; i++) {
+        curr[0] = i;
+        let rowMin = i;
         for (let j = 1; j < cols; j++) {
             const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-            let value = Math.min(
-                d[i - 1]![j]! + 1,
-                d[i]![j - 1]! + 1,
-                d[i - 1]![j - 1]! + cost,
-            );
+            let value = Math.min(prev[j]! + 1, curr[j - 1]! + 1, prev[j - 1]! + cost);
             if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
-                value = Math.min(value, d[i - 2]![j - 2]! + 1);
+                value = Math.min(value, prev2[j - 2]! + 1);
             }
-            d[i]![j] = value;
+            curr[j] = value;
             if (value < rowMin) rowMin = value;
         }
         if (rowMin > max) return max + 1;
+        [prev2, prev, curr] = [prev, curr, prev2];
     }
-    return d[a.length]![b.length]!;
+    return prev[b.length]!;
 }
 
 function allowedTypos(length: number): number {
@@ -132,6 +133,11 @@ export function signaturesMatch(a: NameSignature, b: NameSignature): boolean {
     if (max === 0) return false;
     // Typos rarely hit the first letter; requiring it avoids «salt» ≈ «malt».
     if (a.compact[0] !== b.compact[0]) return false;
+    // Letters added at the end usually make a different word, not a typo:
+    // «kokosmel» / «kokosmelk», «hvetemel» / «hvetemelk».
+    const [shorter, longer] =
+        a.compact.length <= b.compact.length ? [a.compact, b.compact] : [b.compact, a.compact];
+    if (longer.startsWith(shorter)) return false;
     return editDistance(a.compact, b.compact, max) <= max;
 }
 

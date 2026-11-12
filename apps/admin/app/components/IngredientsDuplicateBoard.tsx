@@ -28,6 +28,9 @@ export function IngredientsDuplicateBoard() {
       isLoading={suggestions.isLoading}
       formatUsage={formatUsage}
       onMerge={(keepId, mergeIds) => mergeMutation.mutateAsync({ keepId, mergeIds })}
+      overlapWarning={(keep) =>
+        `Står flere av dem i samme oppskrift, beholdes bare linjen for «${keep}» – mengde og notat på de andre linjene forsvinner.`
+      }
       dismissedStorageKey="admin:dismissed-duplicates:ingredients"
       warnOnUnitMismatch
     />

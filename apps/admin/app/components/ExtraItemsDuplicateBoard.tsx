@@ -28,6 +28,9 @@ export function ExtraItemsDuplicateBoard() {
       isLoading={suggestions.isLoading}
       formatUsage={formatUsage}
       onMerge={(keepId, mergeIds) => mergeMutation.mutateAsync({ keepId, mergeIds })}
+      overlapWarning={(keep) =>
+        `Står flere av dem på handlelisten samme uke, beholdes bare raden for «${keep}» (med sin avhuking).`
+      }
       dismissedStorageKey="admin:dismissed-duplicates:extra-items"
     />
   );
