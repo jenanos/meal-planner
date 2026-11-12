@@ -56,7 +56,9 @@ export default function AdminPage() {
             ? "Opprett og rediger pakker. En pakke grupperer flere elementer under ett navn (f.eks. «Pålegg»)."
             : view === "freezer"
               ? "Hold oversikt over beholdningen i fryseren. Juster antall porsjoner for hver oppskrift."
-              : "Dra elementer mellom kolonnene for å endre verdier. Endringer lagres automatisk."}
+              : view === "ing-dup" || view === "extra-dup"
+                ? "Forslagene er basert på navn (entall/flertall, mengder, skrivefeil). Fjern haken på det som ikke hører sammen, eller slå sammen hva som helst manuelt."
+                : "Dra elementer mellom kolonnene for å endre verdier. Endringer lagres automatisk."}
       </p>
       <div className="mt-2">
         {view === "ing-unit" && <IngredientsUnitBoard />}
