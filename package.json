@@ -19,7 +19,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "generate": "turbo run generate",
     "lint": "turbo run lint",
-    "mcp:inspect": "npx -y @anthropic/mcp-inspector"
+    "mcp:inspect": "npx -y @modelcontextprotocol/inspector"
   },
   "devDependencies": {
     "prettier": "^3.2.5",

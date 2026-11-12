@@ -17,6 +17,7 @@ const { prismaMock } = vi.hoisted(() => ({
       deleteMany: vi.fn(),
     },
     household: {
+      findUnique: vi.fn(),
       findMany: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
@@ -274,6 +275,37 @@ describe("admin router", () => {
   it("returns the current user's role for authenticated users", async () => {
     const result = await createCaller(ADMIN_USER).myRole();
     expect(result).toEqual({ role: "ADMIN" });
+  });
+
+  it("describes the caller and their active household", async () => {
+    prismaMock.household.findUnique.mockResolvedValue({
+      id: "household-1",
+      name: "Hjemme",
+    });
+
+    const result = await adminRouter
+      .createCaller({ user: MEMBER_USER, householdId: "household-1" })
+      .whoAmI();
+
+    expect(prismaMock.household.findUnique).toHaveBeenCalledWith({
+      where: { id: "household-1" },
+      select: { id: true, name: true },
+    });
+    expect(result).toEqual({
+      user: {
+        id: MEMBER_USER.id,
+        name: "User",
+        email: "user@example.com",
+        role: "USER",
+      },
+      household: { id: "household-1", name: "Hjemme" },
+    });
+  });
+
+  it("reports no household for a user without memberships", async () => {
+    const result = await createCaller(MEMBER_USER).whoAmI();
+    expect(prismaMock.household.findUnique).not.toHaveBeenCalled();
+    expect(result.household).toBeNull();
   });
 
   it("blocks unauthenticated and non-admin callers", async () => {

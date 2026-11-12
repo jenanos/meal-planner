@@ -182,6 +182,29 @@ export const adminRouter = router({
       });
     }),
 
+  /**
+   * Who the caller is and which household their data is scoped to. Used by
+   * the MCP server to describe the session and to decide whether the admin
+   * tools should be offered at all.
+   */
+  whoAmI: authenticatedProcedure.query(async ({ ctx }) => {
+    const household = ctx.householdId
+      ? await prisma.household.findUnique({
+          where: { id: ctx.householdId },
+          select: { id: true, name: true },
+        })
+      : null;
+    return {
+      user: {
+        id: ctx.user.id,
+        name: ctx.user.name,
+        email: ctx.user.email,
+        role: ctx.user.role,
+      },
+      household,
+    };
+  }),
+
   /** Get current user's role (available to any authenticated user) */
   myRole: authenticatedProcedure.query(async ({ ctx }) => {
     return { role: ctx.user.role };

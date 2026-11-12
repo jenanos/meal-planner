@@ -1,39 +1,43 @@
 # Meal Planner MCP Server
 
-This service exposes a Model Context Protocol (MCP) server that maps MCP tools to the Meal Planner tRPC API. It is designed to run alongside the existing `meals-api` container and lets MCP clients (including ChatGPT and Claude) read and update weekly plans.
+This service exposes a Model Context Protocol (MCP) server on top of the Meal Planner tRPC API. It runs alongside the `meals-api` container and lets MCP clients (ChatGPT, Claude and others) do everything the web and admin apps can do: plan weeks, manage recipes and ingredients, work the shopping list, keep the freezer inventory, and — for administrators — manage users, sign-in access and households.
 
 The server includes its own OAuth 2.1 + PKCE authorization server so that clients which only support OAuth (such as ChatGPT custom connectors) can connect without a static bearer token. User authentication is delegated to the existing better-auth setup on the meals web app — the MCP server validates the shared session cookie via the meals API and then issues its own JWT access tokens.
 
-## Features
+## What the server offers
 
-- `get-week-plan` → `planner.getWeekPlan`
-- `generate-week-plan` → `planner.generateWeekPlan`
-- `save-week-plan` → `planner.saveWeekPlan`
-- `get-shopping-list` → `planner.shoppingList`
-- `update-shopping-item` → `planner.updateShoppingItem`
-- `update-shopping-items-by-name` → `planner.shoppingList` + `planner.updateShoppingItem`
-- `suggest-extra-shopping-items` → `planner.extraSuggest`
-- `add-extra-shopping-item` → `planner.extraToggle`
-- `smart-add-extra-shopping-item` → `planner.extraSuggest` + `planner.extraToggle` (med duplikatsjekk)
-- `batch-add-extra-shopping-items` → `planner.extraSuggest` + `planner.extraToggle` (bulk med duplikatsjekk)
-- `remove-extra-shopping-item` → `planner.extraRemove`
-- `add-extra-item-to-catalog` → `planner.extraAdd`
-- `list-ingredients` → `ingredient.list`
-- `create-ingredient` → `ingredient.create`
-- `update-ingredient` → `ingredient.update`
-- `get-ingredient-with-recipes` → `ingredient.getWithRecipes`
-- `get-ingredients-without-unit` → `ingredient.listWithoutUnit`
-- `get-ingredients-without-category` → `ingredient.listWithoutCategory`
-- `bulk-update-missing-ingredient-units` → `ingredient.listWithoutUnit` + `ingredient.bulkUpdateUnits`
-- `bulk-update-missing-ingredient-categories` → `ingredient.listWithoutCategory` + `ingredient.bulkUpdateCategories`
-- `bulk-update-ingredient-categories` → `ingredient.bulkUpdateCategories`
-- `get-potential-duplicate-ingredients` → `ingredient.listPotentialDuplicates`
-- `bulk-update-ingredient-units` → `ingredient.bulkUpdateUnits`
-- `list-recipes` → `recipe.list`
-- `get-recipe` → `recipe.getById`
-- `create-recipe` → `recipe.create`
-- `update-recipe` → `recipe.update`
-- `delete-recipe` → `recipe.delete`
+39 tools for every user. A further 11 `admin-*` tools (users, sign-in access, households) exist but are **switched off by default**: they are only registered when `MCP_ENABLE_ADMIN_TOOLS=true`, and then only for users with the `ADMIN` role (the API enforces the role on every call as well). See [Admin tools](#admin-tools).
+
+| Area | Tools |
+| --- | --- |
+| Context | `get-context` (today's date, current/next week, user, role, household) |
+| Week plan | `get-week-plan`, `list-weeks`, `set-week-plan-days`, `generate-week-plan`, `suggest-recipes` |
+| Recipes | `list-recipes`, `get-recipe`, `create-recipe`, `update-recipe`, `delete-recipe` |
+| Ingredients | `list-ingredients`, `get-ingredient`, `create-ingredient`, `update-ingredient`, `bulk-update-ingredients`, `find-duplicate-ingredients`, `merge-ingredients` |
+| Shopping list | `get-shopping-list`, `check-shopping-items`, `update-shopping-item`, `add-extra-shopping-items`, `remove-extra-shopping-items` |
+| Extra item catalog | `list-extra-catalog`, `add-extra-catalog-item`, `set-extra-catalog-categories`, `find-duplicate-extra-items`, `merge-extra-catalog-items` |
+| Shopping packages | `list-shopping-packages`, `create-shopping-package`, `update-shopping-package`, `delete-shopping-package`, `add-shopping-package-to-list` |
+| Freezer | `list-freezer`, `set-freezer-item`, `adjust-freezer-portions` |
+| Settings | `get-shopping-settings`, `update-shopping-settings`, `create-shopping-store` |
+| Admin: access | `admin-list-allowed-emails`, `admin-add-allowed-email`, `admin-remove-allowed-email` |
+| Admin: users | `admin-list-users`, `admin-set-user-role` |
+| Admin: households | `admin-list-households`, `admin-create-household`, `admin-rename-household`, `admin-delete-household`, `admin-set-household-member`, `admin-remove-household-member` |
+
+It also sends server `instructions` (the domain model in a few lines) and three prompts: `planlegg-uka`, `handleliste` and `rydd-i-varer`.
+
+### Conventions
+
+- **Weeks.** Tools take a `week` argument: any date in the week (`YYYY-MM-DD`) or `current` / `next` / `previous`. Omitted means the current week in `MCP_TIMEZONE`. `dayIndex` 0 is Monday.
+- **Names instead of IDs.** Recipes, packages, shopping items, stores, users and households can be referred to by name. An exact (case-insensitive) match wins, a single partial match is accepted, and anything ambiguous is returned as an error with the candidates — the server never guesses.
+- **Partial updates.** `update-ingredient` and `update-shopping-settings` change only the fields given, even though the underlying API calls replace the whole record.
+- **Freezer sync.** `set-week-plan-days` and `generate-week-plan` move freezer portions the way the web planner does: planning a `FREEZER` day takes a portion out (and is refused if there is none), removing one puts it back. Pass `syncFreezer: false` to leave the inventory alone.
+- **Compact results.** Lists return summaries by default; ask for `includeIngredients` / `includeDetails` when the detail is needed.
+- **Errors.** Failures come back with `isError: true` and an `error` message written for the model.
+- **Annotations.** Every tool declares `readOnlyHint` / `destructiveHint` / `idempotentHint`, so clients can ask for confirmation before the irreversible ones (`delete-*`, `merge-*`, `remove-*`, `generate-week-plan`, `admin-delete-household`). `admin-delete-household` additionally requires the household's exact name as confirmation.
+
+### Adding a tool
+
+Tools live in `src/tools/`, one file per area, and are registered with `defineTool` from `src/tools/helpers.ts`. `test/app.test.ts` fails when the API has a procedure that no tool calls, so a new tRPC procedure needs either a tool or an entry in that test's `NOT_EXPOSED` list explaining why it has none.
 
 ## Configuration
 
@@ -58,6 +62,8 @@ Optional:
 - `MCP_OAUTH_REFRESH_TOKEN_TTL` – refresh token lifetime in seconds. Default: `2592000` (30 days).
 - `PORT` – port to expose the MCP server. Default: `5050`.
 - `MCP_ALLOWED_HOSTS` – comma-separated list of `Host` headers accepted by the server (DNS rebinding protection).
+- `MCP_ENABLE_ADMIN_TOOLS` – set to `true` to offer the `admin-*` tools to administrators. Default: `false`. Any other value than `true`/`false`/`1`/`0` stops the server at startup rather than being guessed at.
+- `MCP_TIMEZONE` – IANA time zone that decides what "today" and "this week" mean. Default: `Europe/Oslo`.
 
 ## OAuth flow overview
 
@@ -74,6 +80,8 @@ The MCP server hosts a complete OAuth 2.1 authorization server with PKCE and Dyn
 | `POST /mcp`                                       | Protected MCP endpoint (`Authorization: Bearer <jwt>`) |
 
 When a client hits `/oauth/authorize` without a valid better-auth session cookie, the server redirects to `MCP_OAUTH_LOGIN_URL?callbackUrl=…`. The web app's login page authenticates the user (magic link or OTP via better-auth) and sends them back to `/oauth/authorize`. Because client registration is open (DCR), the server then shows an explicit consent page before issuing an authorization code — otherwise any registered client could obtain a code for a logged-in user via a single crafted link. Approvals are remembered per user + client, so subsequent authorizations for the same client skip the consent screen. Token exchange validates PKCE and returns a JWT access token plus a rotating opaque refresh token.
+
+`POST /mcp` is stateless Streamable HTTP: every request is self-contained (no session id) and is answered with a single JSON body rather than an SSE stream, so nothing is lost when a container restarts or a proxy buffers the response.
 
 ### State persistence
 
@@ -119,8 +127,19 @@ After OAuth, every MCP tool call carries the authenticated user's identity. The 
 
 This means:
 
-- `planner.*`-backed tools read and write data scoped to the user's active household — `BOOTSTRAP_HOUSEHOLD_NAME` is only used as a tie-breaker when the user is in multiple households.
-- `recipe.*` and `ingredient.*` tools are still global (not household-scoped) – any change is visible to every household.
+- Week plans, the shopping list, the extra item catalog, packages, stores and the freezer are scoped to the user's active household — `BOOTSTRAP_HOUSEHOLD_NAME` is only used as a tie-breaker when the user is in multiple households.
+- Recipes and ingredients are global (not household-scoped) – any change is visible to every household.
+- Shopping settings belong to the user.
+- The `admin-*` tools act across all households — see below.
+
+### Admin tools
+
+The `admin-*` tools can lock people out, change who is an administrator and delete a household with everything in it, and an MCP client acts on a model's reading of a conversation. They are therefore behind a server-wide switch that is off by default:
+
+- **`MCP_ENABLE_ADMIN_TOOLS` unset or `false`:** the tools are not registered for anyone. They are absent from `tools/list`, calling one by name fails with "tool not found", and the server instructions do not mention them. Administrators keep every other tool.
+- **`MCP_ENABLE_ADMIN_TOOLS=true`:** the tools are registered for users whose role is `ADMIN`, and nobody else. The role is looked up through the API and cached for a minute, so a role change shows up in the tool list after at most that long.
+
+The switch is read at startup, so changing it means restarting the container (with the new environment — `docker compose up -d meals-mcp`, not just a restart). The startup log states which mode is active. A sensible way to use it is to leave it off, turn it on for the session where you need it, and turn it off again; everything the tools do is also available in the web app's admin page.
 
 ## Local development
 
@@ -147,8 +166,12 @@ pnpm --filter mcp-server start
 
 ## Tests
 
-The OAuth provider (PKCE, JWT signing/verification, token stores, and the full authorize → consent → token flow) is covered by vitest:
-
 ```bash
 pnpm --filter mcp-server test
 ```
+
+- `test/tools.test.ts` drives the tools through the SDK's in-memory client against a fake API, so each test states exactly which API calls a tool makes.
+- `test/app.test.ts` covers the HTTP endpoint (auth, role-based tool list, host allowlist) and checks that every API procedure is reachable through a tool.
+- The OAuth provider (PKCE, JWT signing/verification, token stores, and the full authorize → consent → token flow) runs against an embedded Postgres.
+
+To poke at a running server by hand, use the MCP Inspector: `pnpm mcp:inspect`, then connect to `http://localhost:5050/mcp`.
