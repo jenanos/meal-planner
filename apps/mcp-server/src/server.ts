@@ -41,6 +41,8 @@ export interface BuildServerOptions {
    */
   adminTools: boolean;
   timeZone: string;
+  /** Identifies the user, so their edits of one record are serialized. */
+  lockScope: string;
   now?: () => Date;
   onToolCall?: ToolContext["onToolCall"];
 }
@@ -65,6 +67,7 @@ export function buildServer(options: BuildServerOptions): McpServer {
     api: options.api,
     timeZone: options.timeZone,
     now: options.now ?? (() => new Date()),
+    lockScope: options.lockScope,
     onToolCall: options.onToolCall,
   };
 

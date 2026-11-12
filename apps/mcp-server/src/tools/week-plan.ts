@@ -7,6 +7,7 @@ import {
   compact,
   defineTool,
   resolveWeek,
+  serialize,
   toApiWeekStart,
   toDateOnly,
   weekArg,
@@ -156,6 +157,15 @@ async function applyFreezerDeltas(
   }
 }
 
+/**
+ * Changing a week is read, modify, write the whole week, followed by the
+ * matching freezer adjustments. Everything a user does to one week therefore
+ * runs in sequence, so parallel edits of different days all survive and the
+ * freezer is adjusted against the plan that was actually saved.
+ */
+const weekLockKey = (ctx: ToolContext, monday: string) =>
+  `week-plan:${ctx.lockScope}:${monday}`;
+
 const syncFreezerArg = z
   .boolean()
   .optional()
@@ -286,46 +296,48 @@ export function registerWeekPlanTools(ctx: ToolContext) {
     },
     async ({ week, changes, syncFreezer }) => {
       const monday = resolveWeek(ctx, week);
-
-      const seen = new Set<number>();
-      for (const change of changes) {
-        if (seen.has(change.dayIndex)) {
-          throw new ToolError(
-            `dayIndex ${change.dayIndex} er oppgitt flere ganger.`,
-          );
-        }
-        seen.add(change.dayIndex);
-      }
-
-      const before = toDayInputs(await fetchWeek(api, monday));
-      const after = [...before];
-      for (const change of changes) {
-        const type: EntryType = change.type;
-        if (type === "RECIPE" || type === "FREEZER") {
-          if (!change.recipeId && !change.recipeName) {
+      return serialize(weekLockKey(ctx, monday), async () => {
+        const seen = new Set<number>();
+        for (const change of changes) {
+          if (seen.has(change.dayIndex)) {
             throw new ToolError(
-              `${WEEKDAYS[change.dayIndex]}: ${type} krever recipeId eller recipeName.`,
+              `dayIndex ${change.dayIndex} er oppgitt flere ganger.`,
             );
           }
-          after[change.dayIndex] = {
-            type,
-            recipeId: await resolveRecipeId(api, change),
-          };
-        } else {
-          after[change.dayIndex] = { type };
+          seen.add(change.dayIndex);
         }
-      }
 
-      const deltas = syncFreezer === false ? [] : freezerDeltas(before, after);
-      await assertFreezerStock(api, deltas);
+        const before = toDayInputs(await fetchWeek(api, monday));
+        const after = [...before];
+        for (const change of changes) {
+          const type: EntryType = change.type;
+          if (type === "RECIPE" || type === "FREEZER") {
+            if (!change.recipeId && !change.recipeName) {
+              throw new ToolError(
+                `${WEEKDAYS[change.dayIndex]}: ${type} krever recipeId eller recipeName.`,
+              );
+            }
+            after[change.dayIndex] = {
+              type,
+              recipeId: await resolveRecipeId(api, change),
+            };
+          } else {
+            after[change.dayIndex] = { type };
+          }
+        }
 
-      const saved = await api.planner.saveWeekPlan.mutate({
-        weekStart: toApiWeekStart(monday),
-        days: after,
+        const deltas =
+          syncFreezer === false ? [] : freezerDeltas(before, after);
+        await assertFreezerStock(api, deltas);
+
+        const saved = await api.planner.saveWeekPlan.mutate({
+          weekStart: toApiWeekStart(monday),
+          days: after,
+        });
+        await applyFreezerDeltas(api, deltas);
+
+        return { ...formatWeek(saved), freezerChanges: deltas };
       });
-      await applyFreezerDeltas(api, deltas);
-
-      return { ...formatWeek(saved), freezerChanges: deltas };
     },
   );
 
@@ -382,36 +394,38 @@ export function registerWeekPlanTools(ctx: ToolContext) {
     },
     async ({ week, fish, vegetarian, chicken, beef, seed, syncFreezer }) => {
       const monday = resolveWeek(ctx, week);
-      const before = toDayInputs(await fetchWeek(api, monday));
+      return serialize(weekLockKey(ctx, monday), async () => {
+        const before = toDayInputs(await fetchWeek(api, monday));
 
-      const hasConstraints = [fish, vegetarian, chicken, beef].some(
-        (value) => value !== undefined,
-      );
-      const generated = await api.planner.generateWeekPlan.mutate({
-        weekStart: toApiWeekStart(monday),
-        seed,
-        // Spell out every field: the API schema would otherwise fill gaps
-        // with defaults that differ from the ones the app itself uses.
-        constraints: hasConstraints
-          ? {
-              fish: fish ?? 2,
-              vegetarian: vegetarian ?? 1,
-              chicken: chicken ?? 1,
-              beef: beef ?? 1,
-              preferRecentGapDays: 21,
-            }
-          : undefined,
+        const hasConstraints = [fish, vegetarian, chicken, beef].some(
+          (value) => value !== undefined,
+        );
+        const generated = await api.planner.generateWeekPlan.mutate({
+          weekStart: toApiWeekStart(monday),
+          seed,
+          // Spell out every field: the API schema would otherwise fill gaps
+          // with defaults that differ from the ones the app itself uses.
+          constraints: hasConstraints
+            ? {
+                fish: fish ?? 2,
+                vegetarian: vegetarian ?? 1,
+                chicken: chicken ?? 1,
+                beef: beef ?? 1,
+                preferRecentGapDays: 21,
+              }
+            : undefined,
+        });
+
+        // A generated week never contains freezer meals, so any that were
+        // planned go back into the freezer.
+        const deltas =
+          syncFreezer === false
+            ? []
+            : freezerDeltas(before, toDayInputs(generated));
+        await applyFreezerDeltas(api, deltas);
+
+        return { ...formatWeek(generated), freezerChanges: deltas };
       });
-
-      // A generated week never contains freezer meals, so any that were
-      // planned go back into the freezer.
-      const deltas =
-        syncFreezer === false
-          ? []
-          : freezerDeltas(before, toDayInputs(generated));
-      await applyFreezerDeltas(api, deltas);
-
-      return { ...formatWeek(generated), freezerChanges: deltas };
     },
   );
 

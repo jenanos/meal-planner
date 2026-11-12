@@ -80,6 +80,10 @@ export const recipeRefArgs = {
     ),
 };
 
+const RESOLVE_PAGE_SIZE = 200;
+/** Far beyond any real recipe collection; only bounds the loop. */
+const RESOLVE_MAX_PAGES = 25;
+
 /**
  * Turn "recipeId or recipeName" into an ID. Names are looked up through the
  * recipe search so the model does not have to list recipes first; an
@@ -94,12 +98,26 @@ export async function resolveRecipeId(
   if (!name) {
     throw new ToolError("Oppgi enten recipeId eller recipeName.");
   }
-  const result = await api.recipe.list.query({
-    search: name,
-    page: 1,
-    pageSize: 50,
-  });
-  const { match, candidates } = matchByName(result.items, name);
+  // The search is a substring match ordered by creation date, so the recipe
+  // that is actually meant can sit behind any number of newer partial
+  // matches. Read every page before deciding the name is unknown or
+  // ambiguous; an exact match ends the search early.
+  const wanted = normalizeName(name);
+  const found: Awaited<ReturnType<typeof api.recipe.list.query>>["items"] = [];
+  for (let page = 1; page <= RESOLVE_MAX_PAGES; page++) {
+    const result = await api.recipe.list.query({
+      search: name,
+      page,
+      pageSize: RESOLVE_PAGE_SIZE,
+    });
+    const exact = result.items.find(
+      (recipe) => normalizeName(recipe.name) === wanted,
+    );
+    if (exact) return exact.id;
+    found.push(...result.items);
+    if (result.items.length === 0 || found.length >= result.total) break;
+  }
+  const { match, candidates } = matchByName(found, name);
   if (match) return match.id;
   if (candidates.length === 0) {
     throw new ToolError(
@@ -108,7 +126,7 @@ export async function resolveRecipeId(
   }
   throw new ToolError(
     `Flere oppskrifter passer til "${name}". Velg én og bruk recipeId.`,
-    { candidates: candidates.map(recipeRef) },
+    { candidates: candidates.slice(0, 20).map(recipeRef) },
   );
 }
 

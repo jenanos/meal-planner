@@ -312,6 +312,89 @@ describe("week plan", () => {
     expect(callsTo("planner.saveWeekPlan")).toEqual([]);
   });
 
+  it("finds an exact recipe name behind a full page of newer partial matches", async () => {
+    const newer = Array.from({ length: 200 }, (_, i) => ({
+      ...RECIPES.lasagne,
+      id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+      name: `Taco variant ${i}`,
+    }));
+    const { api, callsTo } = fakeApi({
+      "planner.getWeekPlan": () => weekPlan("2026-11-09"),
+      "recipe.list": ({ page }) => ({
+        total: 201,
+        page,
+        pageSize: 200,
+        items: page === 1 ? newer : [RECIPES.taco],
+      }),
+      "planner.saveWeekPlan": echoSavedWeek,
+    });
+    const { call } = await connect({ api });
+
+    const { data, isError } = await call("set-week-plan-days", {
+      changes: [{ dayIndex: 0, type: "RECIPE", recipeName: "Taco" }],
+    });
+
+    expect(isError).toBe(false);
+    expect(data.days[0].recipe.id).toBe(RECIPES.taco.id);
+    expect(callsTo("recipe.list").map((c: any) => c.page)).toEqual([1, 2]);
+  });
+
+  it("keeps both changes when two days of a week are edited in parallel", async () => {
+    // A stateful stand-in for the API with slow calls, so the two edits
+    // would interleave if nothing kept them apart.
+    const pause = () => new Promise((resolve) => setTimeout(resolve, 15));
+    let stored: any[] = Array.from({ length: 7 }, () => ({ type: "EMPTY" }));
+    const current = () =>
+      echoSavedWeek({ weekStart: "2026-11-09T00:00:00.000Z", days: stored });
+    const { api } = fakeApi({
+      "planner.getWeekPlan": async () => {
+        const snapshot = current();
+        await pause();
+        return snapshot;
+      },
+      "planner.saveWeekPlan": async (input) => {
+        await pause();
+        stored = input.days;
+        return current();
+      },
+    });
+    const { call } = await connect({ api });
+
+    const results = await Promise.all([
+      call("set-week-plan-days", {
+        changes: [{ dayIndex: 0, type: "RECIPE", recipeId: RECIPES.laks.id }],
+      }),
+      call("set-week-plan-days", {
+        changes: [{ dayIndex: 3, type: "RECIPE", recipeId: RECIPES.taco.id }],
+      }),
+    ]);
+
+    expect(results.map((r) => r.isError)).toEqual([false, false]);
+    expect(stored[0]).toEqual({ type: "RECIPE", recipeId: RECIPES.laks.id });
+    expect(stored[3]).toEqual({ type: "RECIPE", recipeId: RECIPES.taco.id });
+  });
+
+  it("lets the next edit of a week through after one has failed", async () => {
+    let attempts = 0;
+    const { api } = fakeApi({
+      "planner.getWeekPlan": () => weekPlan("2026-11-09"),
+      "planner.saveWeekPlan": (input) => {
+        if (++attempts === 1) throw new Error("database is down");
+        return echoSavedWeek(input);
+      },
+    });
+    const { call } = await connect({ api });
+    const edit = () =>
+      call("set-week-plan-days", {
+        changes: [{ dayIndex: 0, type: "TAKEAWAY" }],
+      });
+
+    const [first, second] = await Promise.all([edit(), edit()]);
+
+    expect(first.isError).toBe(true);
+    expect(second.isError).toBe(false);
+  });
+
   it("moves freezer portions in step with freezer days", async () => {
     const { api, calls } = fakeApi({
       "planner.getWeekPlan": () =>

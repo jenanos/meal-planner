@@ -10,6 +10,8 @@ export interface ToolContext {
   timeZone: string;
   /** Injectable clock, so week resolution is testable. */
   now: () => Date;
+  /** Who the tools act for; scopes the locks taken by `serialize`. */
+  lockScope: string;
   /** Optional sink for one line per tool call (name, outcome, duration). */
   onToolCall?: (event: {
     tool: string;
@@ -31,6 +33,39 @@ export class ToolError extends Error {
   ) {
     super(message);
     this.name = "ToolError";
+  }
+}
+
+// ─── Serialization ─────────────────────────────────────────────────────
+
+const queues = new Map<string, Promise<void>>();
+
+/**
+ * Run tasks that share a key one after another, in arrival order.
+ *
+ * Some tools read a record, change part of it and write the whole thing
+ * back because the API has no narrower call. Clients do issue tool calls in
+ * parallel, and two such edits of the same record would each start from the
+ * same original and the later write would silently drop the earlier one.
+ * The queue lives in this process, which is the only one serving MCP; edits
+ * made in the web app at the same instant are outside its reach.
+ */
+export async function serialize<T>(
+  key: string,
+  task: () => Promise<T>,
+): Promise<T> {
+  const previous = queues.get(key) ?? Promise.resolve();
+  const run = previous.then(task);
+  // The queue itself never rejects, so one failed task does not fail the next.
+  const tail = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  queues.set(key, tail);
+  try {
+    return await run;
+  } finally {
+    if (queues.get(key) === tail) queues.delete(key);
   }
 }
 
