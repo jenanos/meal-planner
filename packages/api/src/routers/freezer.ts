@@ -11,7 +11,7 @@ const EXPIRY_MONTHS: Record<string, number> = {
   ANNET: 3,
 };
 
-function computeExpiresAt(frozenAt: Date, category: string): Date {
+export function computeExpiresAt(frozenAt: Date, category: string): Date {
   const months = EXPIRY_MONTHS[category] ?? 3;
   const expires = new Date(frozenAt);
   expires.setMonth(expires.getMonth() + months);
