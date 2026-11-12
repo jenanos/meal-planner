@@ -140,20 +140,47 @@ async function assertFreezerStock(
   }
 }
 
+/**
+ * Move the freezer inventory to match a plan that has just been saved.
+ *
+ * The plan and the inventory are separate API calls, so this can fail with
+ * the plan already written. A plain error would suggest nothing happened and
+ * invite a retry — which would find the new plan in place and adjust
+ * nothing. Instead, say exactly which portions are still outstanding so they
+ * can be corrected with adjust-freezer-portions.
+ */
 async function applyFreezerDeltas(
   api: MealsApi,
   deltas: { recipeId: string; portions: number }[],
 ) {
-  // One at a time: the API adjusts by a single portion per call, and
-  // concurrent adjustments of the same recipe would race.
-  for (const delta of deltas) {
-    for (let i = 0; i < Math.abs(delta.portions); i++) {
-      if (delta.portions < 0) {
-        await api.freezer.decrement.mutate({ recipeId: delta.recipeId });
-      } else {
-        await api.freezer.increment.mutate({ recipeId: delta.recipeId });
+  const outstanding = deltas.map((delta) => ({ ...delta }));
+  try {
+    // One at a time: the API adjusts by a single portion per call, and
+    // concurrent adjustments of the same recipe would race.
+    for (const delta of outstanding) {
+      while (delta.portions !== 0) {
+        if (delta.portions < 0) {
+          await api.freezer.decrement.mutate({ recipeId: delta.recipeId });
+          delta.portions += 1;
+        } else {
+          await api.freezer.increment.mutate({ recipeId: delta.recipeId });
+          delta.portions -= 1;
+        }
       }
     }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new ToolError(
+      `Ukesplanen ER lagret, men fryserbeholdningen ble ikke ferdig justert (${reason}). ` +
+        "Ikke lagre planen på nytt. Rett beholdningen med adjust-freezer-portions: " +
+        "freezerChangesNotApplied viser hva som gjenstår (negativt tall = porsjoner som skal tas ut).",
+      {
+        planSaved: true,
+        freezerChangesNotApplied: outstanding
+          .filter((delta) => delta.portions !== 0)
+          .map(({ recipeId, portions }) => ({ recipeId, delta: portions })),
+      },
+    );
   }
 }
 
@@ -260,7 +287,7 @@ export function registerWeekPlanTools(ctx: ToolContext) {
         "Send sju endringer for å erstatte hele uka. " +
         entryTypeHelp +
         " Oppskrifter kan angis med ID eller navn.",
-      kind: "set",
+      kind: "destructive",
       errorContext: "Kunne ikke endre ukesplan",
       input: {
         week: weekArg,
@@ -351,6 +378,7 @@ export function registerWeekPlanTools(ctx: ToolContext) {
         "ERSTATTER alle sju dagene i uka, også dager som allerede er planlagt. " +
         "Kall verktøyet på nytt for et annet forslag, og finjuster enkeltdager med set-week-plan-days.",
       kind: "destructive",
+      idempotent: false,
       errorContext: "Kunne ikke generere ukesplan",
       input: {
         week: weekArg,

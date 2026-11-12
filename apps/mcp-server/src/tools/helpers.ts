@@ -113,8 +113,13 @@ export function fail(error: unknown, context: string): CallToolResult {
  * can decide which calls need confirmation:
  * - `read`: no side effects.
  * - `add`: creates something; repeating the call creates more.
- * - `set`: writes, but repeating the same call changes nothing further.
- * - `destructive`: deletes or overwrites data that cannot be recovered.
+ * - `set`: writes a value without removing anything else; repeating the
+ *   same call changes nothing further.
+ * - `destructive`: can delete data or replace it wholesale (a recipe's
+ *   ingredient list, a planned day, a freezer entry).
+ *
+ * `destructive` tools are assumed idempotent — deleting twice is the same as
+ * deleting once — unless the tool says otherwise with `idempotent: false`.
  */
 export type ToolKind = "read" | "add" | "set" | "destructive";
 
@@ -147,6 +152,8 @@ export function defineTool<Shape extends z.ZodRawShape>(
     title: string;
     description: string;
     kind: ToolKind;
+    /** Overrides the kind's default, for writes whose result differs per call. */
+    idempotent?: boolean;
     input: Shape;
     /** Prefix for error messages, e.g. "Kunne ikke hente ukesplan". */
     errorContext: string;
@@ -183,7 +190,13 @@ export function defineTool<Shape extends z.ZodRawShape>(
       title: config.title,
       description: config.description,
       inputSchema: config.input,
-      annotations: { title: config.title, ...ANNOTATIONS[config.kind] },
+      annotations: {
+        title: config.title,
+        ...ANNOTATIONS[config.kind],
+        ...(config.idempotent === undefined
+          ? {}
+          : { idempotentHint: config.idempotent }),
+      },
     },
     // The SDK's callback type is derived from the schema through its own
     // zod-compat layer; the handler above is already typed from the same
@@ -333,9 +346,9 @@ export function compact<T extends Record<string, unknown>>(value: T): T {
 }
 
 /**
- * Find the entry a name refers to: an exact (case-insensitive) match wins,
- * otherwise a single partial match is accepted. Anything else is ambiguous
- * and is reported back rather than guessed at.
+ * Find the entry a name refers to: a single exact (case-insensitive) match
+ * wins, otherwise a single partial match is accepted. Anything else is
+ * ambiguous and is reported back rather than guessed at.
  */
 export function matchByName<T extends { name: string }>(
   items: T[],
@@ -343,7 +356,9 @@ export function matchByName<T extends { name: string }>(
 ): { match: T | null; candidates: T[] } {
   const wanted = normalizeName(query);
   const exact = items.filter((item) => normalizeName(item.name) === wanted);
-  if (exact.length >= 1) return { match: exact[0]!, candidates: exact };
+  if (exact.length === 1) return { match: exact[0]!, candidates: exact };
+  // Names that differ only in case or spacing: choosing one would be a guess.
+  if (exact.length > 1) return { match: null, candidates: exact };
   const partial = items.filter((item) =>
     normalizeName(item.name).includes(wanted),
   );

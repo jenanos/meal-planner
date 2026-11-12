@@ -33,7 +33,9 @@ It also sends server `instructions` (the domain model in a few lines) and three 
 - **Freezer sync.** `set-week-plan-days` and `generate-week-plan` move freezer portions the way the web planner does: planning a `FREEZER` day takes a portion out (and is refused if there is none), removing one puts it back. Pass `syncFreezer: false` to leave the inventory alone.
 - **Compact results.** Lists return summaries by default; ask for `includeIngredients` / `includeDetails` when the detail is needed.
 - **Errors.** Failures come back with `isError: true` and an `error` message written for the model.
-- **Annotations.** Every tool declares `readOnlyHint` / `destructiveHint` / `idempotentHint`, so clients can ask for confirmation before the irreversible ones (`delete-*`, `merge-*`, `remove-*`, `generate-week-plan`, `admin-delete-household`). `admin-delete-household` additionally requires the household's exact name as confirmation.
+- **Annotations.** Every tool declares `readOnlyHint` / `destructiveHint` / `idempotentHint`. Anything that can delete data or replace it wholesale is marked destructive — `delete-*`, `merge-*`, `remove-*`, `generate-week-plan`, and also `set-week-plan-days`, `update-recipe`, `update-shopping-package`, `set-freezer-item` and `adjust-freezer-portions` — so clients can ask for confirmation. `admin-delete-household` additionally requires the household's exact name as confirmation.
+- **Concurrency.** A user's edits of one week run one after another inside the server, so parallel tool calls for different days do not overwrite each other. The plan and the freezer are still separate API calls: if the freezer adjustment fails after the plan is saved, the error says so (`planSaved: true`) and lists what is outstanding in `freezerChangesNotApplied`. Edits made in the web app at the same instant are not covered.
+- **Weeks beyond the planning horizon.** The API answers such requests with the last plannable week. Read tools pass that on with a `note`; tools that change something refuse instead of touching another week.
 
 ### Adding a tool
 
@@ -130,6 +132,7 @@ This means:
 - Week plans, the shopping list, the extra item catalog, packages, stores and the freezer are scoped to the user's active household — `BOOTSTRAP_HOUSEHOLD_NAME` is only used as a tie-breaker when the user is in multiple households.
 - Recipes and ingredients are global (not household-scoped) – any change is visible to every household.
 - Shopping settings belong to the user.
+- Access follows the allowlist: when an address is removed (in the web app or with `admin-remove-allowed-email`), the API rejects calls made on that user's behalf from that moment, and their refresh tokens are deleted, so connected clients cannot renew.
 - The `admin-*` tools act across all households — see below.
 
 ### Admin tools

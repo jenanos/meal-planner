@@ -1,6 +1,7 @@
 import * as z from "zod";
 import type { MealsApi } from "../api.js";
 import {
+  ToolError,
   WEEKDAYS,
   compact,
   dayIndexOf,
@@ -28,15 +29,32 @@ const lookaheadArg = z
     "Antall påfølgende uker som skal slås sammen med uka (0–4). Standard 0 = bare denne uka.",
   );
 
-function fetchShoppingList(
+/**
+ * Fetch the shopping list for a week. The API answers with the last
+ * plannable week when asked for one further ahead; `requested` lets callers
+ * tell, so that nothing is ever checked off in a week other than the one
+ * that was asked for.
+ */
+async function fetchShoppingList(
   ctx: ToolContext,
   week: string | undefined,
   lookaheadWeeks: number | undefined,
-): Promise<ShoppingList> {
-  return ctx.api.planner.shoppingList.query({
-    weekStart: toApiWeekStart(resolveWeek(ctx, week)),
+): Promise<{ list: ShoppingList; requested: string }> {
+  const requested = resolveWeek(ctx, week);
+  const list = await ctx.api.planner.shoppingList.query({
+    weekStart: toApiWeekStart(requested),
     lookaheadWeeks: lookaheadWeeks ?? 0,
   });
+  return { list, requested };
+}
+
+function assertRequestedWeek(list: ShoppingList, requested: string) {
+  const actual = toDateOnly(list.weekStart);
+  if (actual !== requested) {
+    throw new ToolError(
+      `Uka som starter ${requested} ligger utenfor planleggingshorisonten. Seneste uke som har handleliste starter ${actual}. Ingenting ble endret.`,
+    );
+  }
 }
 
 function formatDay(dateISO: string) {
@@ -75,7 +93,15 @@ export function registerShoppingTools(ctx: ToolContext) {
       },
     },
     async ({ week, lookaheadWeeks, onlyUnchecked, includeDetails }) => {
-      const list = await fetchShoppingList(ctx, week, lookaheadWeeks);
+      const { list, requested } = await fetchShoppingList(
+        ctx,
+        week,
+        lookaheadWeeks,
+      );
+      const note =
+        toDateOnly(list.weekStart) === requested
+          ? undefined
+          : `Uka som starter ${requested} ligger utenfor planleggingshorisonten. Viser seneste uke som har handleliste.`;
 
       const items = list.items
         .filter((item) => !onlyUnchecked || !item.checked)
@@ -116,7 +142,8 @@ export function registerShoppingTools(ctx: ToolContext) {
           }),
         );
 
-      return {
+      return compact({
+        note,
         weekStart: toDateOnly(list.weekStart),
         includedWeekStarts: list.includedWeekStarts.map((w) => toDateOnly(w)),
         plannedDays: list.plannedDays.map((day) =>
@@ -134,7 +161,7 @@ export function registerShoppingTools(ctx: ToolContext) {
         },
         items,
         extras,
-      };
+      });
     },
   );
 
@@ -167,7 +194,12 @@ export function registerShoppingTools(ctx: ToolContext) {
     },
     async ({ names, checked, week, lookaheadWeeks }) => {
       const state = checked ?? true;
-      const list = await fetchShoppingList(ctx, week, lookaheadWeeks);
+      const { list, requested } = await fetchShoppingList(
+        ctx,
+        week,
+        lookaheadWeeks,
+      );
+      assertRequestedWeek(list, requested);
       const weekStart = list.weekStart;
 
       // The same ingredient can appear once per unit; a name refers to all
@@ -402,7 +434,7 @@ export function registerShoppingTools(ctx: ToolContext) {
       },
     },
     async ({ names }) => {
-      const list = await fetchShoppingList(ctx, undefined, 0);
+      const { list } = await fetchShoppingList(ctx, undefined, 0);
       const removed: string[] = [];
       const notFound: string[] = [];
       for (const rawName of names) {

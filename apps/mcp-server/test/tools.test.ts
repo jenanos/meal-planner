@@ -73,7 +73,7 @@ describe("tool catalogue", () => {
     }
   });
 
-  it("marks the irreversible tools as destructive", async () => {
+  it("marks every tool that can delete or replace data as destructive", async () => {
     const { api } = fakeApi({});
     const { client } = await connect({ api, isAdmin: true });
     const { tools } = await client.listTools();
@@ -83,6 +83,7 @@ describe("tool catalogue", () => {
       .sort();
 
     expect(destructive).toEqual([
+      "adjust-freezer-portions",
       "admin-delete-household",
       "admin-remove-allowed-email",
       "admin-remove-household-member",
@@ -92,7 +93,19 @@ describe("tool catalogue", () => {
       "merge-extra-catalog-items",
       "merge-ingredients",
       "remove-extra-shopping-items",
+      "set-freezer-item",
+      "set-week-plan-days",
+      "update-recipe",
+      "update-shopping-package",
     ]);
+
+    // Repeating these gives a different result each time, so a client must
+    // not retry them blindly.
+    const idempotent = (name: string) =>
+      tools.find((tool) => tool.name === name)?.annotations?.idempotentHint;
+    expect(idempotent("generate-week-plan")).toBe(false);
+    expect(idempotent("adjust-freezer-portions")).toBe(false);
+    expect(idempotent("delete-recipe")).toBe(true);
   });
 
   it("sends instructions and prompts along with the tools", async () => {
@@ -427,6 +440,36 @@ describe("week plan", () => {
       "planner.saveWeekPlan",
       "freezer.increment",
       "freezer.decrement",
+    ]);
+  });
+
+  it("says the plan was saved and what is outstanding when the freezer update fails", async () => {
+    let decrements = 0;
+    const { api } = fakeApi({
+      "planner.getWeekPlan": () => weekPlan("2026-11-09"),
+      "freezer.list": () => [{ recipeId: RECIPES.taco.id, quantity: 5 }],
+      "planner.saveWeekPlan": echoSavedWeek,
+      "freezer.decrement": () => {
+        if (++decrements === 2) throw new Error("connection reset");
+        return { quantity: 4 };
+      },
+    });
+    const { call } = await connect({ api });
+
+    const { data, isError } = await call("set-week-plan-days", {
+      changes: [
+        { dayIndex: 0, type: "FREEZER", recipeId: RECIPES.taco.id },
+        { dayIndex: 1, type: "FREEZER", recipeId: RECIPES.taco.id },
+        { dayIndex: 2, type: "FREEZER", recipeId: RECIPES.taco.id },
+      ],
+    });
+
+    expect(isError).toBe(true);
+    expect(data.planSaved).toBe(true);
+    expect(data.error).toContain("ER lagret");
+    // One of three portions came out before the failure.
+    expect(data.freezerChangesNotApplied).toEqual([
+      { recipeId: RECIPES.taco.id, delta: -2 },
     ]);
   });
 
@@ -765,6 +808,67 @@ describe("shopping list", () => {
       { name: "ka", candidates: ["Kaffe", "Kaffefilter"] },
     ]);
     expect(data.notFound).toEqual(["ost"]);
+  });
+
+  it("does not check anything off when the API answers for another week", async () => {
+    const { api, calls } = fakeApi({
+      // Asked for a week beyond the horizon, the API returns the last one.
+      "planner.shoppingList": shoppingList,
+    });
+    const { call } = await connect({ api });
+
+    const checked = await call("check-shopping-items", {
+      week: "2027-03-03",
+      names: ["melk"],
+    });
+    const shown = await call("get-shopping-list", { week: "2027-03-03" });
+
+    expect(checked.isError).toBe(true);
+    expect(checked.data.error).toContain("2027-03-01");
+    expect(calls.map((c) => c.path)).toEqual([
+      "planner.shoppingList",
+      "planner.shoppingList",
+    ]);
+    expect(shown.isError).toBe(false);
+    expect(shown.data.weekStart).toBe("2026-11-09");
+    expect(shown.data.note).toContain("2027-03-01");
+  });
+
+  it("reports the stored category of a catalogue item that already existed", async () => {
+    const { api, callsTo } = fakeApi({
+      "planner.extraAdd": () => ({ id: "c2", name: "Kaffe" }),
+      "planner.extraCatalogList": () => [
+        { id: "c2", name: "Kaffe", usageCount: 9, category: "TORRVARER" },
+      ],
+    });
+    const { call } = await connect({ api });
+
+    const { data } = await call("add-extra-catalog-item", { name: "Kaffe" });
+
+    expect(data.item).toEqual({
+      id: "c2",
+      name: "Kaffe",
+      category: "TORRVARER",
+    });
+    expect(callsTo("planner.extraCatalogBulkUpdateCategories")).toEqual([]);
+  });
+
+  it("refuses to pick between packages whose names differ only in spacing", async () => {
+    const { api, callsTo } = fakeApi({
+      "planner.packageList": () => [
+        { id: "p1", name: "Storhandel basis", items: [] },
+        { id: "p2", name: "Storhandel  basis", items: [] },
+      ],
+    });
+    const { call } = await connect({ api });
+
+    const { data, isError } = await call("delete-shopping-package", {
+      packageName: "storhandel basis",
+    });
+
+    expect(isError).toBe(true);
+    expect(data.candidates.map((c: any) => c.id)).toEqual(["p1", "p2"]);
+    expect(callsTo("planner.packageDelete")).toEqual([]);
   });
 
   it("reuses catalogue spelling for extras and points out lookalikes", async () => {

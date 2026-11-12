@@ -243,6 +243,17 @@ async function buildOnBehalfOfContext(userId: string): Promise<CreateContextOpti
   if (!user) {
     return { user: null, householdId: null };
   }
+  // An MCP access token outlives the browser session it was issued from, so
+  // the allowlist has to be enforced here as well: once an address is
+  // removed, calls made on that user's behalf stop working immediately
+  // rather than when the token expires.
+  const allowed = await prisma.allowedEmail.findUnique({
+    where: { email: user.email.toLowerCase() },
+    select: { id: true },
+  });
+  if (!allowed) {
+    return { user: null, householdId: null };
+  }
   const householdId = await resolveActiveHouseholdId(user.id);
   return {
     user: {

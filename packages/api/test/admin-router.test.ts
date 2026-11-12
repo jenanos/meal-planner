@@ -16,6 +16,9 @@ const { prismaMock } = vi.hoisted(() => ({
     session: {
       deleteMany: vi.fn(),
     },
+    oAuthRefreshToken: { deleteMany: vi.fn() },
+    oAuthAuthorizationCode: { deleteMany: vi.fn() },
+    oAuthPendingApproval: { deleteMany: vi.fn() },
     household: {
       findUnique: vi.fn(),
       findMany: vi.fn(),
@@ -50,17 +53,17 @@ const MEMBER_USER = {
   role: "USER" as const,
 };
 
-const createCaller = (user: typeof ADMIN_USER | typeof MEMBER_USER | null = ADMIN_USER) =>
-  adminRouter.createCaller({ user, householdId: null });
+const createCaller = (
+  user: typeof ADMIN_USER | typeof MEMBER_USER | null = ADMIN_USER,
+) => adminRouter.createCaller({ user, householdId: null });
 
 beforeEach(() => {
   vi.clearAllMocks();
   // Interactive transactions run the callback against the same mock client.
-  prismaMock.$transaction.mockImplementation(
-    async (arg: unknown) =>
-      typeof arg === "function"
-        ? (arg as (tx: typeof prismaMock) => Promise<unknown>)(prismaMock)
-        : Promise.all(arg as Promise<unknown>[]),
+  prismaMock.$transaction.mockImplementation(async (arg: unknown) =>
+    typeof arg === "function"
+      ? (arg as (tx: typeof prismaMock) => Promise<unknown>)(prismaMock)
+      : Promise.all(arg as Promise<unknown>[]),
   );
 });
 
@@ -112,10 +115,19 @@ describe("admin router", () => {
     expect(prismaMock.allowedEmail.delete).toHaveBeenCalledWith({
       where: { id: "ae3" },
     });
-    expect(prismaMock.session.deleteMany).toHaveBeenCalledWith({
-      where: {
-        user: { email: { equals: "gone@example.com", mode: "insensitive" } },
-      },
+    const where = {
+      user: { email: { equals: "gone@example.com", mode: "insensitive" } },
+    };
+    expect(prismaMock.session.deleteMany).toHaveBeenCalledWith({ where });
+    // MCP clients must not be able to refresh their way back in.
+    expect(prismaMock.oAuthRefreshToken.deleteMany).toHaveBeenCalledWith({
+      where,
+    });
+    expect(prismaMock.oAuthAuthorizationCode.deleteMany).toHaveBeenCalledWith({
+      where,
+    });
+    expect(prismaMock.oAuthPendingApproval.deleteMany).toHaveBeenCalledWith({
+      where,
     });
   });
 
@@ -216,12 +228,21 @@ describe("admin router", () => {
   });
 
   it("creates, renames, and deletes households", async () => {
-    prismaMock.household.create.mockResolvedValueOnce({ id: "h2", name: "New Home" });
-    prismaMock.household.update.mockResolvedValueOnce({ id: "h2", name: "Renamed" });
+    prismaMock.household.create.mockResolvedValueOnce({
+      id: "h2",
+      name: "New Home",
+    });
+    prismaMock.household.update.mockResolvedValueOnce({
+      id: "h2",
+      name: "Renamed",
+    });
     prismaMock.household.delete.mockResolvedValueOnce({ id: "h2" });
 
     await createCaller().createHousehold({ name: "New Home" });
-    await createCaller().renameHousehold({ householdId: "h2", name: "Renamed" });
+    await createCaller().renameHousehold({
+      householdId: "h2",
+      name: "Renamed",
+    });
     await createCaller().deleteHousehold({ householdId: "h2" });
 
     expect(prismaMock.household.create).toHaveBeenCalledWith({
@@ -312,7 +333,9 @@ describe("admin router", () => {
     await expect(createCaller(null).listAllowedEmails()).rejects.toMatchObject({
       code: "UNAUTHORIZED",
     });
-    await expect(createCaller(MEMBER_USER).listAllowedEmails()).rejects.toMatchObject({
+    await expect(
+      createCaller(MEMBER_USER).listAllowedEmails(),
+    ).rejects.toMatchObject({
       code: "FORBIDDEN",
     });
   });

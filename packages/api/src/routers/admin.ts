@@ -25,7 +25,10 @@ export const adminRouter = router({
       });
     }),
 
-  /** Remove an email from the allowlist and revoke the user's active sessions */
+  /**
+   * Remove an email from the allowlist and revoke the user's active sessions
+   * and MCP connections.
+   */
   removeAllowedEmail: adminProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => {
@@ -35,11 +38,16 @@ export const adminRouter = router({
         });
         // Without this, an existing 30-day session would keep working long
         // after the address was removed from the allowlist.
-        await tx.session.deleteMany({
-          where: {
-            user: { email: { equals: entry.email, mode: "insensitive" } },
-          },
-        });
+        const user = {
+          email: { equals: entry.email, mode: "insensitive" },
+        } as const;
+        await tx.session.deleteMany({ where: { user } });
+        // The same goes for clients connected through the MCP server: their
+        // refresh tokens are valid for weeks, and unanswered authorizations
+        // could still be turned into new ones.
+        await tx.oAuthRefreshToken.deleteMany({ where: { user } });
+        await tx.oAuthAuthorizationCode.deleteMany({ where: { user } });
+        await tx.oAuthPendingApproval.deleteMany({ where: { user } });
         return entry;
       });
     }),

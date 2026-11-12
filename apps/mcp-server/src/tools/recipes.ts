@@ -306,7 +306,7 @@ export function registerRecipeTools(ctx: ToolContext) {
         "Oppdaterer en oppskrift. Bare feltene du oppgir endres. " +
         "VIKTIG: 'ingredients' erstatter HELE ingredienslisten – hent oppskriften med get-recipe først " +
         "og send hele den nye listen, eller utelat feltet for å la ingrediensene stå.",
-      kind: "set",
+      kind: "destructive",
       errorContext: "Kunne ikke oppdatere oppskrift",
       input: {
         ...recipeRefArgs,

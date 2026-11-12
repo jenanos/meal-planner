@@ -70,7 +70,7 @@ export function registerFreezerTools(ctx: ToolContext) {
         "Setter antall porsjoner av en oppskrift i fryseren, og/eller datoene for innfrysing og holdbarhet. " +
         "portions 0 fjerner oppskriften fra fryseren. Uten expiresAt beregnes holdbarheten ut fra kategori " +
         "(fisk 2 mnd, vegetar 3, kylling 4, storfe 6). Utelat portions for bare å endre datoer.",
-      kind: "set",
+      kind: "destructive",
       errorContext: "Kunne ikke oppdatere fryseren",
       input: {
         ...recipeRefArgs,
@@ -137,7 +137,8 @@ export function registerFreezerTools(ctx: ToolContext) {
         "Positiv delta legger til (f.eks. etter å ha laget dobbel porsjon), negativ tar ut. " +
         "Når siste porsjon tas ut, forsvinner oppskriften fra fryseren. " +
         "Merk: set-week-plan-days trekker selv fra fryseren når en FREEZER-dag planlegges.",
-      kind: "add",
+      kind: "destructive",
+      idempotent: false,
       errorContext: "Kunne ikke justere fryseren",
       input: {
         ...recipeRefArgs,

@@ -124,7 +124,12 @@ export function registerCatalogTools(ctx: ToolContext) {
           updates: [{ id: item.id, category }],
         });
       }
-      return { item: { ...item, category: category ?? null } };
+      if (category) return { item: { ...item, category } };
+      // The item may have existed already; report the category it really has.
+      const stored = (await api.planner.extraCatalogList.query()).find(
+        (entry) => entry.id === item.id,
+      );
+      return { item: { ...item, category: stored?.category ?? null } };
     },
   );
 
@@ -300,7 +305,7 @@ export function registerCatalogTools(ctx: ToolContext) {
       description:
         "Gir en handlepakke nytt navn og/eller nytt innhold. " +
         "VIKTIG: 'items' erstatter HELE innholdet i pakken – send den komplette listen, eller utelat feltet.",
-      kind: "set",
+      kind: "destructive",
       errorContext: "Kunne ikke oppdatere handlepakke",
       input: {
         ...packageRefArgs,

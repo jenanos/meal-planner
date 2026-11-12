@@ -125,7 +125,8 @@ export function registerAdminTools(ctx: ToolContext) {
     {
       title: "Admin: fjern tillatt e-post",
       description:
-        "Fjerner en e-postadresse fra listen over tillatte innlogginger og logger brukeren ut umiddelbart overalt. " +
+        "Fjerner en e-postadresse fra listen over tillatte innlogginger. Brukeren logges ut av appen umiddelbart, " +
+        "og tilkoblede MCP-klienter (Claude, ChatGPT) mister tilgangen med en gang. " +
         "Brukerens data og husholdningsmedlemskap slettes ikke.",
       kind: "destructive",
       errorContext: "Kunne ikke fjerne e-post",
