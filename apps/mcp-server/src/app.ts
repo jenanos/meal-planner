@@ -144,7 +144,6 @@ export function createApp(options: AppOptions): Express {
         api,
         adminTools: await resolveIsAdmin(userId, api),
         timeZone: config.timeZone,
-        lockScope: userId,
         now: options.now,
         onToolCall: (event) => {
           log(

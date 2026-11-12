@@ -267,6 +267,7 @@ describe("API coverage", () => {
     "recipe.patchField": "update-recipe covers the same fields",
     "recipe.markUsed": "usage is tracked by saving week plans",
     "freezer.remove": "set-freezer-item with portions 0",
+    "planner.saveWeekPlan": "set-week-plan-days uses planner.setWeekPlanDays",
     "ingredient.listWithoutUnit": "list-ingredients filter: missing-unit",
     "ingredient.listWithoutCategory":
       "list-ingredients filter: missing-category",

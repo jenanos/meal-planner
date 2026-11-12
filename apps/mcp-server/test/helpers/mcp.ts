@@ -57,7 +57,6 @@ export async function connect(options: {
     api: options.api,
     adminTools: options.isAdmin ?? false,
     timeZone: "Europe/Oslo",
-    lockScope: "test-user",
     now: () => options.now ?? new Date("2026-11-12T11:00:00.000Z"),
   });
   const [clientTransport, serverTransport] =

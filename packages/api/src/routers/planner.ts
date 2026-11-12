@@ -22,6 +22,7 @@ import {
   type PlannedMeal,
 } from "../week-generator.js";
 import { z } from "zod";
+import { computeExpiresAt } from "./freezer.js";
 
 const DAYS = [0, 1, 2, 3, 4, 5, 6] as const;
 export type DayIndex = (typeof DAYS)[number];
@@ -548,125 +549,283 @@ async function resolveLastUsed(
 }
 
 async function writeWeekPlan(weekStart: Date, days: WeekPlanDayEntryInput[], householdId: string) {
+  return prisma.$transaction((tx) =>
+    writeWeekPlanIn(tx, weekStart, days, householdId),
+  );
+}
+
+async function writeWeekPlanIn(
+  tx: Prisma.TransactionClient,
+  weekStart: Date,
+  days: WeekPlanDayEntryInput[],
+  householdId: string,
+) {
   if (days.length !== 7) {
     throw new Error("days must have length 7");
   }
 
-  return prisma.$transaction(async (tx) => {
-    const now = new Date();
-    const index = await ensureWeekIndex(tx, weekStart, householdId);
-    const plan = await tx.weekPlan.upsert({
-      where: { weekStart_householdId: { weekStart, householdId } },
-      update: { weekIndexId: index.id },
-      create: { weekStart, householdId, weekIndexId: index.id, createdAt: now },
-    });
+  const now = new Date();
+  const index = await ensureWeekIndex(tx, weekStart, householdId);
+  const plan = await tx.weekPlan.upsert({
+    where: { weekStart_householdId: { weekStart, householdId } },
+    update: { weekIndexId: index.id },
+    create: { weekStart, householdId, weekIndexId: index.id, createdAt: now },
+  });
 
-    const prevEntries = await tx.weekPlanEntry.findMany({
-      where: { weekPlanId: plan.id },
-    });
-    const prevCounts = countOccurrences(
-      prevEntries
-        .filter((entry) => entry.entryType === "RECIPE" && entry.recipeId)
-        .map((entry) => entry.recipeId!),
-    );
+  const prevEntries = await tx.weekPlanEntry.findMany({
+    where: { weekPlanId: plan.id },
+  });
+  const prevCounts = countOccurrences(
+    prevEntries
+      .filter((entry) => entry.entryType === "RECIPE" && entry.recipeId)
+      .map((entry) => entry.recipeId!),
+  );
 
-    for (let i = 0 as DayIndex; i < days.length; i = (i + 1) as DayIndex) {
-      const dayEntry = days[i];
-      const where = {
-        weekPlanId_dayIndex: { weekPlanId: plan.id, dayIndex: i },
-      };
+  for (let i = 0 as DayIndex; i < days.length; i = (i + 1) as DayIndex) {
+    const dayEntry = days[i];
+    const where = {
+      weekPlanId_dayIndex: { weekPlanId: plan.id, dayIndex: i },
+    };
 
-      if (dayEntry.type === "RECIPE") {
-        await tx.weekPlanEntry.upsert({
-          where,
-          update: { recipeId: dayEntry.recipeId, entryType: "RECIPE" },
-          create: {
-            weekPlanId: plan.id,
-            dayIndex: i,
-            recipeId: dayEntry.recipeId,
-            entryType: "RECIPE",
-          },
-        });
-      } else if (dayEntry.type === "TAKEAWAY") {
-        await tx.weekPlanEntry.upsert({
-          where,
-          update: { recipeId: null, entryType: "TAKEAWAY" },
-          create: {
-            weekPlanId: plan.id,
-            dayIndex: i,
-            recipeId: null,
-            entryType: "TAKEAWAY",
-          },
-        });
-      } else if (dayEntry.type === "FREEZER") {
-        await tx.weekPlanEntry.upsert({
-          where,
-          update: { recipeId: dayEntry.recipeId, entryType: "FREEZER" },
-          create: {
-            weekPlanId: plan.id,
-            dayIndex: i,
-            recipeId: dayEntry.recipeId,
-            entryType: "FREEZER",
-          },
-        });
-      } else {
-        await tx.weekPlanEntry.deleteMany({
-          where: {
-            weekPlanId: plan.id,
-            dayIndex: i,
-          },
-        });
-      }
-    }
-
-    const newCounts = countOccurrences(
-      days
-        .filter(
-          (entry): entry is { type: "RECIPE"; recipeId: string } =>
-            entry.type === "RECIPE",
-        )
-        .map((entry) => entry.recipeId),
-    );
-    // Keep usage stats in step with what the week actually contains. Only
-    // counting additions made `usageCount` drift upwards every time a week was
-    // regenerated, which skewed both the "ofte brukt" suggestions and the
-    // generator's own rarity signal.
-    const touchedIds = new Set([...prevCounts.keys(), ...newCounts.keys()]);
-    const touched = await tx.recipe.findMany({
-      where: { id: { in: Array.from(touchedIds) } },
-      select: { id: true, usageCount: true, lastUsed: true },
-    });
-
-    for (const recipe of touched) {
-      const diff = (newCounts.get(recipe.id) ?? 0) - (prevCounts.get(recipe.id) ?? 0);
-      if (diff === 0) continue;
-
-      const lastUsedData = await resolveLastUsed(tx, recipe, diff, weekStart);
-
-      await tx.recipe.update({
-        where: { id: recipe.id },
-        data: {
-          // Stay an atomic increment, but never take the counter below zero.
-          usageCount: { increment: Math.max(diff, -recipe.usageCount) },
-          ...lastUsedData,
+    if (dayEntry.type === "RECIPE") {
+      await tx.weekPlanEntry.upsert({
+        where,
+        update: { recipeId: dayEntry.recipeId, entryType: "RECIPE" },
+        create: {
+          weekPlanId: plan.id,
+          dayIndex: i,
+          recipeId: dayEntry.recipeId,
+          entryType: "RECIPE",
+        },
+      });
+    } else if (dayEntry.type === "TAKEAWAY") {
+      await tx.weekPlanEntry.upsert({
+        where,
+        update: { recipeId: null, entryType: "TAKEAWAY" },
+        create: {
+          weekPlanId: plan.id,
+          dayIndex: i,
+          recipeId: null,
+          entryType: "TAKEAWAY",
+        },
+      });
+    } else if (dayEntry.type === "FREEZER") {
+      await tx.weekPlanEntry.upsert({
+        where,
+        update: { recipeId: dayEntry.recipeId, entryType: "FREEZER" },
+        create: {
+          weekPlanId: plan.id,
+          dayIndex: i,
+          recipeId: dayEntry.recipeId,
+          entryType: "FREEZER",
+        },
+      });
+    } else {
+      await tx.weekPlanEntry.deleteMany({
+        where: {
+          weekPlanId: plan.id,
+          dayIndex: i,
         },
       });
     }
+  }
 
-    const entries = await tx.weekPlanEntry.findMany({
-      where: { weekPlanId: plan.id },
-      include: {
-        recipe: {
-          include: {
-            ingredients: { include: { ingredient: true } },
-          },
+  const newCounts = countOccurrences(
+    days
+      .filter(
+        (entry): entry is { type: "RECIPE"; recipeId: string } =>
+          entry.type === "RECIPE",
+      )
+      .map((entry) => entry.recipeId),
+  );
+  // Keep usage stats in step with what the week actually contains. Only
+  // counting additions made `usageCount` drift upwards every time a week was
+  // regenerated, which skewed both the "ofte brukt" suggestions and the
+  // generator's own rarity signal.
+  const touchedIds = new Set([...prevCounts.keys(), ...newCounts.keys()]);
+  const touched = await tx.recipe.findMany({
+    where: { id: { in: Array.from(touchedIds) } },
+    select: { id: true, usageCount: true, lastUsed: true },
+  });
+
+  for (const recipe of touched) {
+    const diff = (newCounts.get(recipe.id) ?? 0) - (prevCounts.get(recipe.id) ?? 0);
+    if (diff === 0) continue;
+
+    const lastUsedData = await resolveLastUsed(tx, recipe, diff, weekStart);
+
+    await tx.recipe.update({
+      where: { id: recipe.id },
+      data: {
+        // Stay an atomic increment, but never take the counter below zero.
+        usageCount: { increment: Math.max(diff, -recipe.usageCount) },
+        ...lastUsedData,
+      },
+    });
+  }
+
+  const entries = await tx.weekPlanEntry.findMany({
+    where: { weekPlanId: plan.id },
+    include: {
+      recipe: {
+        include: {
+          ingredients: { include: { ingredient: true } },
         },
       },
-      orderBy: { dayIndex: "asc" },
-    });
-
-    return { plan, entries };
+    },
+    orderBy: { dayIndex: "asc" },
   });
+
+  return { plan, entries };
+}
+
+// ─── Week changes that keep the freezer in step ───
+
+export type FreezerChange = {
+  recipeId: string;
+  /** Positive = portions put back in the freezer, negative = taken out. */
+  portions: number;
+};
+
+/**
+ * How the freezer inventory has to move when a week goes from `before` to
+ * `after`: planning a freezer meal takes a portion out, dropping one puts it
+ * back.
+ */
+export function freezerChangesBetween(
+  before: WeekPlanDayEntryInput[],
+  after: WeekPlanDayEntryInput[],
+): FreezerChange[] {
+  const count = (days: WeekPlanDayEntryInput[]) =>
+    countOccurrences(
+      days
+        .filter(
+          (day): day is { type: "FREEZER"; recipeId: string } =>
+            day.type === "FREEZER",
+        )
+        .map((day) => day.recipeId),
+    );
+  const prev = count(before);
+  const next = count(after);
+  const changes: FreezerChange[] = [];
+  for (const recipeId of new Set([...prev.keys(), ...next.keys()])) {
+    const portions = (prev.get(recipeId) ?? 0) - (next.get(recipeId) ?? 0);
+    if (portions !== 0) changes.push({ recipeId, portions });
+  }
+  return changes;
+}
+
+async function readWeekDays(
+  tx: Prisma.TransactionClient,
+  weekStart: Date,
+  householdId: string,
+): Promise<WeekPlanDayEntryInput[]> {
+  const plan = await tx.weekPlan.findUnique({
+    where: { weekStart_householdId: { weekStart, householdId } },
+    select: {
+      entries: { select: { dayIndex: true, entryType: true, recipeId: true } },
+    },
+  });
+  const days: WeekPlanDayEntryInput[] = DAYS.map(() => ({ type: "EMPTY" }));
+  for (const entry of plan?.entries ?? []) {
+    if (entry.dayIndex < 0 || entry.dayIndex > 6) continue;
+    if (entry.entryType === "TAKEAWAY") {
+      days[entry.dayIndex] = { type: "TAKEAWAY" };
+    } else if (entry.entryType === "FREEZER" && entry.recipeId) {
+      days[entry.dayIndex] = { type: "FREEZER", recipeId: entry.recipeId };
+    } else if (entry.recipeId) {
+      days[entry.dayIndex] = { type: "RECIPE", recipeId: entry.recipeId };
+    }
+  }
+  return days;
+}
+
+async function moveFreezerPortions(
+  tx: Prisma.TransactionClient,
+  householdId: string,
+  changes: FreezerChange[],
+) {
+  for (const { recipeId, portions } of changes) {
+    if (portions > 0) {
+      const recipe = await tx.recipe.findUniqueOrThrow({
+        where: { id: recipeId },
+        select: { category: true },
+      });
+      const now = new Date();
+      await tx.freezerItem.upsert({
+        where: { recipeId_householdId: { recipeId, householdId } },
+        update: { quantity: { increment: portions } },
+        create: {
+          recipeId,
+          householdId,
+          quantity: portions,
+          frozenAt: now,
+          expiresAt: computeExpiresAt(now, recipe.category),
+        },
+      });
+      continue;
+    }
+
+    // Guarded writes, so two weeks competing for the last portion cannot
+    // both get it: only one of them matches the quantity condition.
+    const needed = -portions;
+    const reduced = await tx.freezerItem.updateMany({
+      where: { recipeId, householdId, quantity: { gt: needed } },
+      data: { quantity: { decrement: needed } },
+    });
+    if (reduced.count > 0) continue;
+    const emptied = await tx.freezerItem.deleteMany({
+      where: { recipeId, householdId, quantity: needed },
+    });
+    if (emptied.count > 0) continue;
+
+    const [recipe, item] = await Promise.all([
+      tx.recipe.findUnique({ where: { id: recipeId }, select: { name: true } }),
+      tx.freezerItem.findUnique({
+        where: { recipeId_householdId: { recipeId, householdId } },
+        select: { quantity: true },
+      }),
+    ]);
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `Ikke nok porsjoner av «${recipe?.name ?? recipeId}» i fryseren: trenger ${needed}, har ${item?.quantity ?? 0}.`,
+    });
+  }
+}
+
+/**
+ * Change a week and, optionally, the freezer inventory that follows from it,
+ * as one unit: either the plan and the inventory both change or neither
+ * does.
+ *
+ * `build` receives the week as it is inside the transaction. A lock on the
+ * household's week makes concurrent changes queue up, so each one builds on
+ * the result of the previous instead of on a stale copy — which is what lets
+ * two edits of different days both survive.
+ */
+async function changeWeekPlan(
+  weekStart: Date,
+  householdId: string,
+  build: (current: WeekPlanDayEntryInput[]) => WeekPlanDayEntryInput[],
+  options: { syncFreezer: boolean },
+) {
+  return prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRaw(
+        Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`week-plan:${householdId}:${weekStart.toISOString()}`}, 0))`,
+      );
+      const current = await readWeekDays(tx, weekStart, householdId);
+      const next = build(current);
+      const freezerChanges = options.syncFreezer
+        ? freezerChangesBetween(current, next)
+        : [];
+      await moveFreezerPortions(tx, householdId, freezerChanges);
+      const persisted = await writeWeekPlanIn(tx, weekStart, next, householdId);
+      return { ...persisted, freezerChanges };
+    },
+    // Room to wait for a competing change of the same week to finish.
+    { maxWait: 10_000, timeout: 20_000 },
+  );
 }
 
 function composeWeekResponse(args: {
@@ -867,6 +1026,36 @@ const GenerateWeekInput = z.object({
   constraints: PlannerConstraints.optional(),
   /** Pass a stable value to reproduce a plan; omit for a fresh one each time. */
   seed: z.string().max(64).optional(),
+  /**
+   * Put the portions of any freezer meals the generated week replaces back
+   * in the freezer, in the same transaction. Off by default for clients
+   * that manage the inventory themselves.
+   */
+  syncFreezer: z.boolean().optional(),
+});
+
+const dayIndexSchema = z.number().int().min(0).max(6);
+
+const SetWeekPlanDaysInput = z.object({
+  weekStart: z.string().min(1),
+  changes: z
+    .array(
+      z.union([
+        z.object({
+          dayIndex: dayIndexSchema,
+          type: z.enum(["RECIPE", "FREEZER"]),
+          recipeId: z.string().uuid(),
+        }),
+        z.object({
+          dayIndex: dayIndexSchema,
+          type: z.enum(["TAKEAWAY", "EMPTY"]),
+        }),
+      ]),
+    )
+    .min(1)
+    .max(7),
+  /** Move freezer portions to match the freezer days added and removed. */
+  syncFreezer: z.boolean().default(true),
 });
 
 type GenerateWeekInput = z.infer<typeof GenerateWeekInput>;
@@ -909,16 +1098,72 @@ export const plannerRouter = router({
         type: "RECIPE" as const,
         recipeId: recipe.id,
       }));
-      const persisted = await writeWeekPlan(weekStart, days, householdId);
+      const persisted = await changeWeekPlan(weekStart, householdId, () => days, {
+        syncFreezer: input?.syncFreezer ?? false,
+      });
 
       const suggestions = buildSuggestionBuckets(pool, []);
 
-      return composeWeekResponse({
+      return {
+        ...composeWeekResponse({
+          weekStart,
+          updatedAt: persisted.plan.updatedAt,
+          entries: persisted.entries,
+          suggestions,
+        }),
+        freezerChanges: persisted.freezerChanges,
+      };
+    }),
+
+  /**
+   * Set individual days of a week and leave the rest as they are. Unlike
+   * `saveWeekPlan`, the caller does not send the whole week, so concurrent
+   * changes of different days cannot overwrite each other, and the freezer
+   * inventory moves in the same transaction as the plan.
+   */
+  setWeekPlanDays: protectedProcedure
+    .input(SetWeekPlanDaysInput)
+    .mutation(async ({ input, ctx }) => {
+      const weekStart = startOfWeek(input.weekStart);
+      enforceFutureLimit(weekStart);
+
+      const seen = new Set<number>();
+      for (const change of input.changes) {
+        if (seen.has(change.dayIndex)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `dayIndex ${change.dayIndex} er oppgitt flere ganger.`,
+          });
+        }
+        seen.add(change.dayIndex);
+      }
+
+      const persisted = await changeWeekPlan(
         weekStart,
-        updatedAt: persisted.plan.updatedAt,
-        entries: persisted.entries,
-        suggestions,
-      });
+        ctx.householdId,
+        (current) => {
+          const next = [...current];
+          for (const change of input.changes) {
+            next[change.dayIndex] =
+              change.type === "RECIPE" || change.type === "FREEZER"
+                ? { type: change.type, recipeId: change.recipeId }
+                : { type: change.type };
+          }
+          return next;
+        },
+        { syncFreezer: input.syncFreezer },
+      );
+
+      const pool = await fetchAllRecipes();
+      return {
+        ...composeWeekResponse({
+          weekStart,
+          updatedAt: persisted.plan.updatedAt,
+          entries: persisted.entries,
+          suggestions: buildSuggestionBuckets(pool, []),
+        }),
+        freezerChanges: persisted.freezerChanges,
+      };
     }),
 
   getWeekPlan: protectedProcedure

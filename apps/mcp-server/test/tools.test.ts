@@ -5,21 +5,6 @@ const byId = Object.fromEntries(
   Object.values(RECIPES).map((recipe) => [recipe.id, recipe]),
 );
 
-/** What the API answers to saveWeekPlan: the week it was just given. */
-function echoSavedWeek(input: { weekStart: string; days: any[] }) {
-  return weekPlan(
-    input.weekStart.slice(0, 10),
-    Object.fromEntries(
-      input.days.map((day, index) => [
-        index,
-        "recipeId" in day
-          ? { type: day.type, recipe: byId[day.recipeId] }
-          : { type: day.type },
-      ]),
-    ),
-  );
-}
-
 describe("tool catalogue", () => {
   it("offers the admin tools only to administrators", async () => {
     const { api } = fakeApi({});
@@ -254,21 +239,34 @@ describe("week plan", () => {
     expect(data.note).toContain("2027-03-01");
   });
 
-  it("changes only the given days and looks recipes up by name", async () => {
-    const { api, callsTo } = fakeApi({
-      "planner.getWeekPlan": () =>
-        weekPlan("2026-11-09", {
-          0: { type: "RECIPE", recipe: RECIPES.laks },
-          2: { type: "TAKEAWAY" },
-        }),
+  /** What the API answers to setWeekPlanDays: the changed days, rest empty. */
+  const savedWith =
+    (freezerChanges: { recipeId: string; portions: number }[] = []) =>
+    (input: { weekStart: string; changes: any[] }) => ({
+      ...weekPlan(
+        input.weekStart.slice(0, 10),
+        Object.fromEntries(
+          input.changes.map((change) => [
+            change.dayIndex,
+            "recipeId" in change
+              ? { type: change.type, recipe: byId[change.recipeId] }
+              : { type: change.type },
+          ]),
+        ),
+      ),
+      freezerChanges,
+    });
+
+  it("sends only the changed days, with recipe names resolved to IDs", async () => {
+    const { api, calls, callsTo } = fakeApi({
       "recipe.list": () => ({
         total: 2,
         page: 1,
-        pageSize: 50,
+        pageSize: 200,
         // "taco" also partially matches a longer name; the exact one wins.
         items: [{ ...RECIPES.lasagne, name: "Tacosuppe" }, RECIPES.taco],
       }),
-      "planner.saveWeekPlan": echoSavedWeek,
+      "planner.setWeekPlanDays": savedWith(),
     });
     const { call } = await connect({ api });
 
@@ -280,19 +278,21 @@ describe("week plan", () => {
     });
 
     expect(isError).toBe(false);
-    expect(callsTo("planner.saveWeekPlan")).toEqual([
+    expect(callsTo("planner.setWeekPlanDays")).toEqual([
       {
         weekStart: "2026-11-09T00:00:00.000Z",
-        days: [
-          { type: "RECIPE", recipeId: RECIPES.laks.id },
-          { type: "EMPTY" },
-          { type: "EMPTY" },
-          { type: "EMPTY" },
-          { type: "RECIPE", recipeId: RECIPES.taco.id },
-          { type: "EMPTY" },
-          { type: "EMPTY" },
+        changes: [
+          { dayIndex: 4, type: "RECIPE", recipeId: RECIPES.taco.id },
+          { dayIndex: 2, type: "EMPTY" },
         ],
+        syncFreezer: true,
       },
+    ]);
+    // The week is never read and written back from here: merging the change
+    // into the stored week is the API's job, inside one transaction.
+    expect(calls.map((c) => c.path)).toEqual([
+      "recipe.list",
+      "planner.setWeekPlanDays",
     ]);
     expect(data.days[4].recipe.name).toBe("Taco");
     expect(data.freezerChanges).toEqual([]);
@@ -300,11 +300,10 @@ describe("week plan", () => {
 
   it("reports the candidates when a recipe name is ambiguous", async () => {
     const { api, callsTo } = fakeApi({
-      "planner.getWeekPlan": () => weekPlan("2026-11-09"),
       "recipe.list": () => ({
         total: 2,
         page: 1,
-        pageSize: 50,
+        pageSize: 200,
         items: [
           { ...RECIPES.taco, name: "Taco med kylling" },
           { ...RECIPES.lasagne, name: "Fisketaco" },
@@ -322,7 +321,7 @@ describe("week plan", () => {
       "Taco med kylling",
       "Fisketaco",
     ]);
-    expect(callsTo("planner.saveWeekPlan")).toEqual([]);
+    expect(callsTo("planner.setWeekPlanDays")).toEqual([]);
   });
 
   it("finds an exact recipe name behind a full page of newer partial matches", async () => {
@@ -332,14 +331,13 @@ describe("week plan", () => {
       name: `Taco variant ${i}`,
     }));
     const { api, callsTo } = fakeApi({
-      "planner.getWeekPlan": () => weekPlan("2026-11-09"),
       "recipe.list": ({ page }) => ({
         total: 201,
         page,
         pageSize: 200,
         items: page === 1 ? newer : [RECIPES.taco],
       }),
-      "planner.saveWeekPlan": echoSavedWeek,
+      "planner.setWeekPlanDays": savedWith(),
     });
     const { call } = await connect({ api });
 
@@ -352,191 +350,92 @@ describe("week plan", () => {
     expect(callsTo("recipe.list").map((c: any) => c.page)).toEqual([1, 2]);
   });
 
-  it("keeps both changes when two days of a week are edited in parallel", async () => {
-    // A stateful stand-in for the API with slow calls, so the two edits
-    // would interleave if nothing kept them apart.
-    const pause = () => new Promise((resolve) => setTimeout(resolve, 15));
-    let stored: any[] = Array.from({ length: 7 }, () => ({ type: "EMPTY" }));
-    const current = () =>
-      echoSavedWeek({ weekStart: "2026-11-09T00:00:00.000Z", days: stored });
-    const { api } = fakeApi({
-      "planner.getWeekPlan": async () => {
-        const snapshot = current();
-        await pause();
-        return snapshot;
-      },
-      "planner.saveWeekPlan": async (input) => {
-        await pause();
-        stored = input.days;
-        return current();
-      },
-    });
-    const { call } = await connect({ api });
-
-    const results = await Promise.all([
-      call("set-week-plan-days", {
-        changes: [{ dayIndex: 0, type: "RECIPE", recipeId: RECIPES.laks.id }],
-      }),
-      call("set-week-plan-days", {
-        changes: [{ dayIndex: 3, type: "RECIPE", recipeId: RECIPES.taco.id }],
-      }),
-    ]);
-
-    expect(results.map((r) => r.isError)).toEqual([false, false]);
-    expect(stored[0]).toEqual({ type: "RECIPE", recipeId: RECIPES.laks.id });
-    expect(stored[3]).toEqual({ type: "RECIPE", recipeId: RECIPES.taco.id });
-  });
-
-  it("lets the next edit of a week through after one has failed", async () => {
-    let attempts = 0;
-    const { api } = fakeApi({
-      "planner.getWeekPlan": () => weekPlan("2026-11-09"),
-      "planner.saveWeekPlan": (input) => {
-        if (++attempts === 1) throw new Error("database is down");
-        return echoSavedWeek(input);
-      },
-    });
-    const { call } = await connect({ api });
-    const edit = () =>
-      call("set-week-plan-days", {
-        changes: [{ dayIndex: 0, type: "TAKEAWAY" }],
-      });
-
-    const [first, second] = await Promise.all([edit(), edit()]);
-
-    expect(first.isError).toBe(true);
-    expect(second.isError).toBe(false);
-  });
-
-  it("moves freezer portions in step with freezer days", async () => {
-    const { api, calls } = fakeApi({
-      "planner.getWeekPlan": () =>
-        weekPlan("2026-11-09", {
-          1: { type: "FREEZER", recipe: RECIPES.lasagne },
-        }),
-      "freezer.list": () => [{ recipeId: RECIPES.taco.id, quantity: 2 }],
-      "planner.saveWeekPlan": echoSavedWeek,
-      "freezer.decrement": () => ({ quantity: 1 }),
-      "freezer.increment": () => ({ quantity: 1 }),
-    });
-    const { call } = await connect({ api });
-
-    const { data } = await call("set-week-plan-days", {
-      changes: [
-        // Lasagne goes back into the freezer, a taco portion comes out.
-        { dayIndex: 1, type: "RECIPE", recipeId: RECIPES.laks.id },
-        { dayIndex: 3, type: "FREEZER", recipeId: RECIPES.taco.id },
-      ],
-    });
-
-    expect(data.freezerChanges).toEqual([
+  it("reports the freezer portions the API moved along with the plan", async () => {
+    const moved = [
       { recipeId: RECIPES.lasagne.id, portions: 1 },
       { recipeId: RECIPES.taco.id, portions: -1 },
-    ]);
-    // Inventory is only touched once the plan itself is saved.
+    ];
+    const { api, calls } = fakeApi({
+      "planner.setWeekPlanDays": savedWith(moved),
+    });
+    const { call } = await connect({ api });
+
+    const synced = await call("set-week-plan-days", {
+      changes: [{ dayIndex: 3, type: "FREEZER", recipeId: RECIPES.taco.id }],
+    });
+    await call("set-week-plan-days", {
+      changes: [{ dayIndex: 3, type: "FREEZER", recipeId: RECIPES.taco.id }],
+      syncFreezer: false,
+    });
+
+    expect(synced.data.freezerChanges).toEqual(moved);
+    // The freezer is never adjusted from here, only through the plan call.
     expect(calls.map((c) => c.path)).toEqual([
-      "planner.getWeekPlan",
-      "freezer.list",
-      "planner.saveWeekPlan",
-      "freezer.increment",
-      "freezer.decrement",
+      "planner.setWeekPlanDays",
+      "planner.setWeekPlanDays",
     ]);
+    expect(calls.map((c: any) => c.input.syncFreezer)).toEqual([true, false]);
   });
 
-  it("says the plan was saved and what is outstanding when the freezer update fails", async () => {
-    let decrements = 0;
+  it("passes on the API's refusal when the freezer is empty or the week too far ahead", async () => {
     const { api } = fakeApi({
-      "planner.getWeekPlan": () => weekPlan("2026-11-09"),
-      "freezer.list": () => [{ recipeId: RECIPES.taco.id, quantity: 5 }],
-      "planner.saveWeekPlan": echoSavedWeek,
-      "freezer.decrement": () => {
-        if (++decrements === 2) throw new Error("connection reset");
-        return { quantity: 4 };
+      "planner.setWeekPlanDays": ({ weekStart }) => {
+        throw trpcError(
+          "BAD_REQUEST",
+          weekStart.startsWith("2027")
+            ? "Uken ligger lenger frem i tid enn tillatt planleggingshorisont"
+            : "Ikke nok porsjoner av «Taco» i fryseren: trenger 1, har 0.",
+        );
       },
     });
     const { call } = await connect({ api });
 
-    const { data, isError } = await call("set-week-plan-days", {
-      changes: [
-        { dayIndex: 0, type: "FREEZER", recipeId: RECIPES.taco.id },
-        { dayIndex: 1, type: "FREEZER", recipeId: RECIPES.taco.id },
-        { dayIndex: 2, type: "FREEZER", recipeId: RECIPES.taco.id },
-      ],
-    });
-
-    expect(isError).toBe(true);
-    expect(data.planSaved).toBe(true);
-    expect(data.error).toContain("ER lagret");
-    // One of three portions came out before the failure.
-    expect(data.freezerChangesNotApplied).toEqual([
-      { recipeId: RECIPES.taco.id, delta: -2 },
-    ]);
-  });
-
-  it("refuses a freezer day when the freezer is empty, without saving", async () => {
-    const { api, callsTo } = fakeApi({
-      "planner.getWeekPlan": () => weekPlan("2026-11-09"),
-      "freezer.list": () => [],
-    });
-    const { call } = await connect({ api });
-
-    const { data, isError } = await call("set-week-plan-days", {
+    const empty = await call("set-week-plan-days", {
       changes: [{ dayIndex: 0, type: "FREEZER", recipeId: RECIPES.taco.id }],
     });
-
-    expect(isError).toBe(true);
-    expect(data.insufficientFreezerStock).toEqual([
-      { recipeId: RECIPES.taco.id, needed: 1, inFreezer: 0 },
-    ]);
-    expect(callsTo("planner.saveWeekPlan")).toEqual([]);
-  });
-
-  it("refuses weeks beyond the planning horizon instead of editing another week", async () => {
-    const { api, callsTo } = fakeApi({
-      // The API clamps far-future weeks to the last one it allows.
-      "planner.getWeekPlan": () => weekPlan("2026-12-07"),
-    });
-    const { call } = await connect({ api });
-
-    const { data, isError } = await call("set-week-plan-days", {
+    const farAhead = await call("set-week-plan-days", {
       week: "2027-03-01",
       changes: [{ dayIndex: 0, type: "TAKEAWAY" }],
     });
 
-    expect(isError).toBe(true);
-    expect(data.error).toContain("2026-12-07");
-    expect(callsTo("planner.saveWeekPlan")).toEqual([]);
+    expect(empty.isError).toBe(true);
+    expect(empty.data.error).toContain("Ikke nok porsjoner av «Taco»");
+    expect(farAhead.isError).toBe(true);
+    expect(farAhead.data.error).toContain("planleggingshorisont");
   });
 
-  it("returns planned freezer meals to the freezer when a week is regenerated", async () => {
-    const { api, callsTo } = fakeApi({
-      "planner.getWeekPlan": () =>
-        weekPlan("2026-11-09", {
-          5: { type: "FREEZER", recipe: RECIPES.lasagne },
+  it("asks the API to return replaced freezer meals when a week is regenerated", async () => {
+    const { api, calls } = fakeApi({
+      "planner.generateWeekPlan": () => ({
+        ...weekPlan("2026-11-09", {
+          0: { type: "RECIPE", recipe: RECIPES.laks },
         }),
-      "planner.generateWeekPlan": () =>
-        weekPlan("2026-11-09", { 0: { type: "RECIPE", recipe: RECIPES.laks } }),
-      "freezer.increment": () => ({ quantity: 3 }),
+        freezerChanges: [{ recipeId: RECIPES.lasagne.id, portions: 1 }],
+      }),
     });
     const { call } = await connect({ api });
 
-    await call("generate-week-plan", { fish: 3 });
+    const { data } = await call("generate-week-plan", { fish: 3 });
 
-    expect(callsTo("planner.generateWeekPlan")).toEqual([
+    expect(calls).toEqual([
       {
-        weekStart: "2026-11-09T00:00:00.000Z",
-        seed: undefined,
-        constraints: {
-          fish: 3,
-          vegetarian: 1,
-          chicken: 1,
-          beef: 1,
-          preferRecentGapDays: 21,
+        path: "planner.generateWeekPlan",
+        input: {
+          weekStart: "2026-11-09T00:00:00.000Z",
+          seed: undefined,
+          syncFreezer: true,
+          constraints: {
+            fish: 3,
+            vegetarian: 1,
+            chicken: 1,
+            beef: 1,
+            preferRecentGapDays: 21,
+          },
         },
       },
     ]);
-    expect(callsTo("freezer.increment")).toEqual([
-      { recipeId: RECIPES.lasagne.id },
+    expect(data.freezerChanges).toEqual([
+      { recipeId: RECIPES.lasagne.id, portions: 1 },
     ]);
   });
 });
