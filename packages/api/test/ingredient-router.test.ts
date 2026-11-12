@@ -286,19 +286,27 @@ describe("ingredient router", () => {
     prismaMock.ingredient.findMany.mockResolvedValueOnce([
       {
         id: "00000000-0000-0000-0000-000000000010",
-        name: "Løk",
+        name: "Epler",
         unit: "stk",
         isPantryItem: false,
-        category: "GRONNSAKER",
+        category: "FRUKT",
         _count: { recipes: 2 },
       },
       {
         id: "00000000-0000-0000-0000-000000000011",
-        name: "Løk, rød",
+        name: "Epler 4 stk",
         unit: "stk",
         isPantryItem: false,
-        category: "GRONNSAKER",
+        category: "FRUKT",
         _count: { recipes: 3 },
+      },
+      {
+        id: "00000000-0000-0000-0000-000000000012",
+        name: "Eplemost",
+        unit: "l",
+        isPantryItem: false,
+        category: "ANNET",
+        _count: { recipes: 1 },
       },
     ]);
 
@@ -308,21 +316,22 @@ describe("ingredient router", () => {
       orderBy: { name: "asc" },
       include: { _count: { select: { recipes: true } } },
     });
+    // Most used first; «Eplemost» is a different product and is left out.
     expect(result).toEqual([
       [
         {
-          id: "00000000-0000-0000-0000-000000000010",
-          name: "Løk",
+          id: "00000000-0000-0000-0000-000000000011",
+          name: "Epler 4 stk",
           unit: "stk",
-          usageCount: 2,
+          usageCount: 3,
           isPantryItem: false,
           category: "FRUKT_OG_GRONT",
         },
         {
-          id: "00000000-0000-0000-0000-000000000011",
-          name: "Løk, rød",
+          id: "00000000-0000-0000-0000-000000000010",
+          name: "Epler",
           unit: "stk",
-          usageCount: 3,
+          usageCount: 2,
           isPantryItem: false,
           category: "FRUKT_OG_GRONT",
         },
@@ -341,6 +350,14 @@ describe("ingredient router", () => {
         _count: { recipes: 0 },
       },
       {
+        id: "00000000-0000-0000-0000-000000000013",
+        name: "???",
+        unit: "stk",
+        isPantryItem: false,
+        category: "ANNET",
+        _count: { recipes: 0 },
+      },
+      {
         id: "00000000-0000-0000-0000-000000000010",
         name: "Løk",
         unit: "stk",
@@ -350,7 +367,7 @@ describe("ingredient router", () => {
       },
       {
         id: "00000000-0000-0000-0000-000000000011",
-        name: "Løk, rød",
+        name: "løk",
         unit: "stk",
         isPantryItem: false,
         category: "GRONNSAKER",

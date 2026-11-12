@@ -2,6 +2,7 @@ import { prisma } from "@repo/database";
 import { router, protectedProcedure } from "../trpc.js";
 import { IngredientById, IngredientCreate, IngredientCategory, IngredientListQuery, IngredientUpdate } from "../schemas.js";
 import { TRPCError } from "@trpc/server";
+import { findDuplicateGroups } from "../duplicates.js";
 import { z } from "zod";
 
 const IngredientListItem = z.object({
@@ -95,55 +96,16 @@ export const ingredientRouter = router({
                 include: { _count: { select: { recipes: true } } },
             });
 
-            // Normalize name for comparison
-            const normalize = (name?: string) =>
-                name?.toLowerCase().replace(/[^a-zæøå0-9]/g, "") ?? "";
-
-            // Group ingredients by normalized name prefix
-            const groups = new Map<string, typeof allIngredients>();
-
-            for (const ing of allIngredients) {
-                const normalized = normalize(ing.name);
-                if (!normalized) {
-                    continue;
-                }
-                let foundGroup = false;
-
-                // Check if this ingredient matches any existing group
-                for (const [key, group] of groups.entries()) {
-                    // Check if names are similar (prefix match or edit distance)
-                    if (
-                        normalized.startsWith(key) ||
-                        key.startsWith(normalized) ||
-                        (normalized.length > 3 && key.length > 3 &&
-                            (normalized.includes(key) || key.includes(normalized)))
-                    ) {
-                        group.push(ing);
-                        foundGroup = true;
-                        break;
-                    }
-                }
-
-                if (!foundGroup) {
-                    groups.set(normalized, [ing]);
-                }
-            }
-
-            // Filter to only groups with more than one ingredient
-            const duplicateGroups = Array.from(groups.values())
-                .filter(group => group.length > 1)
-                .map(group =>
-                    group.map(i => ({
-                        id: i.id,
-                        name: i.name,
-                        unit: i.unit ?? undefined,
-                        usageCount: i._count.recipes,
-                        isPantryItem: i.isPantryItem,
-                        category: normalizeIngredientCategory(i.category),
-                    }))
-                );
-
-            return duplicateGroups;
+            return findDuplicateGroups(
+                allIngredients.map((i) => ({
+                    id: i.id,
+                    name: i.name,
+                    unit: i.unit ?? undefined,
+                    usageCount: i._count.recipes,
+                    isPantryItem: i.isPantryItem,
+                    category: normalizeIngredientCategory(i.category),
+                })),
+            );
         }),
 
     bulkUpdateUnits: protectedProcedure

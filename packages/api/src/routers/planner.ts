@@ -23,6 +23,7 @@ import {
 } from "../week-generator.js";
 import { z } from "zod";
 import { computeExpiresAt } from "./freezer.js";
+import { findDuplicateGroups } from "../duplicates.js";
 
 const DAYS = [0, 1, 2, 3, 4, 5, 6] as const;
 export type DayIndex = (typeof DAYS)[number];
@@ -1882,44 +1883,14 @@ export const plannerRouter = router({
         allItems.map((item) => item.id),
       );
 
-      const normalize = (name?: string) =>
-        name?.toLowerCase().replace(/[^a-zæøå0-9]/g, "") ?? "";
-
-      const groups = new Map<string, typeof allItems>();
-
-      for (const item of allItems) {
-        const normalized = normalize(item.name);
-        if (!normalized) continue;
-        let foundGroup = false;
-
-        for (const [key, group] of groups.entries()) {
-          if (
-            normalized.startsWith(key) ||
-            key.startsWith(normalized) ||
-            (normalized.length > 3 && key.length > 3 &&
-              (normalized.includes(key) || key.includes(normalized)))
-          ) {
-            group.push(item);
-            foundGroup = true;
-            break;
-          }
-        }
-
-        if (!foundGroup) {
-          groups.set(normalized, [item]);
-        }
-      }
-
-      return Array.from(groups.values())
-        .filter((group) => group.length > 1)
-        .map((group) =>
-          group.map((item) => ({
-            id: item.id,
-            name: item.name,
-            usageCount: item._count.extras,
-            category: categoryMap.get(item.id) ?? null,
-          }))
-        );
+      return findDuplicateGroups(
+        allItems.map((item) => ({
+          id: item.id,
+          name: item.name,
+          usageCount: item._count.extras,
+          category: categoryMap.get(item.id) ?? null,
+        })),
+      );
     }),
 
   extraCatalogMerge: protectedProcedure

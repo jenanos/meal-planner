@@ -275,7 +275,7 @@ export function registerIngredientTools(ctx: ToolContext) {
     {
       title: "Finn mulige ingrediens-duplikater",
       description:
-        "Grupperer ingredienser med like navn (f.eks. «løk» og «løk, gul») som kan være duplikater. " +
+        "Grupperer ingredienser som trolig er samme vare (f.eks. «epler», «Epler 4 stk» og «Norske epler», eller skrivefeil som «riseddik»/«risedikk»). " +
         "Gruppene er forslag basert på navnelikhet – vurder hver gruppe før du slår sammen med merge-ingredients.",
       kind: "read",
       errorContext: "Kunne ikke finne mulige duplikater",
