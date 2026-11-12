@@ -55,7 +55,6 @@ export function stemToken(token: string): string {
 
 export function tokenizeName(name: string): string[] {
     const cleaned = foldDiacritics(name.toLowerCase())
-        .replace(/\([^)]*\)/g, " ")
         .replace(/[^\p{L}\p{N}]+/gu, " ")
         .trim();
     if (!cleaned) return [];

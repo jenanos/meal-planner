@@ -24,6 +24,7 @@ describe("namesLookLikeDuplicates", () => {
     ["Crème fraîche", "creme fraiche"],
     ["chili", "chilli"],
     ["Melk 1l", "melk"],
+    ["Melk (1 l)", "melk"],
   ])("treats «%s» and «%s» as duplicates", (a, b) => {
     expect(namesLookLikeDuplicates(a, b)).toBe(true);
   });
@@ -40,6 +41,8 @@ describe("namesLookLikeDuplicates", () => {
     ["paprika", "paprikapulver"],
     ["hvitvinseddik", "rødvinseddik"],
     ["laks", "laksefilet"],
+    ["Melk (laktosefri)", "Melk (hel)"],
+    ["Tomat (hakket)", "Tomat (puré)"],
   ])("keeps «%s» and «%s» apart", (a, b) => {
     expect(namesLookLikeDuplicates(a, b)).toBe(false);
   });
