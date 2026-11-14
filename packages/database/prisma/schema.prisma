@@ -48,6 +48,15 @@ enum ShoppingDisplayStyle {
   GRID
 }
 
+// How far ahead of today the shopping list reaches.
+enum ShoppingHorizon {
+  TODAY
+  THREE_DAYS
+  REST_OF_WEEK
+  SEVEN_DAYS
+  FOURTEEN_DAYS
+}
+
 enum HouseholdRole {
   OWNER
   MEMBER
@@ -284,11 +293,15 @@ model UserPreference {
   userId                    String               @id
   defaultViewMode           ShoppingViewMode     @default(BY_DAY)
   defaultDisplayStyle       ShoppingDisplayStyle @default(LIST)
+  // First weekday shown in the week planner (0 = Monday).
   startDay                  Int                  @default(0)
+  shoppingHorizon           ShoppingHorizon      @default(SEVEN_DAYS)
+  // Deprecated: replaced by shoppingHorizon. No longer read.
   includeNextWeek           Boolean              @default(false)
   showPantryWithIngredients Boolean              @default(false)
   compactShoppingList       Boolean              @default(false)
   plannerTapOpensRecipe     Boolean              @default(false)
+  // Deprecated: days are now picked per shopping trip. No longer read.
   visibleDayIndices         Int[]                @default([0, 1, 2, 3, 4, 5, 6])
   defaultStoreId            String?              @db.Uuid
   createdAt                 DateTime             @default(now())

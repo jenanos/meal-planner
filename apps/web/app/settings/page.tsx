@@ -35,10 +35,14 @@ import { trpc } from "../../lib/trpcClient";
 import { signOut } from "../../lib/auth-client";
 import { useAuth } from "../components/AuthGuard";
 import {
-  DEFAULT_VISIBLE_DAY_INDICES,
+  DEFAULT_SHOPPING_HORIZON,
+  SHOPPING_HORIZONS,
+  SHOPPING_HORIZON_LABELS,
   STANDARD_STORE_CATEGORY_ORDER,
   ingredientCategoryLabel,
+  isShoppingHorizon,
   normalizeCategoryOrder,
+  type ShoppingHorizon,
   type ShoppingDisplayStyle,
   type ShoppingViewMode,
 } from "../../lib/shopping";
@@ -55,11 +59,10 @@ type UserSettings = {
   defaultViewMode: ShoppingViewMode;
   defaultDisplayStyle: ShoppingDisplayStyle;
   startDay: number;
-  includeNextWeek: boolean;
+  shoppingHorizon: ShoppingHorizon;
   showPantryWithIngredients: boolean;
   compactShoppingList: boolean;
   plannerTapOpensRecipe: boolean;
-  visibleDayIndices: number[];
   defaultStoreId: string | null;
 };
 
@@ -98,11 +101,10 @@ export default function SettingsPage() {
     defaultViewMode: "by-day",
     defaultDisplayStyle: "list",
     startDay: 0,
-    includeNextWeek: false,
+    shoppingHorizon: DEFAULT_SHOPPING_HORIZON,
     showPantryWithIngredients: false,
     compactShoppingList: false,
     plannerTapOpensRecipe: false,
-    visibleDayIndices: [...DEFAULT_VISIBLE_DAY_INDICES],
     defaultStoreId: null,
   });
   const [stores, setStores] = useState<ShoppingStore[]>([]);
@@ -146,9 +148,9 @@ export default function SettingsPage() {
       ...s,
       compactShoppingList: Boolean(s.compactShoppingList),
       plannerTapOpensRecipe: Boolean(s.plannerTapOpensRecipe),
-      visibleDayIndices: Array.from(
-        new Set(s.visibleDayIndices),
-      ).sort((a, b) => a - b),
+      shoppingHorizon: isShoppingHorizon(s.shoppingHorizon)
+        ? s.shoppingHorizon
+        : DEFAULT_SHOPPING_HORIZON,
     });
   }, [settingsQuery.data]);
 
@@ -169,29 +171,15 @@ export default function SettingsPage() {
     setSettings((prev) => ({ ...prev, ...patch }));
   }
 
-  function toggleVisibleDay(dayIndex: number) {
-    const set = new Set(settings.visibleDayIndices);
-    if (set.has(dayIndex)) {
-      if (set.size <= 1) return;
-      set.delete(dayIndex);
-    } else {
-      set.add(dayIndex);
-    }
-    patchSettings({
-      visibleDayIndices: Array.from(set).sort((a, b) => a - b),
-    });
-  }
-
   async function saveSettings() {
     await updateSettingsMutation.mutateAsync({
       defaultViewMode: settings.defaultViewMode,
       defaultDisplayStyle: settings.defaultDisplayStyle,
       startDay: settings.startDay,
-      includeNextWeek: settings.includeNextWeek,
+      shoppingHorizon: settings.shoppingHorizon,
       showPantryWithIngredients: settings.showPantryWithIngredients,
       compactShoppingList: settings.compactShoppingList,
       plannerTapOpensRecipe: settings.plannerTapOpensRecipe,
-      visibleDayIndices: settings.visibleDayIndices,
       defaultStoreId:
         settings.defaultStoreId ??
         stores.find((store) => store.isDefault)?.id ??
@@ -290,6 +278,25 @@ export default function SettingsPage() {
             }
           />
         </label>
+        <div className="space-y-2">
+          <h3 className="font-medium text-xs text-muted-foreground uppercase tracking-wider">
+            Uken starter på
+          </h3>
+          <div className="grid grid-cols-7 gap-1">
+            {ALL_DAY_NAMES.map((name, index) => (
+              <Button
+                key={name}
+                type="button"
+                size="sm"
+                variant={settings.startDay === index ? "default" : "outline"}
+                className="h-7 px-0 text-[10px] w-full"
+                onClick={() => patchSettings({ startDay: index })}
+              >
+                {name.slice(0, 3)}
+              </Button>
+            ))}
+          </div>
+        </div>
         <div className="flex justify-end">
           <Button type="button" onClick={saveSettings} disabled={isBusy}>
             Lagre innstillinger
@@ -372,22 +379,28 @@ export default function SettingsPage() {
 
         <div className="space-y-2">
           <h3 className="font-medium text-xs text-muted-foreground uppercase tracking-wider">
-            Startuke på
+            Handle for
           </h3>
-          <div className="grid grid-cols-7 gap-1">
-            {ALL_DAY_NAMES.map((name, index) => (
+          <div className="grid grid-cols-5 gap-1">
+            {SHOPPING_HORIZONS.map((option) => (
               <Button
-                key={name}
+                key={option}
                 type="button"
                 size="sm"
-                variant={settings.startDay === index ? "default" : "outline"}
-                className="h-7 px-0 text-[10px] w-full"
-                onClick={() => patchSettings({ startDay: index })}
+                variant={
+                  settings.shoppingHorizon === option ? "default" : "outline"
+                }
+                className="h-7 px-0 text-[11px] w-full"
+                onClick={() => patchSettings({ shoppingHorizon: option })}
               >
-                {name.slice(0, 3)}
+                {SHOPPING_HORIZON_LABELS[option]}
               </Button>
             ))}
           </div>
+          <p className="text-xs text-muted-foreground">
+            Handlelisten starter alltid på dagens dato og viser så langt frem
+            som dette. Du kan endre det for én handletur på selve handlelisten.
+          </p>
         </div>
 
         <div className="space-y-2">
@@ -395,15 +408,6 @@ export default function SettingsPage() {
             Innstillinger
           </h3>
           <div className="space-y-2">
-            <label className="flex items-center justify-between border rounded-lg p-2.5 cursor-pointer hover:bg-accent">
-              <span className="text-sm">Inkluder neste uke</span>
-              <Checkbox
-                checked={settings.includeNextWeek}
-                onCheckedChange={(checked) =>
-                  patchSettings({ includeNextWeek: Boolean(checked) })
-                }
-              />
-            </label>
             <label className="flex items-center justify-between border rounded-lg p-2.5 cursor-pointer hover:bg-accent">
               <span className="text-sm">Vis basisvarer med ingredienser</span>
               <Checkbox
@@ -429,29 +433,6 @@ export default function SettingsPage() {
                 }
               />
             </label>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <h3 className="font-medium text-xs text-muted-foreground uppercase tracking-wider">
-            Velg dager
-          </h3>
-          <div className="grid grid-cols-7 gap-1">
-            {ALL_DAY_NAMES.map((name, index) => {
-              const selected = settings.visibleDayIndices.includes(index);
-              return (
-                <Button
-                  key={name}
-                  type="button"
-                  size="sm"
-                  variant={selected ? "default" : "outline"}
-                  className="h-7 px-0 text-[10px] w-full"
-                  onClick={() => toggleVisibleDay(index)}
-                >
-                  {name.slice(0, 3)}
-                </Button>
-              );
-            })}
           </div>
         </div>
 

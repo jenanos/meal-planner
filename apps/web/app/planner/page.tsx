@@ -119,6 +119,17 @@ export default function PlannerPage() {
     (userSettingsQuery.data?.settings as { plannerTapOpensRecipe?: boolean } | undefined)
       ?.plannerTapOpensRecipe,
   );
+  // Open on the user's preferred start day; changing it here afterwards only
+  // lasts for the visit.
+  const savedStartDay = (
+    userSettingsQuery.data?.settings as { startDay?: number } | undefined
+  )?.startDay;
+  const startDayHydratedRef = useRef(false);
+  useEffect(() => {
+    if (startDayHydratedRef.current || savedStartDay == null) return;
+    startDayHydratedRef.current = true;
+    setStartDay(Math.min(6, Math.max(0, savedStartDay)));
+  }, [savedStartDay]);
   const timelineQuery = trpc.planner.weekTimeline.useQuery({
     around: currentWeekStart,
   });

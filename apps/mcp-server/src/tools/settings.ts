@@ -1,6 +1,7 @@
 import {
   IngredientCategory,
   ShoppingDisplayStyle,
+  ShoppingHorizon,
   ShoppingViewMode,
 } from "@repo/api";
 import * as z from "zod";
@@ -54,12 +55,12 @@ export function registerSettingsTools(ctx: ToolContext) {
         startDay: dayIndex
           .optional()
           .describe(
-            "Ukedagen handleuka starter på: 0 = mandag ... 6 = søndag.",
+            "Ukedagen ukeplanleggeren starter på: 0 = mandag ... 6 = søndag.",
           ),
-        includeNextWeek: z
-          .boolean()
-          .optional()
-          .describe("Ta med neste uke i handlelisten som standard."),
+        shoppingHorizon: ShoppingHorizon.optional().describe(
+          "Hvor langt frem handlelisten viser som standard, regnet fra i dag: " +
+            "today, three-days, rest-of-week (til og med søndag), seven-days eller fourteen-days.",
+        ),
         showPantryWithIngredients: z
           .boolean()
           .optional()
@@ -74,12 +75,6 @@ export function registerSettingsTools(ctx: ToolContext) {
           .describe(
             "I ukeplanleggeren: trykk på en dag åpner oppskriften i stedet for å bytte den.",
           ),
-        visibleDayIndices: z
-          .array(dayIndex)
-          .min(1)
-          .max(7)
-          .optional()
-          .describe("Hvilke ukedager som vises (0 = mandag ... 6 = søndag)."),
         defaultStoreId: z
           .string()
           .uuid()
@@ -119,16 +114,13 @@ export function registerSettingsTools(ctx: ToolContext) {
           changes.defaultDisplayStyle ?? current.settings.defaultDisplayStyle,
         ),
         startDay: changes.startDay ?? current.settings.startDay,
-        includeNextWeek:
-          changes.includeNextWeek ?? current.settings.includeNextWeek,
         showPantryWithIngredients:
           changes.showPantryWithIngredients ??
           current.settings.showPantryWithIngredients,
         // Left undefined when not given; the API then keeps the stored value.
+        shoppingHorizon: changes.shoppingHorizon,
         compactShoppingList: changes.compactShoppingList,
         plannerTapOpensRecipe: changes.plannerTapOpensRecipe,
-        visibleDayIndices:
-          changes.visibleDayIndices ?? current.settings.visibleDayIndices,
         defaultStoreId: storeId,
       });
       return { settings };
