@@ -888,6 +888,13 @@ export default function ShoppingListPage() {
   // No planned meals at all inside the window (before any day is tapped off).
   const nothingPlanned = occurrenceOptions.length === 0;
 
+  // Category view files categorised own items under their category, so they
+  // must stay visible even when no meals fall inside the window.
+  const showCategorizedExtrasOnly =
+    nothingPlanned &&
+    viewMode === "by-category" &&
+    categorizedExtras.length > 0;
+
   const categorySections = buildCategorySections(displayedItems, categorizedExtras);
 
   const pantryCategorySections = buildCategorySections(pantryItems);
@@ -1560,7 +1567,7 @@ export default function ShoppingListPage() {
                     : "Alfabetisk"}
               </h2>
             )}
-            {nothingPlanned ? (
+            {nothingPlanned && !showCategorizedExtrasOnly ? (
               <p className="text-sm text-muted-foreground">
                 {horizon === "today"
                   ? "Ingen middag planlagt i dag."
