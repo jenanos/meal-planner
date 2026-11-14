@@ -39,7 +39,32 @@ export const STANDARD_STORE_CATEGORY_ORDER: IngredientCategory[] = [
   "ANNET",
 ];
 
-export const DEFAULT_VISIBLE_DAY_INDICES = [0, 1, 2, 3, 4, 5, 6] as const;
+// How far ahead of today the shopping list reaches.
+export const SHOPPING_HORIZONS = [
+  "today",
+  "three-days",
+  "rest-of-week",
+  "seven-days",
+  "fourteen-days",
+] as const;
+export type ShoppingHorizon = (typeof SHOPPING_HORIZONS)[number];
+
+export const DEFAULT_SHOPPING_HORIZON: ShoppingHorizon = "seven-days";
+
+export const SHOPPING_HORIZON_LABELS: Record<ShoppingHorizon, string> = {
+  today: "I dag",
+  "three-days": "3 dager",
+  "rest-of-week": "Ut uken",
+  "seven-days": "7 dager",
+  "fourteen-days": "14 dager",
+};
+
+export function isShoppingHorizon(value: unknown): value is ShoppingHorizon {
+  return (
+    typeof value === "string" &&
+    (SHOPPING_HORIZONS as readonly string[]).includes(value)
+  );
+}
 
 const CATEGORY_LABELS: Record<IngredientCategory, string> = {
   FRUKT_OG_GRONT: "Frukt og grønt",

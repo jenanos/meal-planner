@@ -30,17 +30,22 @@ import { ShoppingListGridItem } from "./components/shopping-list-grid-item";
 import { ShoppingListDisplayModal } from "./components/ShoppingListDisplayModal";
 import { FALL_BADGE_PALETTE, formatQuantity } from "./utils";
 import type { ShoppingListItem, ShoppingListOccurrence } from "./types";
-import { WeekSelector } from "../planner/components/WeekSelector";
-import { deriveWeekLabel, formatWeekRange, startOfWeekISO } from "../../lib/week";
-import type { TimelineWeekEntry, WeekTimelineResult } from "../planner/types";
 import {
-  DEFAULT_VISIBLE_DAY_INDICES,
+  ShoppingListWindowBar,
+  type ShoppingListWindowDay,
+} from "./components/shopping-list-window-bar";
+import {
+  DEFAULT_SHOPPING_HORIZON,
+  SHOPPING_HORIZON_LABELS,
   ingredientCategoryLabel,
+  isShoppingHorizon,
   normalizeCategoryOrder,
   type IngredientCategory,
+  type ShoppingHorizon,
   type ShoppingViewMode,
   type ShoppingDisplayStyle,
 } from "../../lib/shopping";
+import { localTodayMs, resolveShoppingWindow } from "../../lib/shopping-window";
 import {
   readShoppingSession,
   writeShoppingSession,
@@ -59,48 +64,45 @@ type ShoppingStore = {
 type ShoppingUserSettings = {
   defaultViewMode: ShoppingViewMode;
   defaultDisplayStyle: ShoppingDisplayStyle;
-  startDay: number;
-  includeNextWeek: boolean;
+  shoppingHorizon?: ShoppingHorizon;
   showPantryWithIngredients: boolean;
   compactShoppingList?: boolean;
-  visibleDayIndices: number[];
   defaultStoreId: string | null;
 };
 
 const DEFAULT_USER_SETTINGS: ShoppingUserSettings = {
   defaultViewMode: "by-day",
   defaultDisplayStyle: "list",
-  startDay: 0,
-  includeNextWeek: false,
+  shoppingHorizon: DEFAULT_SHOPPING_HORIZON,
   showPantryWithIngredients: false,
-  visibleDayIndices: [...DEFAULT_VISIBLE_DAY_INDICES],
   defaultStoreId: null,
 };
 
-function toDayOffset(
-  weekStartISO: string,
-  dayIndex: number,
-  baseWeekStartISO: string,
-) {
-  const weekStart = new Date(weekStartISO);
-  const baseWeekStart = new Date(baseWeekStartISO);
-  if (
-    Number.isNaN(weekStart.getTime()) ||
-    Number.isNaN(baseWeekStart.getTime())
-  ) {
-    return Number.MAX_SAFE_INTEGER;
-  }
-  const weekDiffDays = Math.round(
-    (weekStart.getTime() - baseWeekStart.getTime()) / (24 * 60 * 60 * 1000),
-  );
-  return weekDiffDays + dayIndex;
-}
-
 export default function ShoppingListPage() {
-  const currentWeekStart = useMemo(() => startOfWeekISO(), []);
-  const [activeWeekStart, setActiveWeekStart] = useState(currentWeekStart);
-  const [includeNextWeek, setIncludeNextWeek] = useState(false);
-  const [startDay, setStartDay] = useState(0);
+  // The list always starts today. Re-read the date when the page comes back
+  // into view so a tab left open overnight rolls over to the new day.
+  const [todayMs, setTodayMs] = useState(() => localTodayMs());
+  useEffect(() => {
+    const refresh = () => setTodayMs(localTodayMs());
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, []);
+  const [horizon, setHorizon] = useState<ShoppingHorizon>(
+    DEFAULT_SHOPPING_HORIZON,
+  );
+  const shoppingWindow = useMemo(
+    () => resolveShoppingWindow(todayMs, horizon),
+    [todayMs, horizon],
+  );
+  const currentWeekStart = shoppingWindow.weekStartISO;
+  // Earlier days this week are hidden unless asked for; never persisted, so
+  // every visit starts from today again.
+  const [showPastDays, setShowPastDays] = useState(false);
+  const [hiddenDayKeys, setHiddenDayKeys] = useState<string[]>([]);
   const [isDisplayModalOpen, setIsDisplayModalOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ShoppingViewMode>("by-day");
   const [displayStyle, setDisplayStyle] = useState<ShoppingDisplayStyle>("list");
@@ -114,13 +116,10 @@ export default function ShoppingListPage() {
   const [checkedByOccurrence, setCheckedByOccurrence] = useState<
     Record<string, boolean>
   >({});
-  const [visibleDayKeys, setVisibleDayKeys] = useState<string[]>([]);
   const [removedKeys, setRemovedKeys] = useState<Set<string>>(new Set());
   const [expandedDetailsKeys, setExpandedDetailsKeys] = useState<Set<string>>(
     new Set(),
   );
-  const previousOptionKeysRef = useRef<string[]>([]);
-  const pendingSessionDayKeysRef = useRef<string[] | null>(null);
   // Extras UI state
   const [isAddExtraOpen, setIsAddExtraOpen] = useState(false);
   const [extraInput, setExtraInput] = useState("");
@@ -129,11 +128,6 @@ export default function ShoppingListPage() {
   // Compact mode drops the framed sections and their headings so the list
   // reads as one continuous list and nothing below the first block is missed.
   const compact = Boolean(activeSettings.compactShoppingList);
-
-  // The visible day window never extends past the end of next week
-  // (offset < 14 in the day filter), so one week of lookahead is enough.
-  // Fetching more would leak week-after-next items into the alphabetical view.
-  const lookaheadWeeks = includeNextWeek ? 1 : 0;
 
   const shoppingSettingsQuery = trpc.planner.shoppingSettings.useQuery(
     undefined,
@@ -176,11 +170,11 @@ export default function ShoppingListPage() {
       setDisplayStyle(
         session?.displayStyle ?? userSettings.defaultDisplayStyle ?? "list",
       );
-      setStartDay(session?.startDay ?? userSettings.startDay ?? 0);
-      setIncludeNextWeek(
-        session
-          ? Boolean(session.includeNextWeek)
-          : Boolean(userSettings.includeNextWeek),
+      setHorizon(
+        session?.horizon ??
+          (isShoppingHorizon(userSettings.shoppingHorizon)
+            ? userSettings.shoppingHorizon
+            : DEFAULT_SHOPPING_HORIZON),
       );
       setShowPantryWithIngredients(
         session
@@ -191,10 +185,12 @@ export default function ShoppingListPage() {
 
       setActiveSettings(userSettings);
 
-      // When a session exists, queue its day keys (including an intentional
-      // empty selection) for the day-init effect to consume once options load.
-      pendingSessionDayKeysRef.current = session ? session.visibleDayKeys : null;
-      setVisibleDayKeys([]);
+      // Day keys start with their week's ISO date, so hidden days from weeks
+      // that have passed can be dropped by comparing the strings.
+      const thisWeek = resolveShoppingWindow(localTodayMs(), "today").weekStartISO;
+      setHiddenDayKeys(
+        (session?.hiddenDayKeys ?? []).filter((key) => key >= thisWeek),
+      );
       setDefaultsHydrated(true);
     } else {
       setActiveSettings(userSettings);
@@ -220,58 +216,30 @@ export default function ShoppingListPage() {
     writeShoppingSession({
       viewMode,
       displayStyle,
-      startDay,
-      includeNextWeek,
+      horizon,
       showPantryWithIngredients,
-      visibleDayKeys,
+      hiddenDayKeys,
       selectedStoreId,
     });
   }, [
     defaultsHydrated,
     viewMode,
     displayStyle,
-    startDay,
-    includeNextWeek,
+    horizon,
     showPantryWithIngredients,
-    visibleDayKeys,
+    hiddenDayKeys,
     selectedStoreId,
   ]);
 
-  const shoppingQuery = trpc.planner.shoppingList.useQuery({
-    weekStart: activeWeekStart,
-    includeNextWeek,
-    lookaheadWeeks,
-  } as any);
-
-  const timelineQuery = trpc.planner.weekTimeline.useQuery({
-    around: currentWeekStart,
-  });
-
-  useEffect(() => {
-    setRemovedKeys(new Set());
-  }, [activeWeekStart]);
-
-  const timelineWeeks = useMemo(() => {
-    const rawWeeks = timelineQuery.data?.weeks ?? [];
-    const weeks = rawWeeks as WeekTimelineResult["weeks"];
-    return weeks.map((week) => ({
-      ...week,
-      label: deriveWeekLabel(week.weekStart, currentWeekStart),
-    }));
-  }, [timelineQuery.data, currentWeekStart]);
-
-  const timelineEntries = useMemo<TimelineWeekEntry[]>(
-    () => timelineWeeks.map((week, index) => ({ week, index })),
-    [timelineWeeks],
+  // Whole weeks are fetched (the current one plus as many as the horizon
+  // reaches into); the day window below narrows them down to the days shown.
+  const shoppingQuery = trpc.planner.shoppingList.useQuery(
+    {
+      weekStart: currentWeekStart,
+      lookaheadWeeks: shoppingWindow.lookaheadWeeks,
+    } as any,
+    { placeholderData: (previous: any) => previous },
   );
-
-  const activeWeekIndex = timelineWeeks.findIndex(
-    (week) => week.weekStart === activeWeekStart,
-  );
-
-  const handleSelectWeek = useCallback((weekStart: string) => {
-    setActiveWeekStart(weekStart);
-  }, []);
 
   // Suggest extras based on input
   useEffect(() => {
@@ -300,7 +268,7 @@ export default function ShoppingListPage() {
     [shoppingQuery.data?.includedWeekStarts, shoppingQuery.data?.weekStart],
   );
 
-  const items = shoppingQuery.data?.items ?? EMPTY_ITEMS;
+  const rawItems = shoppingQuery.data?.items ?? EMPTY_ITEMS;
   const plannedDays = (shoppingQuery.data as any)?.plannedDays as
     | {
       weekStart: string;
@@ -316,14 +284,14 @@ export default function ShoppingListPage() {
 
   useEffect(() => {
     const next: Record<string, boolean> = {};
-    for (const item of items) {
+    for (const item of rawItems) {
       for (const occurrence of item.occurrences ?? []) {
         const key = getOccurrenceKey(item, occurrence);
         next[key] = occurrence.checked ?? false;
       }
     }
     setCheckedByOccurrence(next);
-  }, [includedWeeksSignature, items]);
+  }, [includedWeeksSignature, rawItems]);
   const extrasAll = ((shoppingQuery.data as any)?.extras ?? []) as Array<{
     id: string;
     name: string;
@@ -386,7 +354,8 @@ export default function ShoppingListPage() {
   const isLoading = shoppingQuery.isLoading;
   const isFetching = shoppingQuery.isFetching;
 
-  const occurrenceOptions = useMemo(() => {
+  // Every planned day in the fetched weeks, oldest first.
+  const allDayOptions = useMemo(() => {
     const map = new Map<
       string,
       {
@@ -395,114 +364,118 @@ export default function ShoppingListPage() {
         shortLabel: string;
         longLabel: string;
         dateISO: string;
+        dateMs: number;
       }
     >();
-    for (const item of items) {
-      for (const occurrence of item.occurrences ?? []) {
-        const key = `${occurrence.weekStart}::${occurrence.dayIndex}`;
-        if (!map.has(key)) {
-          map.set(key, {
-            key,
-            weekdayLabel: occurrence.weekdayLabel,
-            shortLabel: occurrence.shortLabel,
-            longLabel: occurrence.longLabel,
-            dateISO: occurrence.dateISO,
-          });
-        }
-      }
+    const add = (source: {
+      weekStart: string;
+      dayIndex: number;
+      weekdayLabel: string;
+      shortLabel: string;
+      longLabel: string;
+      dateISO: string;
+    }) => {
+      const key = `${source.weekStart}::${source.dayIndex}`;
+      if (map.has(key)) return;
+      map.set(key, {
+        key,
+        weekdayLabel: source.weekdayLabel,
+        shortLabel: source.shortLabel,
+        longLabel: source.longLabel,
+        dateISO: source.dateISO,
+        dateMs: new Date(source.dateISO).getTime(),
+      });
+    };
+    for (const item of rawItems) {
+      for (const occurrence of item.occurrences ?? []) add(occurrence);
     }
     // Include planned days so days with recipes but no ingredients still appear
-    if (plannedDays) {
-      for (const pd of plannedDays) {
-        const key = `${pd.weekStart}::${pd.dayIndex}`;
-        if (!map.has(key)) {
-          map.set(key, {
-            key,
-            weekdayLabel: pd.weekdayLabel,
-            shortLabel: pd.shortLabel,
-            longLabel: pd.longLabel,
-            dateISO: pd.dateISO,
-          });
-        }
-      }
-    }
-    return Array.from(map.values())
-      .filter((option) => {
-        const offset = toDayOffset(
-          option.key.split("::")[0],
-          Number(option.key.split("::")[1]),
-          activeWeekStart,
-        );
-        const limit = includeNextWeek ? 14 : 7;
+    for (const pd of plannedDays ?? []) add(pd);
+    return Array.from(map.values()).sort((a, b) => a.dateMs - b.dateMs);
+  }, [rawItems, plannedDays]);
 
-        // Filter out days before the selected start day in the current week
-        if (offset < startDay) return false;
-
-        // Filter out days beyond the desired range (next week or current week)
-        if (offset >= limit) return false;
-
-        return true;
-      })
-      .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
-  }, [items, plannedDays, includeNextWeek, activeWeekStart, startDay]);
-
-  useEffect(() => {
-    const optionKeys = occurrenceOptions.map((option) => option.key);
-    setVisibleDayKeys((prev) => {
-      if (optionKeys.length === 0) {
-        return [];
-      }
-
-      // Consume any pending session keys exactly once. An intentional empty
-      // selection ("Fjern alle") is preserved as-is.
-      if (pendingSessionDayKeysRef.current !== null) {
-        const sessionKeys = pendingSessionDayKeysRef.current;
-        pendingSessionDayKeysRef.current = null;
-        const optionKeySet = new Set(optionKeys);
-        return sessionKeys.filter((key) => optionKeySet.has(key));
-      }
-
-      if (prev.length === 0) {
-        if (defaultsHydrated) {
-          const preferred = new Set(
-            (activeSettings.visibleDayIndices ?? []).map((day) =>
-              Number(day),
-            ),
-          );
-          const filtered = occurrenceOptions
-            .filter((option) => {
-              const dayIndex = Number(option.key.split("::")[1] ?? 0);
-              return preferred.has(dayIndex);
-            })
-            .map((option) => option.key);
-          if (filtered.length > 0) {
-            return filtered;
-          }
-        }
-        return optionKeys;
-      }
-      const prevSet = new Set(prev);
-      const filtered = optionKeys.filter((key) => prevSet.has(key));
-      if (filtered.length === 0) {
-        return optionKeys;
-      }
-      const previousOptionKeys = previousOptionKeysRef.current;
-      const previouslySelectedAll =
-        previousOptionKeys.length > 0 &&
-        prev.length === previousOptionKeys.length &&
-        previousOptionKeys.every((key, index) => key === prev[index]);
-      if (previouslySelectedAll && filtered.length !== optionKeys.length) {
-        return optionKeys;
-      }
-      return filtered;
-    });
-    previousOptionKeysRef.current = optionKeys;
-  }, [occurrenceOptions, defaultsHydrated, activeSettings.visibleDayIndices]);
-
-  const visibleDayKeySet = useMemo(
-    () => new Set(visibleDayKeys),
-    [visibleDayKeys],
+  const hasPastDays = useMemo(
+    () => allDayOptions.some((option) => option.dateMs < shoppingWindow.todayMs),
+    [allDayOptions, shoppingWindow.todayMs],
   );
+
+  // The days the list can cover: from today (or from Monday when earlier days
+  // are shown) through the end of the horizon.
+  const occurrenceOptions = useMemo(() => {
+    const startMs = showPastDays
+      ? shoppingWindow.weekStartMs
+      : shoppingWindow.todayMs;
+    return allDayOptions.filter(
+      (option) => option.dateMs >= startMs && option.dateMs <= shoppingWindow.endMs,
+    );
+  }, [allDayOptions, showPastDays, shoppingWindow]);
+
+  const visibleDayKeySet = useMemo(() => {
+    const hidden = new Set(hiddenDayKeys);
+    return new Set(
+      occurrenceOptions
+        .map((option) => option.key)
+        .filter((key) => !hidden.has(key)),
+    );
+  }, [occurrenceOptions, hiddenDayKeys]);
+
+  const windowDays = useMemo<ShoppingListWindowDay[]>(
+    () =>
+      occurrenceOptions.map((option) => ({
+        key: option.key,
+        label:
+          option.dateMs === shoppingWindow.todayMs
+            ? "I dag"
+            : `${option.weekdayLabel.substring(0, 3)} ${option.shortLabel}`,
+        title: option.longLabel,
+        selected: visibleDayKeySet.has(option.key),
+        isPast: option.dateMs < shoppingWindow.todayMs,
+      })),
+    [occurrenceOptions, visibleDayKeySet, shoppingWindow.todayMs],
+  );
+
+  // Narrow every item down to the visible days, so quantities and checkmarks
+  // in all three views describe exactly what this shopping trip covers.
+  const items = useMemo(() => {
+    const result: ShoppingListItem[] = [];
+    for (const item of rawItems) {
+      const occurrences = (item.occurrences ?? []).filter((occurrence) =>
+        visibleDayKeySet.has(`${occurrence.weekStart}::${occurrence.dayIndex}`),
+      );
+      if (!occurrences.length) continue;
+      const hasQuantity = occurrences.some(
+        (occurrence) => occurrence.quantity != null,
+      );
+      result.push({
+        ...item,
+        occurrences,
+        details: (item.details ?? []).filter((detail) =>
+          visibleDayKeySet.has(`${detail.weekStart}::${detail.dayIndex}`),
+        ),
+        weekStarts: Array.from(
+          new Set(occurrences.map((occurrence) => occurrence.weekStart)),
+        ),
+        totalQuantity: hasQuantity
+          ? occurrences.reduce(
+              (sum, occurrence) => sum + (occurrence.quantity ?? 0),
+              0,
+            )
+          : null,
+        hasMissingQuantities: occurrences.some(
+          (occurrence) => occurrence.hasMissingQuantities,
+        ),
+      });
+    }
+    return result;
+  }, [rawItems, visibleDayKeySet]);
+
+  const rawItemsByKey = useMemo(() => {
+    const map = new Map<string, ShoppingListItem>();
+    for (const item of rawItems) {
+      map.set(`${item.ingredientId}::${item.unit ?? ""}`, item);
+    }
+    return map;
+  }, [rawItems]);
 
   const { regularItems, pantryItems } = useMemo(() => {
     const regularUnchecked: ShoppingListItem[] = [];
@@ -527,13 +500,6 @@ export default function ShoppingListPage() {
       pantryItems: [...pantryUnchecked, ...pantryChecked],
     };
   }, [items, checkedByOccurrence, removedKeys]);
-
-  const includedWeekLabels = useMemo(() => {
-    const weeks =
-      shoppingQuery.data?.includedWeekStarts ??
-      (shoppingQuery.data?.weekStart ? [shoppingQuery.data.weekStart] : []);
-    return weeks.map((weekStart) => formatWeekRange(weekStart));
-  }, [shoppingQuery.data?.includedWeekStarts, shoppingQuery.data?.weekStart]);
 
   const updateShoppingItem = trpc.planner.updateShoppingItem.useMutation();
   const extraToggle = trpc.planner.extraToggle.useMutation();
@@ -576,8 +542,11 @@ export default function ShoppingListPage() {
     if (!match) return null;
     if (match.dayIndex === occurrence.dayIndex) return null;
     if (occurrence.dayIndex <= match.dayIndex) return null;
+    // The day it was bought on may lie outside the visible window.
+    const source =
+      rawItemsByKey.get(`${item.ingredientId}::${item.unit ?? ""}`) ?? item;
     return (
-      (item.occurrences ?? []).find(
+      (source.occurrences ?? []).find(
         (candidate) =>
           candidate.weekStart === match.weekStart &&
           candidate.dayIndex === match.dayIndex,
@@ -744,28 +713,8 @@ export default function ShoppingListPage() {
         }
       }
 
-      const totalDays = includeNextWeek ? 14 : 7;
-
       return Array.from(sections.values())
-        .sort((a, b) => {
-          const [aWeekStart, aDayIndex] = a.key.split("::");
-          const [bWeekStart, bDayIndex] = b.key.split("::");
-          const aOffset = toDayOffset(
-            aWeekStart,
-            Number(aDayIndex),
-            activeWeekStart,
-          );
-          const bOffset = toDayOffset(
-            bWeekStart,
-            Number(bDayIndex),
-            activeWeekStart,
-          );
-          const aShifted =
-            (((aOffset - startDay) % totalDays) + totalDays) % totalDays;
-          const bShifted =
-            (((bOffset - startDay) % totalDays) + totalDays) % totalDays;
-          return aShifted - bShifted;
-        })
+        .sort((a, b) => a.dateISO.localeCompare(b.dateISO))
         .map(({ dateISO: _date, entries, recipeNameSet, ...section }) => ({
           ...section,
           recipeNames: Array.from(recipeNameSet),
@@ -786,9 +735,6 @@ export default function ShoppingListPage() {
       removedKeys,
       visibleDayKeySet,
       checkedByOccurrence,
-      includeNextWeek,
-      activeWeekStart,
-      startDay,
     ],
   );
 
@@ -939,6 +885,9 @@ export default function ShoppingListPage() {
     }));
   }
 
+  // No planned meals at all inside the window (before any day is tapped off).
+  const nothingPlanned = occurrenceOptions.length === 0;
+
   const categorySections = buildCategorySections(displayedItems, categorizedExtras);
 
   const pantryCategorySections = buildCategorySections(pantryItems);
@@ -990,17 +939,15 @@ export default function ShoppingListPage() {
     );
   }
 
-  function toggleDayKey(dayKey: string, checked: boolean) {
-    setVisibleDayKeys((prev) => {
+  function toggleDayKey(dayKey: string, selected: boolean) {
+    setHiddenDayKeys((prev) => {
       const next = new Set(prev);
-      if (checked) {
-        next.add(dayKey);
-      } else {
+      if (selected) {
         next.delete(dayKey);
+      } else {
+        next.add(dayKey);
       }
-      return occurrenceOptions
-        .map((option) => option.key)
-        .filter((key) => next.has(key));
+      return Array.from(next);
     });
   }
 
@@ -1033,7 +980,7 @@ export default function ShoppingListPage() {
         occurrences: occurrencePayload.length ? occurrencePayload : undefined,
         weeks: occurrencePayload.length
           ? undefined
-          : (item.weekStarts ?? [activeWeekStart]),
+          : (item.weekStarts ?? [currentWeekStart]),
         checked: true,
       },
       {
@@ -1064,7 +1011,7 @@ export default function ShoppingListPage() {
     try {
       await packageExpand.mutateAsync({
         packageId,
-        weekStart: activeWeekStart,
+        weekStart: currentWeekStart,
       } as any);
       setExtraInput("");
       setIsAddExtraOpen(false);
@@ -1086,7 +1033,7 @@ export default function ShoppingListPage() {
       // ignore if already exists
     }
     await extraToggle.mutateAsync({
-      weekStart: activeWeekStart,
+      weekStart: currentWeekStart,
       name: clean,
       checked: false,
     } as any);
@@ -1097,7 +1044,7 @@ export default function ShoppingListPage() {
 
   async function toggleExtra(name: string, checked: boolean) {
     await extraToggle.mutateAsync({
-      weekStart: activeWeekStart,
+      weekStart: currentWeekStart,
       name,
       checked: !checked,
     } as any);
@@ -1105,7 +1052,7 @@ export default function ShoppingListPage() {
   }
 
   async function removeExtra(name: string) {
-    await extraRemove.mutateAsync({ weekStart: activeWeekStart, name } as any);
+    await extraRemove.mutateAsync({ weekStart: currentWeekStart, name } as any);
     shoppingQuery.refetch().catch(() => undefined);
   }
 
@@ -1251,11 +1198,14 @@ export default function ShoppingListPage() {
         Handleliste
       </h1>
 
-      <WeekSelector
-        weeks={timelineEntries}
-        activeWeekStart={activeWeekStart}
-        activeWeekIndex={activeWeekIndex}
-        onSelectWeek={handleSelectWeek}
+      <ShoppingListWindowBar
+        horizon={horizon}
+        onHorizonChange={setHorizon}
+        days={windowDays}
+        onToggleDay={toggleDayKey}
+        hasPastDays={hasPastDays}
+        showPastDays={showPastDays}
+        onShowPastDaysChange={setShowPastDays}
       />
 
       <div className="space-y-4">
@@ -1278,16 +1228,8 @@ export default function ShoppingListPage() {
             setViewMode={setViewMode}
             displayStyle={displayStyle}
             setDisplayStyle={setDisplayStyle}
-            startDay={startDay}
-            setStartDay={setStartDay}
-            includeNextWeek={includeNextWeek}
-            setIncludeNextWeek={setIncludeNextWeek}
             showPantryWithIngredients={showPantryWithIngredients}
             setShowPantryWithIngredients={setShowPantryWithIngredients}
-            occurrenceOptions={occurrenceOptions}
-            visibleDayKeys={visibleDayKeys}
-            setVisibleDayKeys={setVisibleDayKeys}
-            toggleDayKey={toggleDayKey}
             stores={stores.map((store) => ({ id: store.id, name: store.name }))}
             selectedStoreId={selectedStoreId}
             setSelectedStoreId={(storeId) => setSelectedStoreId(storeId)}
@@ -1431,18 +1373,8 @@ export default function ShoppingListPage() {
         </div>
       </div>
 
-      {includeNextWeek && includedWeekLabels.length ? (
-        <p className="text-xs text-gray-500">
-          Viser varer for {includedWeekLabels.join(" og ")}.
-        </p>
-      ) : null}
-
       {isLoading ? (
         <p className="text-sm text-gray-500">Laster handleliste…</p>
-      ) : !regularItems.length && !pantryItems.length ? (
-        <p className="text-sm text-gray-500">
-          Ingen oppskrifter valgt for denne uken ennå.
-        </p>
       ) : (
         <div
           className={`max-w-2xl mx-auto w-full ${compact ? "space-y-3" : "space-y-6"}`}
@@ -1628,7 +1560,13 @@ export default function ShoppingListPage() {
                     : "Alfabetisk"}
               </h2>
             )}
-            {displayStyle === "grid" ? (
+            {nothingPlanned ? (
+              <p className="text-sm text-muted-foreground">
+                {horizon === "today"
+                  ? "Ingen middag planlagt i dag."
+                  : `Ingen middager planlagt for ${SHOPPING_HORIZON_LABELS[horizon].toLowerCase()}.`}
+              </p>
+            ) : displayStyle === "grid" ? (
               viewMode === "alphabetical" ? (
                 <div className="grid grid-cols-4 gap-1.5">
                   {renderAlphabeticalGrid(displayedItems)}
@@ -1669,7 +1607,7 @@ export default function ShoppingListPage() {
               />
             )}
           </section>
-          {!showPantryWithIngredients ? (
+          {!showPantryWithIngredients && !nothingPlanned ? (
             <section
               className={
                 compact
@@ -1680,7 +1618,7 @@ export default function ShoppingListPage() {
               <h2 className="text-sm font-semibold mb-2">Basisvarer</h2>
               {pantryItems.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  Ingen basisvarer i ukesplanen.
+                  Ingen basisvarer for valgte dager.
                 </p>
               ) : displayStyle === "grid" ? (
                 viewMode === "alphabetical" ? (

@@ -1,20 +1,24 @@
 import {
   SHOPPING_DISPLAY_STYLES,
   SHOPPING_VIEW_MODES,
+  isShoppingHorizon,
   type ShoppingDisplayStyle,
+  type ShoppingHorizon,
   type ShoppingViewMode,
 } from "./shopping";
 
-const STORAGE_KEY = "meal-planner.shopping-list.session";
+// v2: the day window is a horizon from today plus individually hidden days,
+// replacing the start day / next week / visible days of the first version.
+const STORAGE_KEY = "meal-planner.shopping-list.session.v2";
 export const SHOPPING_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 
 export type ShoppingSessionState = {
   viewMode: ShoppingViewMode;
   displayStyle: ShoppingDisplayStyle;
-  startDay: number;
-  includeNextWeek: boolean;
+  horizon: ShoppingHorizon;
   showPantryWithIngredients: boolean;
-  visibleDayKeys: string[];
+  /** Days ("weekStartISO::dayIndex") left out of this shopping trip. */
+  hiddenDayKeys: string[];
   selectedStoreId: string | null;
 };
 
@@ -86,18 +90,17 @@ export function readShoppingSession(): ShoppingSessionState | null {
       return null;
     }
 
-    const startDay = Math.min(
-      6,
-      Math.max(0, Number.isInteger(parsed.startDay) ? Number(parsed.startDay) : 0),
-    );
+    if (!isShoppingHorizon(parsed.horizon)) {
+      clearStorage();
+      return null;
+    }
 
     return {
       viewMode: parsed.viewMode,
       displayStyle: parsed.displayStyle,
-      startDay,
-      includeNextWeek: Boolean(parsed.includeNextWeek),
+      horizon: parsed.horizon,
       showPantryWithIngredients: Boolean(parsed.showPantryWithIngredients),
-      visibleDayKeys: sanitizeDayKeys(parsed.visibleDayKeys),
+      hiddenDayKeys: sanitizeDayKeys(parsed.hiddenDayKeys),
       selectedStoreId:
         typeof parsed.selectedStoreId === "string" ? parsed.selectedStoreId : null,
     };

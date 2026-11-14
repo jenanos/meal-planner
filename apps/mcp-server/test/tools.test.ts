@@ -861,9 +861,8 @@ describe("freezer and settings", () => {
           defaultViewMode: "by-day",
           defaultDisplayStyle: "list",
           startDay: 0,
-          includeNextWeek: false,
+          shoppingHorizon: "three-days",
           showPantryWithIngredients: false,
-          visibleDayIndices: [0, 1, 2, 3, 4],
           defaultStoreId: "standard",
         },
         stores: [
@@ -886,11 +885,10 @@ describe("freezer and settings", () => {
         defaultViewMode: "by-category",
         defaultDisplayStyle: "list",
         startDay: 0,
-        includeNextWeek: false,
         showPantryWithIngredients: false,
+        shoppingHorizon: undefined,
         compactShoppingList: undefined,
         plannerTapOpensRecipe: true,
-        visibleDayIndices: [0, 1, 2, 3, 4],
         defaultStoreId: storeId,
       },
     ]);

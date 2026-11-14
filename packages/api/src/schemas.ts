@@ -28,6 +28,17 @@ export type ShoppingViewMode = z.infer<typeof ShoppingViewMode>;
 export const ShoppingDisplayStyle = z.enum(["list", "grid"]);
 export type ShoppingDisplayStyle = z.infer<typeof ShoppingDisplayStyle>;
 
+// How far ahead of today the shopping list reaches. "rest-of-week" runs
+// through Sunday; the others count days including today.
+export const ShoppingHorizon = z.enum([
+  "today",
+  "three-days",
+  "rest-of-week",
+  "seven-days",
+  "fourteen-days",
+]);
+export type ShoppingHorizon = z.infer<typeof ShoppingHorizon>;
+
 export const IngredientCreate = z.object({
   name: z.string().min(1),
   unit: z.string().min(1).optional(),
@@ -175,15 +186,12 @@ export type ExtraShoppingRemove = z.infer<typeof ExtraShoppingRemove>;
 export const UserPreferenceUpdate = z.object({
   defaultViewMode: ShoppingViewMode,
   defaultDisplayStyle: ShoppingDisplayStyle,
+  // First weekday shown in the week planner (0 = Monday).
   startDay: z.number().int().min(0).max(6),
-  includeNextWeek: z.boolean(),
+  shoppingHorizon: ShoppingHorizon.optional(),
   showPantryWithIngredients: z.boolean(),
   compactShoppingList: z.boolean().optional(),
   plannerTapOpensRecipe: z.boolean().optional(),
-  visibleDayIndices: z
-    .array(z.number().int().min(0).max(6))
-    .min(1)
-    .max(7),
   defaultStoreId: z.string().uuid().nullable().optional(),
 });
 export type UserPreferenceUpdate = z.infer<typeof UserPreferenceUpdate>;

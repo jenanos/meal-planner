@@ -42,7 +42,6 @@ const INGREDIENT_CATEGORY_KEYS = [
 ] as const;
 type IngredientCategoryKey = (typeof INGREDIENT_CATEGORY_KEYS)[number];
 
-const DEFAULT_VISIBLE_DAY_INDICES = [0, 1, 2, 3, 4, 5, 6] as const;
 
 const STANDARD_STORE_NAME = "Standard butikk";
 const STANDARD_STORE_CATEGORY_ORDER: IngredientCategoryKey[] = [
@@ -176,19 +175,29 @@ function toDbDisplayStyle(style: string | null | undefined) {
   return "LIST";
 }
 
-function sanitizeVisibleDayIndices(indices: number[] | null | undefined) {
-  const source = Array.isArray(indices) ? indices : [];
-  const uniqueSorted = Array.from(
-    new Set(
-      source
-        .filter((value) => Number.isInteger(value))
-        .map((value) => Math.min(6, Math.max(0, Number(value)))),
-    ),
-  ).sort((a, b) => a - b);
-  if (!uniqueSorted.length) {
-    return [...DEFAULT_VISIBLE_DAY_INDICES];
-  }
-  return uniqueSorted;
+const HORIZON_CLIENT_TO_DB = {
+  today: "TODAY",
+  "three-days": "THREE_DAYS",
+  "rest-of-week": "REST_OF_WEEK",
+  "seven-days": "SEVEN_DAYS",
+  "fourteen-days": "FOURTEEN_DAYS",
+} as const;
+
+type ClientShoppingHorizon = keyof typeof HORIZON_CLIENT_TO_DB;
+
+const DEFAULT_SHOPPING_HORIZON: ClientShoppingHorizon = "seven-days";
+
+function toClientShoppingHorizon(
+  horizon: string | null | undefined,
+): ClientShoppingHorizon {
+  const match = (
+    Object.keys(HORIZON_CLIENT_TO_DB) as ClientShoppingHorizon[]
+  ).find((key) => HORIZON_CLIENT_TO_DB[key] === horizon);
+  return match ?? DEFAULT_SHOPPING_HORIZON;
+}
+
+function toDbShoppingHorizon(horizon: ClientShoppingHorizon | undefined) {
+  return horizon ? HORIZON_CLIENT_TO_DB[horizon] : undefined;
 }
 
 function toNumber(value: any): number | null {
@@ -473,11 +482,10 @@ function serializeUserPreference(
     defaultViewMode: string | null;
     defaultDisplayStyle?: string | null;
     startDay: number;
-    includeNextWeek: boolean;
+    shoppingHorizon?: string | null;
     showPantryWithIngredients: boolean;
     compactShoppingList?: boolean | null;
     plannerTapOpensRecipe?: boolean | null;
-    visibleDayIndices: number[];
     defaultStoreId: string | null;
   },
   fallbackStoreId: string | null,
@@ -486,13 +494,12 @@ function serializeUserPreference(
     defaultViewMode: toClientViewMode(preference.defaultViewMode),
     defaultDisplayStyle: toClientDisplayStyle(preference.defaultDisplayStyle),
     startDay: Math.min(6, Math.max(0, Number(preference.startDay ?? 0))),
-    includeNextWeek: Boolean(preference.includeNextWeek),
+    shoppingHorizon: toClientShoppingHorizon(preference.shoppingHorizon),
     showPantryWithIngredients: Boolean(
       preference.showPantryWithIngredients,
     ),
     compactShoppingList: Boolean(preference.compactShoppingList),
     plannerTapOpensRecipe: Boolean(preference.plannerTapOpensRecipe),
-    visibleDayIndices: sanitizeVisibleDayIndices(preference.visibleDayIndices),
     defaultStoreId: preference.defaultStoreId ?? fallbackStoreId,
   };
 }
@@ -1276,11 +1283,10 @@ export const plannerRouter = router({
             defaultViewMode: "by-day" as const,
             defaultDisplayStyle: "list" as const,
             startDay: 0,
-            includeNextWeek: false,
+            shoppingHorizon: DEFAULT_SHOPPING_HORIZON,
             showPantryWithIngredients: false,
             compactShoppingList: false,
             plannerTapOpensRecipe: false,
-            visibleDayIndices: [...DEFAULT_VISIBLE_DAY_INDICES],
             defaultStoreId: fallbackStoreId,
           };
 
@@ -1309,9 +1315,7 @@ export const plannerRouter = router({
         defaultStoreId = store.id;
       }
 
-      const visibleDayIndices = sanitizeVisibleDayIndices(
-        input.visibleDayIndices,
-      );
+      const shoppingHorizon = toDbShoppingHorizon(input.shoppingHorizon);
 
       const updated = await prisma.userPreference.upsert({
         where: { userId },
@@ -1320,23 +1324,21 @@ export const plannerRouter = router({
           defaultViewMode: toDbViewMode(input.defaultViewMode) as any,
           defaultDisplayStyle: toDbDisplayStyle(input.defaultDisplayStyle) as any,
           startDay: input.startDay,
-          includeNextWeek: input.includeNextWeek,
+          shoppingHorizon,
           showPantryWithIngredients: input.showPantryWithIngredients,
           compactShoppingList: input.compactShoppingList ?? false,
           plannerTapOpensRecipe: input.plannerTapOpensRecipe ?? false,
-          visibleDayIndices,
           defaultStoreId,
         },
         update: {
           defaultViewMode: toDbViewMode(input.defaultViewMode) as any,
           defaultDisplayStyle: toDbDisplayStyle(input.defaultDisplayStyle) as any,
           startDay: input.startDay,
-          includeNextWeek: input.includeNextWeek,
           showPantryWithIngredients: input.showPantryWithIngredients,
           // Optional so older clients that omit them leave the stored value alone.
+          shoppingHorizon,
           compactShoppingList: input.compactShoppingList,
           plannerTapOpensRecipe: input.plannerTapOpensRecipe,
-          visibleDayIndices,
           defaultStoreId,
         },
       });
