@@ -80,7 +80,17 @@ export function isRetryableError(error: unknown) {
   return status >= 500 || status === 408 || status === 429;
 }
 
-const STORAGE_KEY = "meal-planner.shopping-list.outbox";
+const STORAGE_PREFIX = "meal-planner.shopping-list.outbox";
+// The first version kept one queue per browser, whoever was signed in.
+const LEGACY_STORAGE_KEY = STORAGE_PREFIX;
+
+/**
+ * The queue is kept per signed-in user, so changes left unsent by one account
+ * are never replayed into another account's household on a shared browser.
+ */
+function storageKey(userId: string) {
+  return `${STORAGE_PREFIX}.${userId}`;
+}
 const MAX_STORED_OPS = 500;
 
 function isStoredOp(value: unknown): value is QueuedShoppingOp {
@@ -106,11 +116,12 @@ function isStoredOp(value: unknown): value is QueuedShoppingOp {
   return false;
 }
 
-/** Unsent changes left over from an earlier visit. */
-export function readStoredOps(): QueuedShoppingOp[] {
+/** Unsent changes this user left over from an earlier visit. */
+export function readStoredOps(userId: string): QueuedShoppingOp[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+    const raw = window.localStorage.getItem(storageKey(userId));
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -121,14 +132,17 @@ export function readStoredOps(): QueuedShoppingOp[] {
 }
 
 /** Only unsent changes are kept; acknowledged ones are already on the server. */
-export function writeStoredOps(ops: readonly QueuedShoppingOp[]) {
+export function writeStoredOps(
+  userId: string,
+  ops: readonly QueuedShoppingOp[],
+) {
   if (typeof window === "undefined") return;
   try {
     const unsent = ops.filter((op) => !op.acked).slice(-MAX_STORED_OPS);
     if (unsent.length === 0) {
-      window.localStorage.removeItem(STORAGE_KEY);
+      window.localStorage.removeItem(storageKey(userId));
     } else {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(unsent));
+      window.localStorage.setItem(storageKey(userId), JSON.stringify(unsent));
     }
   } catch {
     // Ignore quota errors etc.

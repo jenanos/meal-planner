@@ -30,6 +30,7 @@ const { prismaMock } = vi.hoisted(() => {
       findMany: vi.fn(),
     },
     $queryRaw: vi.fn(),
+    $executeRaw: vi.fn(),
     $transaction: vi.fn(),
   },
   };
@@ -459,6 +460,30 @@ describe("planner.updateShoppingItem", () => {
       },
       update: state,
     });
+  });
+
+  it("takes a lock on the item before reading its checked days", async () => {
+    const order: string[] = [];
+    prismaMock.$executeRaw.mockImplementation(async () => {
+      order.push("lock");
+    });
+    prismaMock.shoppingState.findUnique.mockImplementation(async () => {
+      order.push("read");
+      return null;
+    });
+
+    await createCaller().updateShoppingItem({
+      ingredientId: LOK_ID,
+      unit: "stk",
+      occurrences: [{ weekStart: WEEK_ISO, dayIndex: 1 }],
+      checked: true,
+    });
+
+    expect(order).toEqual(["lock", "read"]);
+    const lockKey = prismaMock.$executeRaw.mock.calls[0]?.[0]?.values?.[0];
+    expect(lockKey).toBe(
+      `shopping-state:${HOUSEHOLD_ID}:${WEEK_ISO}:${LOK_ID}:stk`,
+    );
   });
 
   it("adds to days that are already checked", async () => {

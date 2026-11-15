@@ -1829,6 +1829,12 @@ export const plannerRouter = router({
       // checks or clears every day in it.
       await prisma.$transaction(async (tx) => {
         for (const { week, dayIndices } of weekEntries) {
+          // Two shoppers checking different days of the same item at once
+          // would otherwise both start from the same set and one day would
+          // be lost; the lock makes them take turns.
+          await tx.$executeRaw(
+            Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`shopping-state:${householdId}:${week.toISOString()}:${input.ingredientId}:${unitKey}`}, 0))`,
+          );
           const where = {
             weekStart_ingredientId_unit_householdId: {
               weekStart: week,

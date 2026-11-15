@@ -52,6 +52,7 @@ import {
 } from "../../lib/shopping-window";
 import { occurrenceKey, type ShoppingOp } from "../../lib/shopping-outbox";
 import { useShoppingOutbox } from "./use-shopping-outbox";
+import { useAuth } from "../components/AuthGuard";
 import {
   readShoppingSession,
   writeShoppingSession,
@@ -239,6 +240,7 @@ export default function ShoppingListPage() {
 
   // Whole weeks are fetched (the current one plus as many as the horizon
   // reaches into); the day window below narrows them down to the days shown.
+  const { user } = useAuth();
   const utils = trpc.useUtils();
   const shoppingListInput = useMemo(
     () =>
@@ -253,6 +255,7 @@ export default function ShoppingListPage() {
   // while the connection is down. The list is reloaded once the queue is empty.
   const outboxRef = useRef({ reload: async () => undefined as unknown });
   const outbox = useShoppingOutbox({
+    userId: user?.id ?? null,
     send: (op: ShoppingOp) =>
       op.kind === "item"
         ? utils.client.planner.updateShoppingItem.mutate({

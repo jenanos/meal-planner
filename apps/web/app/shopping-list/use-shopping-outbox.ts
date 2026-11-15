@@ -15,6 +15,11 @@ const RETRY_DELAY_MS = 5_000;
 const RELOAD_DELAY_MS = 800;
 
 type Options = {
+  /**
+   * The signed-in user, whose unsent changes are kept across visits. Nothing
+   * is stored or restored while this is null.
+   */
+  userId: string | null;
   /** Sends one change to the server; rejects if it did not get through. */
   send: (_op: ShoppingOp) => Promise<unknown>;
   /** Drops any list request in flight, whose answer would predate a change. */
@@ -29,7 +34,12 @@ let nextOpId = 0;
  * Queues check marks, shows them immediately and sends them in order,
  * retrying while the connection is down.
  */
-export function useShoppingOutbox({ send, cancelReload, reload }: Options) {
+export function useShoppingOutbox({
+  userId,
+  send,
+  cancelReload,
+  reload,
+}: Options) {
   const [ops, setOpsState] = useState<QueuedShoppingOp[]>([]);
   const [waitingForNetwork, setWaitingForNetwork] = useState(false);
   const [rejectedCount, setRejectedCount] = useState(0);
@@ -40,16 +50,18 @@ export function useShoppingOutbox({ send, cancelReload, reload }: Options) {
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const callbacksRef = useRef({ send, cancelReload, reload });
   callbacksRef.current = { send, cancelReload, reload };
+  const userIdRef = useRef(userId);
+  userIdRef.current = userId;
 
   const setOps = useCallback((next: QueuedShoppingOp[]) => {
     opsRef.current = next;
-    writeStoredOps(next);
+    if (userIdRef.current) writeStoredOps(userIdRef.current, next);
     setOpsState(next);
   }, []);
 
   // Once everything is sent, reload the list and only then stop showing the
   // acknowledged changes on top of it.
-  const scheduleReload = useCallback(() => {
+  const scheduleReload = useCallback((delay: number = RELOAD_DELAY_MS) => {
     if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
     reloadTimerRef.current = setTimeout(async () => {
       reloadTimerRef.current = null;
@@ -58,13 +70,16 @@ export function useShoppingOutbox({ send, cancelReload, reload }: Options) {
       try {
         await callbacksRef.current.reload();
       } catch {
+        // Keep trying: until a reload gets through, the acknowledged changes
+        // stay on top of the list and would hide what others change.
+        scheduleReload(RETRY_DELAY_MS);
         return;
       }
       // A change made while reloading cancelled that request; keep everything
       // until the reload that follows it.
       if (opsRef.current.some((op) => !op.acked)) return;
       setOps(opsRef.current.filter((op) => !covered.has(op.id)));
-    }, RELOAD_DELAY_MS);
+    }, delay);
   }, [setOps]);
 
   const flush = useCallback(async () => {
@@ -128,10 +143,15 @@ export function useShoppingOutbox({ send, cancelReload, reload }: Options) {
   // Pick up changes that never got through on an earlier visit, and retry as
   // soon as the connection is back.
   useEffect(() => {
-    const stored = readStoredOps();
-    if (stored.length > 0) {
-      setOps([...stored, ...opsRef.current]);
-      void flush();
+    if (userId) {
+      const stored = readStoredOps(userId);
+      if (stored.length > 0) {
+        setOps([...stored, ...opsRef.current]);
+        void flush();
+      } else if (opsRef.current.length > 0) {
+        // Changes made before the user was known get stored now.
+        writeStoredOps(userId, opsRef.current);
+      }
     }
     const retry = () => void flush();
     window.addEventListener("online", retry);
@@ -140,7 +160,7 @@ export function useShoppingOutbox({ send, cancelReload, reload }: Options) {
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
       if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
     };
-  }, [flush, setOps]);
+  }, [flush, setOps, userId]);
 
   const itemChecked = useMemo(() => itemOverlay(ops), [ops]);
   const extraChecked = useMemo(() => extraOverlay(ops), [ops]);
