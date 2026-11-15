@@ -46,7 +46,21 @@ import {
 } from "./utils";
 import { DisplayOptions } from "./components/DisplayOptions";
 import { addWeeksISO, addDays } from "../../lib/week";
-import { Button } from "@repo/ui";
+import {
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@repo/ui";
+import { ChevronDown } from "lucide-react";
+import { MS_PER_DAY } from "../../lib/week";
+import { localTodayMs } from "../../lib/shopping-window";
+import {
+  daysToKeep,
+  type GenerateMode,
+  type PlannedDayKind,
+} from "../../lib/planner-generate";
 
 // Custom drop animation for smoother feel
 const dropAnimationConfig: DropAnimation = {
@@ -195,6 +209,8 @@ export default function PlannerPage() {
     setEveryday,
     health,
     setHealth,
+    servings,
+    setServings,
     desc,
     setDesc,
     ingSearch,
@@ -348,16 +364,116 @@ export default function PlannerPage() {
     [activeWeekStart, nextWeekStart],
   );
 
-  const handleGenerate = useCallback(async () => {
-    try {
-      const result = await generateWeekMutation.mutateAsync({
-        weekStart: activeWeekStart,
+  // Days the user has locked, as "weekStart::dayIndex". Locks only matter for
+  // the next "Nye forslag", so they live for the visit.
+  const [lockedDays, setLockedDays] = useState<Set<string>>(new Set());
+  const handleToggleLock = useCallback(
+    (dayIndex: number, weekOffset: number = 0) => {
+      const key = `${weekOffset === 1 ? nextWeekStart : activeWeekStart}::${dayIndex}`;
+      setLockedDays((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
       });
-      applyWeekData(result);
-    } catch (error) {
-      console.error("Failed to generate week plan:", error);
-    }
-  }, [activeWeekStart, generateWeekMutation, applyWeekData]);
+    },
+    [activeWeekStart, nextWeekStart],
+  );
+
+  // Today as UTC midnight of the local date, the way week days are keyed.
+  const todayMs = useMemo(() => localTodayMs(), []);
+  const activeWeekStartMs = useMemo(
+    () => new Date(activeWeekStart).getTime(),
+    [activeWeekStart],
+  );
+  const todayIndexInActiveWeek = Math.round(
+    (todayMs - activeWeekStartMs) / MS_PER_DAY,
+  );
+
+  // With a start day other than Monday the plan on screen spans two calendar
+  // weeks: the active week from the start day on, and the next week up to it.
+  // Generating covers exactly the days on screen, so each week also keeps the
+  // days that are not shown.
+  const keepDaysFor = useCallback(
+    (mode: GenerateMode, weekOffset: 0 | 1 = 0) => {
+      const source = weekOffset === 1 ? nextWeek : week;
+      const weekStart = weekOffset === 1 ? nextWeekStart : activeWeekStart;
+      const kinds = source.map<PlannedDayKind>(
+        (entry) => entry?.type ?? "EMPTY",
+      );
+      const locked = new Set<number>();
+      for (let day = 0; day < 7; day += 1) {
+        if (lockedDays.has(`${weekStart}::${day}`)) locked.add(day);
+      }
+      const keep = new Set(
+        daysToKeep(
+          mode,
+          kinds,
+          todayIndexInActiveWeek - weekOffset * 7,
+          locked,
+        ),
+      );
+      for (let day = 0; day < 7; day += 1) {
+        const onScreen = weekOffset === 1 ? day < startDay : day >= startDay;
+        if (!onScreen) keep.add(day);
+      }
+      return Array.from(keep).sort((a, b) => a - b);
+    },
+    [
+      week,
+      nextWeek,
+      lockedDays,
+      activeWeekStart,
+      nextWeekStart,
+      todayIndexInActiveWeek,
+      startDay,
+    ],
+  );
+  const spansNextWeek = startDay > 0;
+  const planLoaded =
+    weekPlanQuery.data !== undefined &&
+    (!spansNextWeek || nextWeekPlanQuery.data !== undefined);
+  const hasOpenDays = (mode: GenerateMode) =>
+    keepDaysFor(mode, 0).length < 7 ||
+    (spansNextWeek && keepDaysFor(mode, 1).length < 7);
+  const canFill = hasOpenDays("fill");
+  const canRefresh = hasOpenDays("refresh");
+
+  const handleGenerate = useCallback(
+    async (mode: GenerateMode) => {
+      try {
+        const keepActive = keepDaysFor(mode, 0);
+        if (keepActive.length < 7) {
+          applyWeekData(
+            await generateWeekMutation.mutateAsync({
+              weekStart: activeWeekStart,
+              keepDays: keepActive,
+            }),
+          );
+        }
+        const keepNext = spansNextWeek ? keepDaysFor(mode, 1) : null;
+        if (keepNext && keepNext.length < 7) {
+          applyNextWeekData(
+            await generateWeekMutation.mutateAsync({
+              weekStart: nextWeekStart,
+              keepDays: keepNext,
+            }),
+          );
+        }
+      } catch (error) {
+        console.error("Failed to generate week plan:", error);
+      }
+    },
+    [
+      activeWeekStart,
+      nextWeekStart,
+      spansNextWeek,
+      generateWeekMutation,
+      applyWeekData,
+      applyNextWeekData,
+      keepDaysFor,
+    ],
+  );
 
   const handleDragStart = useCallback(
     (event: any) => {
@@ -652,15 +768,40 @@ export default function PlannerPage() {
       const date = new Date(baseDate);
       date.setDate(date.getDate() + dateOffset);
 
+      const dateMs = activeWeekStartMs + dateOffset * MS_PER_DAY;
+      const lockWeek = isNextWeek ? nextWeekStart : activeWeekStart;
+
       return {
         entry,
         realIdx,
         weekOffset: isNextWeek ? 1 : 0,
         dayName: dayNames[i],
         dateLabel: dateFormatter.format(date),
+        isToday: dateMs === todayMs,
+        isPast: dateMs < todayMs,
+        isLocked: lockedDays.has(`${lockWeek}::${realIdx}`),
       };
     });
-  }, [displayWeek, displayNextWeek, startDay, dayNames, activeWeekStart, dateFormatter]);
+  }, [displayWeek, displayNextWeek, startDay, dayNames, activeWeekStart, activeWeekStartMs, nextWeekStart, todayMs, lockedDays, dateFormatter]);
+
+  // The separate "next week" row shown below a Monday-first week.
+  const nextWeekItems = useMemo(
+    () =>
+      displayNextWeek.map((entry, i) => {
+        const dateMs = activeWeekStartMs + (7 + i) * MS_PER_DAY;
+        return {
+          entry,
+          realIdx: i,
+          weekOffset: 1,
+          dayName: ALL_DAY_NAMES[i],
+          dateLabel: dateFormatter.format(addDays(new Date(nextWeekStart), i)),
+          isToday: dateMs === todayMs,
+          isPast: dateMs < todayMs,
+          isLocked: lockedDays.has(`${nextWeekStart}::${i}`),
+        };
+      }),
+    [displayNextWeek, activeWeekStartMs, nextWeekStart, todayMs, lockedDays, dateFormatter],
+  );
 
   const activeDragRecipe = useMemo(() => {
     if (!activeDragPayload) return null;
@@ -717,15 +858,46 @@ export default function PlannerPage() {
           onShowNextWeekChange={setShowNextWeek}
         />
         <div className="w-full justify-self-end sm:w-auto sm:justify-self-end sm:ml-auto">
-          <Button
-            type="button"
-            size="sm"
-            className="w-full sm:w-auto bg-emerald-500 text-white hover:bg-emerald-600 focus-visible:ring-emerald-600"
-            onClick={handleGenerate}
-            disabled={generateWeekMutation.isPending}
-          >
-            {generateWeekMutation.isPending ? "Genererer…" : "Generer ukesplan"}
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                size="sm"
+                className="w-full sm:w-auto gap-2 bg-emerald-500 text-white hover:bg-emerald-600 focus-visible:ring-emerald-600"
+                // Not before the plan has loaded: what to keep is decided
+                // from the days on screen.
+                disabled={generateWeekMutation.isPending || !planLoaded}
+              >
+                {generateWeekMutation.isPending
+                  ? "Genererer…"
+                  : "Generer ukesplan"}
+                <ChevronDown className="h-4 w-4 opacity-80" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuItem
+                disabled={!canFill}
+                onSelect={() => void handleGenerate("fill")}
+                className="flex-col items-start gap-0.5"
+              >
+                <span className="font-medium">Fyll tomme dager</span>
+                <span className="text-xs text-muted-foreground">
+                  Beholder alt som er planlagt
+                </span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={!canRefresh}
+                onSelect={() => void handleGenerate("refresh")}
+                className="flex-col items-start gap-0.5"
+              >
+                <span className="font-medium">Nye forslag</span>
+                <span className="text-xs text-muted-foreground">
+                  Bytter middagene fra i dag. Låste dager, takeaway og
+                  frysermiddager beholdes
+                </span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -753,6 +925,8 @@ export default function PlannerPage() {
         onEverydayChange={setEveryday}
         health={health}
         onHealthChange={setHealth}
+        servings={servings}
+        onServingsChange={setServings}
         desc={desc}
         onDescChange={setDesc}
         ingSearch={ingSearch}
@@ -800,6 +974,7 @@ export default function PlannerPage() {
             onSetTakeaway={handleSetTakeaway}
             onClearEntry={handleClearEntry}
             onRecipeClick={handleRecipeClick}
+            onToggleLock={handleToggleLock}
             tapOpensRecipe={tapOpensRecipe}
           />
 
@@ -809,18 +984,12 @@ export default function PlannerPage() {
                 Neste uke
               </div>
               <MobileEditor
-                items={displayNextWeek.map((entry, i) => ({
-                  entry,
-                  realIdx: i,
-                  weekOffset: 1,
-                  dayName: ALL_DAY_NAMES[i],
-                  // Calculate date for next week items (static view for next week only)
-                  dateLabel: dateFormatter.format(addDays(new Date(nextWeekStart), i))
-                }))}
+                items={nextWeekItems}
                 onRequestChange={handleRequestChange}
                 onSetTakeaway={handleSetTakeaway}
                 onClearEntry={handleClearEntry}
                 onRecipeClick={handleRecipeClick}
+                onToggleLock={handleToggleLock}
                 tapOpensRecipe={tapOpensRecipe}
               />
             </>
@@ -913,6 +1082,10 @@ export default function PlannerPage() {
                 onRecipeClick={handleRecipeClick}
                 onSetTakeaway={() => handleSetTakeaway(item.realIdx, item.weekOffset)}
                 onClearEntry={() => handleClearEntry(item.realIdx, item.weekOffset)}
+                isToday={item.isToday}
+                isPast={item.isPast}
+                isLocked={item.isLocked}
+                onToggleLock={(idx) => handleToggleLock(idx, item.weekOffset)}
               />
             ))}
           </div>
@@ -923,17 +1096,21 @@ export default function PlannerPage() {
                 Neste uke
               </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 auto-rows-fr">
-                {displayNextWeek.map((entry, i) => (
+                {nextWeekItems.map((item) => (
                   <WeekSlot
-                    key={`w1-${i}`}
-                    index={i}
-                    dayName={ALL_DAY_NAMES[i]}
-                    dateLabel={dateFormatter.format(addDays(new Date(nextWeekStart), i))}
-                    entry={entry}
+                    key={`w1-${item.realIdx}`}
+                    index={item.realIdx}
+                    dayName={item.dayName}
+                    dateLabel={item.dateLabel}
+                    entry={item.entry}
                     weekOffset={1}
                     onRecipeClick={handleRecipeClick}
-                    onSetTakeaway={() => handleSetTakeaway(i, 1)}
-                    onClearEntry={() => handleClearEntry(i, 1)}
+                    onSetTakeaway={() => handleSetTakeaway(item.realIdx, 1)}
+                    onClearEntry={() => handleClearEntry(item.realIdx, 1)}
+                    isToday={item.isToday}
+                    isPast={item.isPast}
+                    isLocked={item.isLocked}
+                    onToggleLock={(idx) => handleToggleLock(idx, 1)}
                   />
                 ))}
               </div>

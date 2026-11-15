@@ -45,7 +45,14 @@ import {
   type ShoppingViewMode,
   type ShoppingDisplayStyle,
 } from "../../lib/shopping";
-import { localTodayMs, resolveShoppingWindow } from "../../lib/shopping-window";
+import {
+  localTodayMs,
+  narrowItemsToDays,
+  resolveShoppingWindow,
+} from "../../lib/shopping-window";
+import { occurrenceKey, type ShoppingOp } from "../../lib/shopping-outbox";
+import { useShoppingOutbox } from "./use-shopping-outbox";
+import { useAuth } from "../components/AuthGuard";
 import {
   readShoppingSession,
   writeShoppingSession,
@@ -53,6 +60,9 @@ import {
 
 const EMPTY_ITEMS: ShoppingListItem[] = [];
 const CHECKED_EXTRAS_WINDOW_MS = 5 * 24 * 60 * 60 * 1000;
+// How often the list is reloaded while open, to pick up what others in the
+// household check off or add.
+const SYNC_INTERVAL_MS = 20_000;
 
 type ShoppingStore = {
   id: string;
@@ -113,9 +123,6 @@ export default function ShoppingListPage() {
   const [activeSettings, setActiveSettings] =
     useState<ShoppingUserSettings>(DEFAULT_USER_SETTINGS);
   const [defaultsHydrated, setDefaultsHydrated] = useState(false);
-  const [checkedByOccurrence, setCheckedByOccurrence] = useState<
-    Record<string, boolean>
-  >({});
   const [removedKeys, setRemovedKeys] = useState<Set<string>>(new Set());
   const [expandedDetailsKeys, setExpandedDetailsKeys] = useState<Set<string>>(
     new Set(),
@@ -233,13 +240,54 @@ export default function ShoppingListPage() {
 
   // Whole weeks are fetched (the current one plus as many as the horizon
   // reaches into); the day window below narrows them down to the days shown.
-  const shoppingQuery = trpc.planner.shoppingList.useQuery(
-    {
-      weekStart: currentWeekStart,
-      lookaheadWeeks: shoppingWindow.lookaheadWeeks,
-    } as any,
-    { placeholderData: (previous: any) => previous },
+  const { user } = useAuth();
+  const utils = trpc.useUtils();
+  const shoppingListInput = useMemo(
+    () =>
+      ({
+        weekStart: currentWeekStart,
+        lookaheadWeeks: shoppingWindow.lookaheadWeeks,
+      }) as any,
+    [currentWeekStart, shoppingWindow.lookaheadWeeks],
   );
+
+  // Check marks go through a queue: shown at once, sent in order, retried
+  // while the connection is down. The list is reloaded once the queue is empty.
+  const outboxRef = useRef({ reload: async () => undefined as unknown });
+  const outbox = useShoppingOutbox({
+    userId: user?.id ?? null,
+    send: (op: ShoppingOp) =>
+      op.kind === "item"
+        ? utils.client.planner.updateShoppingItem.mutate({
+            ingredientId: op.ingredientId,
+            unit: op.unit,
+            occurrences: op.occurrences,
+            checked: op.checked,
+          })
+        : utils.client.planner.extraToggle.mutate({
+            weekStart: op.weekStart,
+            name: op.name,
+            checked: op.checked,
+          } as any),
+    cancelReload: () => {
+      void utils.planner.shoppingList.cancel();
+    },
+    reload: () => outboxRef.current.reload(),
+  });
+
+  // Whole weeks are fetched (the current one plus as many as the horizon
+  // reaches into); the day window below narrows them down to the days shown.
+  // While open, the list is reloaded regularly so changes made by others in
+  // the household show up; not while own changes are still on their way, as
+  // an answer from before they landed would briefly undo them on screen.
+  const shoppingQuery = trpc.planner.shoppingList.useQuery(shoppingListInput, {
+    placeholderData: (previous: any) => previous,
+    refetchInterval: outbox.pendingCount > 0 ? false : SYNC_INTERVAL_MS,
+  });
+  outboxRef.current.reload = async () => {
+    const result = await shoppingQuery.refetch();
+    if (result.isError) throw result.error;
+  };
 
   // Suggest extras based on input
   useEffect(() => {
@@ -259,15 +307,10 @@ export default function ShoppingListPage() {
 
   const packageExpand = trpc.planner.packageExpand.useMutation();
 
-  const includedWeeksSignature = useMemo(
-    () =>
-      (
-        shoppingQuery.data?.includedWeekStarts ??
-        (shoppingQuery.data?.weekStart ? [shoppingQuery.data.weekStart] : [])
-      ).join("|"),
-    [shoppingQuery.data?.includedWeekStarts, shoppingQuery.data?.weekStart],
-  );
-
+  // Own check marks that the loaded list does not reflect yet.
+  const checkedOverlay = outbox.itemChecked;
+  const householdServings =
+    ((shoppingQuery.data as any)?.householdServings as number | null) ?? null;
   const rawItems = shoppingQuery.data?.items ?? EMPTY_ITEMS;
   const plannedDays = (shoppingQuery.data as any)?.plannedDays as
     | {
@@ -282,16 +325,6 @@ export default function ShoppingListPage() {
     }[]
     | undefined;
 
-  useEffect(() => {
-    const next: Record<string, boolean> = {};
-    for (const item of rawItems) {
-      for (const occurrence of item.occurrences ?? []) {
-        const key = getOccurrenceKey(item, occurrence);
-        next[key] = occurrence.checked ?? false;
-      }
-    }
-    setCheckedByOccurrence(next);
-  }, [includedWeeksSignature, rawItems]);
   const extrasAll = ((shoppingQuery.data as any)?.extras ?? []) as Array<{
     id: string;
     name: string;
@@ -315,14 +348,20 @@ export default function ShoppingListPage() {
         hasCategory: boolean;
       }
     >();
-    for (const e of extrasAll) {
+    for (const stored of extrasAll) {
+      // Own changes that the loaded list does not reflect yet.
+      const queued = outbox.extraChecked.get(stored.name);
+      const e =
+        queued === undefined || queued === stored.checked
+          ? stored
+          : { ...stored, checked: queued, updatedAt: new Date().toISOString() };
       const existing = byName.get(e.name);
       if (!existing || (!e.checked && existing.checked)) {
         byName.set(e.name, e);
       }
     }
     return Array.from(byName.values());
-  }, [extrasAll]);
+  }, [extrasAll, outbox.extraChecked]);
   const categorizedExtras = useMemo(() => {
     const cutoff = new Date(Date.now() - CHECKED_EXTRAS_WINDOW_MS);
     return extras.filter(
@@ -352,7 +391,6 @@ export default function ShoppingListPage() {
     [extrasForTopSection],
   );
   const isLoading = shoppingQuery.isLoading;
-  const isFetching = shoppingQuery.isFetching;
 
   // Every planned day in the fetched weeks, oldest first.
   const allDayOptions = useMemo(() => {
@@ -436,38 +474,10 @@ export default function ShoppingListPage() {
 
   // Narrow every item down to the visible days, so quantities and checkmarks
   // in all three views describe exactly what this shopping trip covers.
-  const items = useMemo(() => {
-    const result: ShoppingListItem[] = [];
-    for (const item of rawItems) {
-      const occurrences = (item.occurrences ?? []).filter((occurrence) =>
-        visibleDayKeySet.has(`${occurrence.weekStart}::${occurrence.dayIndex}`),
-      );
-      if (!occurrences.length) continue;
-      const hasQuantity = occurrences.some(
-        (occurrence) => occurrence.quantity != null,
-      );
-      result.push({
-        ...item,
-        occurrences,
-        details: (item.details ?? []).filter((detail) =>
-          visibleDayKeySet.has(`${detail.weekStart}::${detail.dayIndex}`),
-        ),
-        weekStarts: Array.from(
-          new Set(occurrences.map((occurrence) => occurrence.weekStart)),
-        ),
-        totalQuantity: hasQuantity
-          ? occurrences.reduce(
-              (sum, occurrence) => sum + (occurrence.quantity ?? 0),
-              0,
-            )
-          : null,
-        hasMissingQuantities: occurrences.some(
-          (occurrence) => occurrence.hasMissingQuantities,
-        ),
-      });
-    }
-    return result;
-  }, [rawItems, visibleDayKeySet]);
+  const items = useMemo(
+    () => narrowItemsToDays(rawItems, visibleDayKeySet),
+    [rawItems, visibleDayKeySet],
+  );
 
   const rawItemsByKey = useMemo(() => {
     const map = new Map<string, ShoppingListItem>();
@@ -499,9 +509,8 @@ export default function ShoppingListPage() {
       regularItems: [...regularUnchecked, ...regularChecked],
       pantryItems: [...pantryUnchecked, ...pantryChecked],
     };
-  }, [items, checkedByOccurrence, removedKeys]);
+  }, [items, checkedOverlay, removedKeys]);
 
-  const updateShoppingItem = trpc.planner.updateShoppingItem.useMutation();
   const extraToggle = trpc.planner.extraToggle.useMutation();
   const extraRemove = trpc.planner.extraRemove.useMutation();
   const extraAdd = trpc.planner.extraAdd.useMutation();
@@ -510,7 +519,12 @@ export default function ShoppingListPage() {
     item: ShoppingListItem,
     occurrence: ShoppingListOccurrence,
   ) {
-    return `${occurrence.weekStart}::${occurrence.dayIndex}::${item.ingredientId}::${item.unit ?? ""}`;
+    return occurrenceKey(
+      item.ingredientId,
+      item.unit ?? null,
+      occurrence.weekStart,
+      occurrence.dayIndex,
+    );
   }
 
   function isOccurrenceChecked(
@@ -518,7 +532,7 @@ export default function ShoppingListPage() {
     occurrence: ShoppingListOccurrence,
   ) {
     const key = getOccurrenceKey(item, occurrence);
-    return checkedByOccurrence[key] ?? occurrence.checked ?? false;
+    return checkedOverlay.get(key) ?? occurrence.checked ?? false;
   }
 
   function areAllOccurrencesChecked(item: ShoppingListItem) {
@@ -542,6 +556,8 @@ export default function ShoppingListPage() {
     if (!match) return null;
     if (match.dayIndex === occurrence.dayIndex) return null;
     if (occurrence.dayIndex <= match.dayIndex) return null;
+    // Only a reminder on days that still need buying.
+    if (isOccurrenceChecked(item, occurrence)) return null;
     // The day it was bought on may lie outside the visible window.
     const source =
       rawItemsByKey.get(`${item.ingredientId}::${item.unit ?? ""}`) ?? item;
@@ -566,82 +582,45 @@ export default function ShoppingListPage() {
     });
   }
 
-  function toggleAllOccurrences(item: ShoppingListItem) {
-    const occurrences = item.occurrences ?? [];
-    const keys = occurrences.map((occurrence) =>
-      getOccurrenceKey(item, occurrence),
-    );
-    const prevValues = keys.map((key) => checkedByOccurrence[key] ?? false);
-    const nextValue = occurrences.some(
-      (occurrence) => !isOccurrenceChecked(item, occurrence),
-    );
-    setCheckedByOccurrence((prev) => {
-      const next = { ...prev };
-      keys.forEach((key) => {
-        next[key] = nextValue;
-      });
-      return next;
+  function setOccurrencesChecked(
+    item: ShoppingListItem,
+    occurrences: ShoppingListOccurrence[],
+    checked: boolean,
+  ) {
+    if (!occurrences.length) return;
+    outbox.enqueue({
+      kind: "item",
+      ingredientId: item.ingredientId,
+      unit: item.unit ?? null,
+      occurrences: occurrences.map((occurrence) => ({
+        weekStart: occurrence.weekStart,
+        dayIndex: occurrence.dayIndex,
+      })),
+      checked,
     });
-    updateShoppingItem.mutate(
-      {
-        ingredientId: item.ingredientId,
-        unit: item.unit ?? null,
-        occurrences: occurrences.map((occurrence) => ({
-          weekStart: occurrence.weekStart,
-          dayIndex: occurrence.dayIndex,
-        })),
-        checked: nextValue,
-      },
-      {
-        onError: () => {
-          setCheckedByOccurrence((prev) => {
-            const next = { ...prev };
-            keys.forEach((key, index) => {
-              next[key] = prevValues[index];
-            });
-            return next;
-          });
-        },
-        onSuccess: () => {
-          shoppingQuery.refetch().catch(() => undefined);
-        },
-      },
+  }
+
+  /** Checks everything unless it all already is, in which case it unchecks. */
+  function toggleOccurrences(
+    item: ShoppingListItem,
+    occurrences: ShoppingListOccurrence[],
+  ) {
+    setOccurrencesChecked(
+      item,
+      occurrences,
+      occurrences.some((occurrence) => !isOccurrenceChecked(item, occurrence)),
     );
+  }
+
+  function toggleAllOccurrences(item: ShoppingListItem) {
+    toggleOccurrences(item, item.occurrences ?? []);
   }
 
   function toggleSingleOccurrence(
     item: ShoppingListItem,
     occurrence: ShoppingListOccurrence,
   ) {
-    const key = getOccurrenceKey(item, occurrence);
-    const currentValue =
-      checkedByOccurrence[key] ?? occurrence.checked ?? false;
-    const nextValue = !currentValue;
-    setCheckedByOccurrence((prev) => ({
-      ...prev,
-      [key]: nextValue,
-    }));
-    updateShoppingItem.mutate(
-      {
-        ingredientId: item.ingredientId,
-        unit: item.unit ?? null,
-        occurrences: [
-          { weekStart: occurrence.weekStart, dayIndex: occurrence.dayIndex },
-        ],
-        checked: nextValue,
-      },
-      {
-        onError: () => {
-          setCheckedByOccurrence((prev) => ({
-            ...prev,
-            [key]: currentValue,
-          }));
-        },
-        onSuccess: () => {
-          shoppingQuery.refetch().catch(() => undefined);
-        },
-      },
-    );
+    toggleOccurrences(item, [occurrence]);
   }
 
   const buildDaySections = useCallback(
@@ -734,7 +713,7 @@ export default function ShoppingListPage() {
       plannedDays,
       removedKeys,
       visibleDayKeySet,
-      checkedByOccurrence,
+      checkedOverlay,
     ],
   );
 
@@ -754,7 +733,7 @@ export default function ShoppingListPage() {
 
       return [...uncheckedItems, ...checkedItems];
     },
-    [showPantryWithIngredients, regularItems, pantryItems, checkedByOccurrence],
+    [showPantryWithIngredients, regularItems, pantryItems, checkedOverlay],
   );
 
   const daySections = useMemo<ShoppingListDaySection[]>(
@@ -865,7 +844,7 @@ export default function ShoppingListPage() {
         quantityLabel: "Eget element",
         checked: extra.checked,
         onToggle: () => {
-          void toggleExtra(extra.name, extra.checked);
+          toggleExtra(extra.name, extra.checked);
         },
         onRemove: () => {
           void removeExtra(extra.name);
@@ -903,47 +882,7 @@ export default function ShoppingListPage() {
     item: ShoppingListItem,
     occurrences: ShoppingListOccurrence[],
   ) {
-    if (!occurrences.length) return;
-
-    const keys = occurrences.map((occurrence) => getOccurrenceKey(item, occurrence));
-    const prevValues = keys.map((key) => checkedByOccurrence[key] ?? false);
-    const nextValue = occurrences.some(
-      (occurrence) => !isOccurrenceChecked(item, occurrence),
-    );
-
-    setCheckedByOccurrence((prev) => {
-      const next = { ...prev };
-      keys.forEach((key) => {
-        next[key] = nextValue;
-      });
-      return next;
-    });
-
-    updateShoppingItem.mutate(
-      {
-        ingredientId: item.ingredientId,
-        unit: item.unit ?? null,
-        occurrences: occurrences.map((occurrence) => ({
-          weekStart: occurrence.weekStart,
-          dayIndex: occurrence.dayIndex,
-        })),
-        checked: nextValue,
-      },
-      {
-        onError: () => {
-          setCheckedByOccurrence((prev) => {
-            const next = { ...prev };
-            keys.forEach((key, index) => {
-              next[key] = prevValues[index];
-            });
-            return next;
-          });
-        },
-        onSuccess: () => {
-          shoppingQuery.refetch().catch(() => undefined);
-        },
-      },
-    );
+    toggleOccurrences(item, occurrences);
   }
 
   function toggleDayKey(dayKey: string, selected: boolean) {
@@ -961,57 +900,8 @@ export default function ShoppingListPage() {
   function removeItem(item: ShoppingListItem) {
     const key = `${item.ingredientId}::${item.unit ?? ""}`;
     setRemovedKeys((prev) => new Set(prev).add(key));
-    const occurrences = item.occurrences ?? [];
-    const occurrencePayload = occurrences.map((occurrence) => ({
-      weekStart: occurrence.weekStart,
-      dayIndex: occurrence.dayIndex,
-    }));
-    const previousValues = occurrences.map((occurrence) => ({
-      key: getOccurrenceKey(item, occurrence),
-      value: isOccurrenceChecked(item, occurrence),
-    }));
-    if (occurrences.length > 0) {
-      setCheckedByOccurrence((prev) => {
-        const next = { ...prev };
-        previousValues.forEach(({ key: occKey }) => {
-          next[occKey] = true;
-        });
-        return next;
-      });
-    }
-    // Mark as checked for selected occurrences so it's effectively dismissed
-    updateShoppingItem.mutate(
-      {
-        ingredientId: item.ingredientId,
-        unit: item.unit ?? null,
-        occurrences: occurrencePayload.length ? occurrencePayload : undefined,
-        weeks: occurrencePayload.length
-          ? undefined
-          : (item.weekStarts ?? [currentWeekStart]),
-        checked: true,
-      },
-      {
-        onError: () => {
-          setRemovedKeys((prev) => {
-            const copy = new Set(prev);
-            copy.delete(key);
-            return copy;
-          });
-          if (occurrences.length > 0) {
-            setCheckedByOccurrence((prev) => {
-              const next = { ...prev };
-              previousValues.forEach(({ key: occKey, value }) => {
-                next[occKey] = value;
-              });
-              return next;
-            });
-          }
-        },
-        onSuccess: () => {
-          shoppingQuery.refetch().catch(() => undefined);
-        },
-      },
-    );
+    // Mark as checked for the visible days so it's effectively dismissed
+    setOccurrencesChecked(item, item.occurrences ?? [], true);
   }
 
   async function addPackageToList(packageId: string) {
@@ -1049,13 +939,13 @@ export default function ShoppingListPage() {
     shoppingQuery.refetch().catch(() => undefined);
   }
 
-  async function toggleExtra(name: string, checked: boolean) {
-    await extraToggle.mutateAsync({
-      weekStart: currentWeekStart,
+  function toggleExtra(name: string, checked: boolean) {
+    outbox.enqueue({
+      kind: "extra",
       name,
+      weekStart: currentWeekStart,
       checked: !checked,
-    } as any);
-    shoppingQuery.refetch().catch(() => undefined);
+    });
   }
 
   async function removeExtra(name: string) {
@@ -1214,6 +1104,14 @@ export default function ShoppingListPage() {
         showPastDays={showPastDays}
         onShowPastDaysChange={setShowPastDays}
       />
+
+      {householdServings ? (
+        <p className="text-xs text-muted-foreground">
+          Mengdene er tilpasset {householdServings}{" "}
+          {householdServings === 1 ? "porsjon" : "porsjoner"} for oppskrifter
+          som oppgir porsjoner.
+        </p>
+      ) : null}
 
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-row sm:items-center sm:justify-between">
@@ -1374,9 +1272,17 @@ export default function ShoppingListPage() {
           </div>
         </div>
         <div className="flex items-center gap-3 justify-end">
-          {isFetching && (
-            <span className="text-xs text-gray-500">Oppdaterer…</span>
-          )}
+          {outbox.waitingForNetwork && outbox.pendingCount > 0 ? (
+            <span className="text-xs text-amber-700" role="status">
+              {outbox.pendingCount === 1
+                ? "1 endring venter på nett"
+                : `${outbox.pendingCount} endringer venter på nett`}
+            </span>
+          ) : outbox.rejectedCount > 0 ? (
+            <span className="text-xs text-red-600" role="status">
+              Noen endringer kunne ikke lagres
+            </span>
+          ) : null}
         </div>
       </div>
 

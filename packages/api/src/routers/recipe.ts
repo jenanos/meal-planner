@@ -12,6 +12,7 @@ function toDTO(r: any) {
   category: String(r.category) as Category,
     everydayScore: r.everydayScore,
     healthScore: r.healthScore,
+    servings: (r.servings ?? null) as number | null,
     lastUsed: r.lastUsed ?? undefined,
     usageCount: r.usageCount,
     ingredients: (r.ingredients ?? []).map((ri: any) => ({
@@ -107,6 +108,7 @@ export const recipeRouter = router({
       if (fields.category !== undefined) data.category = fields.category;
       if (fields.everydayScore !== undefined) data.everydayScore = fields.everydayScore;
       if (fields.healthScore !== undefined) data.healthScore = fields.healthScore;
+      if (fields.servings !== undefined) data.servings = fields.servings;
 
       if (ingredients !== undefined) {
         data.ingredients = {

@@ -61,6 +61,16 @@ export function registerSettingsTools(ctx: ToolContext) {
           "Hvor langt frem handlelisten viser som standard, regnet fra i dag: " +
             "today, three-days, rest-of-week (til og med søndag), seven-days eller fourteen-days.",
         ),
+        householdServings: z
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .nullable()
+          .optional()
+          .describe(
+            "Antall porsjoner husstanden lager mat til. Oppskrifter som oppgir porsjoner skaleres til dette på handlelisten. Gjelder hele husstanden; null fjerner verdien.",
+          ),
         showPantryWithIngredients: z
           .boolean()
           .optional()
@@ -119,6 +129,7 @@ export function registerSettingsTools(ctx: ToolContext) {
           current.settings.showPantryWithIngredients,
         // Left undefined when not given; the API then keeps the stored value.
         shoppingHorizon: changes.shoppingHorizon,
+        householdServings: changes.householdServings,
         compactShoppingList: changes.compactShoppingList,
         plannerTapOpensRecipe: changes.plannerTapOpensRecipe,
         defaultStoreId: storeId,

@@ -302,7 +302,7 @@ export function registerShoppingTools(ctx: ToolContext) {
           .array(z.string())
           .optional()
           .describe(
-            "Ukene avkryssingen gjelder, som datoer (YYYY-MM-DD) i hver uke.",
+            "Ukene avkryssingen gjelder, som datoer (YYYY-MM-DD) i hver uke. Krysser av (eller fjerner krysset for) alle dagene i uka.",
           ),
         occurrences: z
           .array(
@@ -317,7 +317,9 @@ export function registerShoppingTools(ctx: ToolContext) {
             }),
           )
           .optional()
-          .describe("Enkeltdager avkryssingen gjelder for."),
+          .describe(
+            "Enkeltdager avkryssingen gjelder for. Avkryssing lagres per dag, så andre dager i samme uke blir stående som de er.",
+          ),
         checked: z
           .boolean()
           .describe("true = krysset av, false = ikke krysset av."),

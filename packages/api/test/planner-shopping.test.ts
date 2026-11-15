@@ -10,8 +10,12 @@ const { prismaMock } = vi.hoisted(() => {
       updateMany: vi.fn(),
       findMany: vi.fn(),
     },
+    household: {
+      findUnique: vi.fn(),
+    },
     shoppingState: {
       findMany: vi.fn(),
+      findUnique: vi.fn(),
       upsert: vi.fn(),
     },
     extraShoppingItem: {
@@ -26,6 +30,7 @@ const { prismaMock } = vi.hoisted(() => {
       findMany: vi.fn(),
     },
     $queryRaw: vi.fn(),
+    $executeRaw: vi.fn(),
     $transaction: vi.fn(),
   },
   };
@@ -87,10 +92,16 @@ function makeIngredient(args: {
   };
 }
 
-function makeRecipe(id: string, name: string, ingredients: unknown[]) {
+function makeRecipe(
+  id: string,
+  name: string,
+  ingredients: unknown[],
+  servings: number | null = null,
+) {
   return {
     id,
     name,
+    servings,
     category: "ANNET",
     everydayScore: 3,
     healthScore: 3,
@@ -110,6 +121,7 @@ beforeEach(() => {
   prismaMock.weekIndex.upsert.mockResolvedValue({ id: "week-index-1" });
   prismaMock.weekPlan.updateMany.mockResolvedValue({ count: 0 });
   prismaMock.$queryRaw.mockResolvedValue([]);
+  prismaMock.household.findUnique.mockResolvedValue({ servings: null });
 });
 
 afterEach(() => {
@@ -183,6 +195,7 @@ describe("planner.shoppingList", () => {
         unit: "stk",
         checked: true,
         firstCheckedDayIndex: 0,
+        checkedDayIndices: [0],
       },
     ]);
     prismaMock.extraShoppingItem.findMany.mockResolvedValueOnce([]);
@@ -198,7 +211,8 @@ describe("planner.shoppingList", () => {
       category: "FRUKT_OG_GRONT",
       totalQuantity: 3,
       hasMissingQuantities: false,
-      checked: true,
+      // Only Monday is checked, so the item as a whole is not done.
+      checked: false,
       isPantryItem: false,
     });
     expect(lok?.occurrences).toHaveLength(2);
@@ -209,7 +223,11 @@ describe("planner.shoppingList", () => {
       checked: true,
       weekdayLabel: "Mandag",
     });
-    expect(lok?.occurrences[1]).toMatchObject({ dayIndex: 1, quantity: 2 });
+    expect(lok?.occurrences[1]).toMatchObject({
+      dayIndex: 1,
+      quantity: 2,
+      checked: false,
+    });
     expect(lok?.firstCheckedOccurrences).toEqual([
       { weekStart: WEEK_ISO, dayIndex: 0 },
     ]);
@@ -270,6 +288,89 @@ describe("planner.shoppingList", () => {
     });
   });
 
+  describe("portions", () => {
+    function planWith(servingsByRecipe: [number | null, number | null]) {
+      prismaMock.weekPlan.findMany.mockResolvedValueOnce([
+        {
+          weekStart: WEEK_START,
+          entries: [
+            {
+              dayIndex: 0,
+              entryType: "RECIPE",
+              recipe: makeRecipe(
+                "r1",
+                "Gryte",
+                [
+                  makeIngredient({
+                    ingredientId: KJOTT_ID,
+                    name: "Kjøtt",
+                    unit: "g",
+                    quantity: 400,
+                  }),
+                ],
+                servingsByRecipe[0],
+              ),
+            },
+            {
+              dayIndex: 1,
+              entryType: "RECIPE",
+              recipe: makeRecipe(
+                "r2",
+                "Biff",
+                [
+                  makeIngredient({
+                    ingredientId: KJOTT_ID,
+                    name: "Kjøtt",
+                    unit: "g",
+                    quantity: 300,
+                  }),
+                ],
+                servingsByRecipe[1],
+              ),
+            },
+          ],
+        },
+      ]);
+      prismaMock.shoppingState.findMany.mockResolvedValueOnce([]);
+      prismaMock.extraShoppingItem.findMany.mockResolvedValueOnce([]);
+    }
+
+    it("scales recipes that state their portions to the household's", async () => {
+      prismaMock.household.findUnique.mockResolvedValue({ servings: 2 });
+      // Gryte is written for 4 and gets halved; Biff says nothing and is
+      // used as written.
+      planWith([4, null]);
+
+      const result = await createCaller().shoppingList({ weekStart: WEEK_ISO });
+      const kjott = result.items.find((item) => item.ingredientId === KJOTT_ID);
+
+      expect(result.householdServings).toBe(2);
+      expect(kjott?.occurrences.map((o) => o.quantity)).toEqual([200, 300]);
+      expect(kjott?.totalQuantity).toBe(500);
+      expect(kjott?.details.map((d) => d.quantity)).toEqual([200, 300]);
+    });
+
+    it("rounds scaled quantities to two decimals", async () => {
+      prismaMock.household.findUnique.mockResolvedValue({ servings: 2 });
+      planWith([3, 3]);
+
+      const result = await createCaller().shoppingList({ weekStart: WEEK_ISO });
+      const kjott = result.items.find((item) => item.ingredientId === KJOTT_ID);
+
+      expect(kjott?.occurrences.map((o) => o.quantity)).toEqual([266.67, 200]);
+    });
+
+    it("leaves quantities as written when the household has no portions", async () => {
+      planWith([4, 2]);
+
+      const result = await createCaller().shoppingList({ weekStart: WEEK_ISO });
+      const kjott = result.items.find((item) => item.ingredientId === KJOTT_ID);
+
+      expect(result.householdServings).toBeNull();
+      expect(kjott?.totalQuantity).toBe(700);
+    });
+  });
+
   it("deduplicates extras per catalog item and resolves categories", async () => {
     prismaMock.weekPlan.findMany.mockResolvedValueOnce([]);
     prismaMock.shoppingState.findMany.mockResolvedValueOnce([]);
@@ -312,14 +413,25 @@ describe("planner.shoppingList", () => {
 });
 
 describe("planner.updateShoppingItem", () => {
+  const where = (unit: string) => ({
+    weekStart_ingredientId_unit_householdId: {
+      weekStart: WEEK_START,
+      ingredientId: LOK_ID,
+      unit,
+      householdId: HOUSEHOLD_ID,
+    },
+  });
+
   beforeEach(() => {
-    prismaMock.$transaction.mockImplementation(async (ops: unknown[]) =>
-      Promise.all(ops as Promise<unknown>[]),
+    prismaMock.$transaction.mockImplementation(
+      async (run: (tx: typeof prismaMock) => Promise<unknown>) =>
+        run(prismaMock),
     );
+    prismaMock.shoppingState.findUnique.mockResolvedValue(null);
     prismaMock.shoppingState.upsert.mockResolvedValue({});
   });
 
-  it("checks occurrences and records the earliest checked day", async () => {
+  it("checks only the named days", async () => {
     const result = await createCaller().updateShoppingItem({
       ingredientId: LOK_ID,
       unit: "stk",
@@ -330,30 +442,120 @@ describe("planner.updateShoppingItem", () => {
       checked: true,
     });
 
+    const state = {
+      checked: true,
+      firstCheckedDayIndex: 2,
+      checkedDayIndices: [2, 4],
+    };
     expect(result).toEqual({ ok: true });
     expect(prismaMock.shoppingState.upsert).toHaveBeenCalledTimes(1);
     expect(prismaMock.shoppingState.upsert).toHaveBeenCalledWith({
-      where: {
-        weekStart_ingredientId_unit_householdId: {
-          weekStart: WEEK_START,
-          ingredientId: LOK_ID,
-          unit: "stk",
-          householdId: HOUSEHOLD_ID,
-        },
-      },
+      where: where("stk"),
       create: {
         weekStart: WEEK_START,
         ingredientId: LOK_ID,
         unit: "stk",
-        checked: true,
-        firstCheckedDayIndex: 2,
         householdId: HOUSEHOLD_ID,
+        ...state,
       },
-      update: { checked: true, firstCheckedDayIndex: 2 },
+      update: state,
     });
   });
 
-  it("clears firstCheckedDayIndex when unchecking", async () => {
+  it("takes a lock on the item before reading its checked days", async () => {
+    const order: string[] = [];
+    prismaMock.$executeRaw.mockImplementation(async () => {
+      order.push("lock");
+    });
+    prismaMock.shoppingState.findUnique.mockImplementation(async () => {
+      order.push("read");
+      return null;
+    });
+
+    await createCaller().updateShoppingItem({
+      ingredientId: LOK_ID,
+      unit: "stk",
+      occurrences: [{ weekStart: WEEK_ISO, dayIndex: 1 }],
+      checked: true,
+    });
+
+    expect(order).toEqual(["lock", "read"]);
+    const lockKey = prismaMock.$executeRaw.mock.calls[0]?.[0]?.values?.[0];
+    expect(lockKey).toBe(
+      `shopping-state:${HOUSEHOLD_ID}:${WEEK_ISO}:${LOK_ID}:stk`,
+    );
+  });
+
+  it("adds to days that are already checked", async () => {
+    prismaMock.shoppingState.findUnique.mockResolvedValue({
+      checkedDayIndices: [0, 1],
+    });
+
+    await createCaller().updateShoppingItem({
+      ingredientId: LOK_ID,
+      unit: "stk",
+      occurrences: [{ weekStart: WEEK_ISO, dayIndex: 5 }],
+      checked: true,
+    });
+
+    expect(prismaMock.shoppingState.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: {
+          checked: true,
+          firstCheckedDayIndex: 0,
+          checkedDayIndices: [0, 1, 5],
+        },
+      }),
+    );
+  });
+
+  it("unchecks one day and leaves the others", async () => {
+    prismaMock.shoppingState.findUnique.mockResolvedValue({
+      checkedDayIndices: [0, 1, 5],
+    });
+
+    await createCaller().updateShoppingItem({
+      ingredientId: LOK_ID,
+      unit: "stk",
+      occurrences: [{ weekStart: WEEK_ISO, dayIndex: 0 }],
+      checked: false,
+    });
+
+    expect(prismaMock.shoppingState.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: {
+          checked: true,
+          firstCheckedDayIndex: 1,
+          checkedDayIndices: [1, 5],
+        },
+      }),
+    );
+  });
+
+  it("checks every day when only a week is given", async () => {
+    await createCaller().updateShoppingItem({
+      ingredientId: LOK_ID,
+      unit: "stk",
+      weeks: [WEEK_ISO],
+      checked: true,
+    });
+
+    expect(prismaMock.shoppingState.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: {
+          checked: true,
+          firstCheckedDayIndex: 0,
+          checkedDayIndices: [0, 1, 2, 3, 4, 5, 6],
+        },
+      }),
+    );
+  });
+
+  it("clears every day when unchecking a week", async () => {
+    prismaMock.shoppingState.findUnique.mockResolvedValue({
+      checkedDayIndices: [0, 3],
+    });
+
     await createCaller().updateShoppingItem({
       ingredientId: LOK_ID,
       unit: null,
@@ -361,16 +563,16 @@ describe("planner.updateShoppingItem", () => {
       checked: false,
     });
 
-    expect(prismaMock.shoppingState.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        create: expect.objectContaining({
-          unit: "",
-          checked: false,
-          firstCheckedDayIndex: null,
-        }),
-        update: { checked: false, firstCheckedDayIndex: null },
-      }),
-    );
+    const state = {
+      checked: false,
+      firstCheckedDayIndex: null,
+      checkedDayIndices: [],
+    };
+    expect(prismaMock.shoppingState.upsert).toHaveBeenCalledWith({
+      where: where(""),
+      create: expect.objectContaining({ unit: "", ...state }),
+      update: state,
+    });
   });
 
   it("rejects updates without a target week", async () => {

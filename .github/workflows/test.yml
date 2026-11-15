@@ -37,3 +37,6 @@ jobs:
 
       - name: Run MCP server tests
         run: pnpm --filter mcp-server test
+
+      - name: Run web unit tests
+        run: pnpm --filter web test

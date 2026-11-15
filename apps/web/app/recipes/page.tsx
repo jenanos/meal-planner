@@ -59,6 +59,8 @@ export default function RecipesPage() {
     setEveryday,
     health,
     setHealth,
+    servings,
+    setServings,
     desc,
     setDesc,
     ingSearch,
@@ -148,6 +150,8 @@ export default function RecipesPage() {
           onEverydayChange={setEveryday}
           health={health}
           onHealthChange={setHealth}
+          servings={servings}
+          onServingsChange={setServings}
           desc={desc}
           onDescChange={setDesc}
           ingSearch={ingSearch}

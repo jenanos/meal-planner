@@ -423,6 +423,7 @@ describe("week plan", () => {
         input: {
           weekStart: "2026-11-09T00:00:00.000Z",
           seed: undefined,
+          keepDays: undefined,
           syncFreezer: true,
           constraints: {
             fish: 3,
@@ -887,6 +888,7 @@ describe("freezer and settings", () => {
         startDay: 0,
         showPantryWithIngredients: false,
         shoppingHorizon: undefined,
+        householdServings: undefined,
         compactShoppingList: undefined,
         plannerTapOpensRecipe: true,
         defaultStoreId: storeId,

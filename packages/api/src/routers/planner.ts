@@ -17,6 +17,7 @@ import {
   ShoppingPackageSuggest,
 } from "../schemas.js";
 import {
+  fillWeek,
   generateWeek,
   type MealCategoryKey,
   type PlannedMeal,
@@ -64,6 +65,8 @@ type RecipeDTO = {
   category: MealCategoryKey;
   everydayScore: number;
   healthScore: number;
+  /** Portions the quantities are written for, when the recipe says. */
+  servings: number | null;
   lastUsed: Date | null;
   usageCount: number;
   ingredients: {
@@ -214,6 +217,7 @@ function toDTO(r: any): RecipeDTO {
     category: normalizeDiet(String(r.category)),
     everydayScore: r.everydayScore,
     healthScore: r.healthScore,
+    servings: r.servings ?? null,
     lastUsed: r.lastUsed ?? null,
     usageCount: r.usageCount,
     ingredients: (r.ingredients ?? []).map((ri: any) => ({
@@ -226,6 +230,26 @@ function toDTO(r: any): RecipeDTO {
       category: normalizeIngredientCategory(ri.ingredient.category),
     })),
   };
+}
+
+/**
+ * How much to multiply a recipe's quantities by so they match the portions
+ * the household cooks for. Only known when both sides state their portions;
+ * otherwise quantities are used as written.
+ */
+export function servingsFactor(
+  recipeServings: number | null | undefined,
+  householdServings: number | null | undefined,
+) {
+  if (!recipeServings || !householdServings) return 1;
+  if (recipeServings <= 0 || householdServings <= 0) return 1;
+  return householdServings / recipeServings;
+}
+
+/** Scaled quantities keep the two decimals quantities are stored with. */
+function scaleQuantity(quantity: number | null, factor: number) {
+  if (quantity == null || factor === 1) return quantity;
+  return Math.round(quantity * factor * 100) / 100;
 }
 
 function daysSince(d?: Date | null) {
@@ -970,6 +994,7 @@ export function selectRecipes(
       category,
       everydayScore: 3,
       healthScore: 3,
+      servings: null,
       lastUsed: null,
       usageCount: 0,
       ingredients: [],
@@ -1040,6 +1065,12 @@ const GenerateWeekInput = z.object({
    * that manage the inventory themselves.
    */
   syncFreezer: z.boolean().optional(),
+  /**
+   * Days (0 = Monday) to leave exactly as they are: meals already chosen,
+   * days that have passed. Only the other days are generated, around what
+   * the kept days hold. Omit to replace the whole week.
+   */
+  keepDays: z.array(z.number().int().min(0).max(6)).max(7).optional(),
 });
 
 const dayIndexSchema = z.number().int().min(0).max(6);
@@ -1097,18 +1128,40 @@ export const plannerRouter = router({
         .map((entry) => entry.recipeId)
         .filter((id): id is string => id != null);
 
-      const selected = generateWeek(pool, cfg, {
-        history,
-        avoidRecipeIds,
-        seed: input?.seed,
-      });
-      const days = selected.map((recipe) => ({
-        type: "RECIPE" as const,
-        recipeId: recipe.id,
-      }));
-      const persisted = await changeWeekPlan(weekStart, householdId, () => days, {
-        syncFreezer: input?.syncFreezer ?? false,
-      });
+      const keepDays = new Set(input?.keepDays ?? []);
+      const poolById = new Map(pool.map((recipe) => [recipe.id, recipe]));
+
+      // Generated inside the plan's lock, from the days as they are stored at
+      // that moment, so a kept day can never be overwritten by a stale view.
+      const persisted = await changeWeekPlan(
+        weekStart,
+        householdId,
+        (current) => {
+          const kept = DAYS.map((dayIndex) => {
+            if (!keepDays.has(dayIndex)) return undefined;
+            const entry = current[dayIndex];
+            const recipeId =
+              entry && "recipeId" in entry ? entry.recipeId : undefined;
+            return (recipeId ? poolById.get(recipeId) : undefined) ?? null;
+          });
+          const selected = fillWeek(pool, cfg, kept, {
+            history,
+            avoidRecipeIds,
+            seed: input?.seed,
+          });
+          return DAYS.map((dayIndex) => {
+            if (keepDays.has(dayIndex)) {
+              return current[dayIndex] ?? { type: "EMPTY" as const };
+            }
+            const recipe = selected[dayIndex];
+            if (!recipe) {
+              throw new Error(`Failed to select recipe for day ${dayIndex}`);
+            }
+            return { type: "RECIPE" as const, recipeId: recipe.id };
+          });
+        },
+        { syncFreezer: input?.syncFreezer ?? false },
+      );
 
       const suggestions = buildSuggestionBuckets(pool, []);
 
@@ -1263,13 +1316,17 @@ export const plannerRouter = router({
 
       await ensureDefaultStore(householdId);
 
-      const [preference, stores] = await Promise.all([
+      const [preference, stores, household] = await Promise.all([
         prisma.userPreference.findUnique({
           where: { userId },
         }),
         prisma.shoppingStore.findMany({
           where: { householdId },
           orderBy: [{ isDefault: "desc" }, { name: "asc" }],
+        }),
+        prisma.household.findUnique({
+          where: { id: householdId },
+          select: { servings: true },
         }),
       ]);
 
@@ -1291,7 +1348,9 @@ export const plannerRouter = router({
           };
 
       return {
-        settings,
+        // The household's portions are shared by its members, unlike the
+        // rest, which is each user's own.
+        settings: { ...settings, householdServings: household?.servings ?? null },
         stores: serializedStores,
       };
     }),
@@ -1343,7 +1402,22 @@ export const plannerRouter = router({
         },
       });
 
-      return serializeUserPreference(updated, defaultStoreId);
+      const household =
+        input.householdServings !== undefined
+          ? await prisma.household.update({
+              where: { id: householdId },
+              data: { servings: input.householdServings },
+              select: { servings: true },
+            })
+          : await prisma.household.findUnique({
+              where: { id: householdId },
+              select: { servings: true },
+            });
+
+      return {
+        ...serializeUserPreference(updated, defaultStoreId),
+        householdServings: household?.servings ?? null,
+      };
     }),
 
   createShoppingStore: protectedProcedure
@@ -1407,6 +1481,14 @@ export const plannerRouter = router({
         await ensureWeekIndex(prisma, week, householdId);
       }
 
+      const householdServings =
+        (
+          await prisma.household.findUnique({
+            where: { id: householdId },
+            select: { servings: true },
+          })
+        )?.servings ?? null;
+
       const plans = await prisma.weekPlan.findMany({
         where: { weekStart: { in: weekStarts }, householdId },
         include: {
@@ -1435,16 +1517,11 @@ export const plannerRouter = router({
         },
       });
 
-      const statusMap = new Map<
-        string,
-        { checked: boolean; firstCheckedDayIndex: number | null }
-      >();
+      // Items are checked off per planned day within a week.
+      const statusMap = new Map<string, Set<number>>();
       statuses.forEach((status) => {
         const key = `${status.weekStart.toISOString()}::${status.ingredientId}::${status.unit ?? ""}`;
-        statusMap.set(key, {
-          checked: status.checked,
-          firstCheckedDayIndex: status.firstCheckedDayIndex,
-        });
+        statusMap.set(key, new Set(status.checkedDayIndices ?? []));
       });
 
       type OccurrenceAccumulator = {
@@ -1486,6 +1563,8 @@ export const plannerRouter = router({
           // FREEZER entries have a recipe reference but should not add ingredients to the shopping list
           if (entry.entryType === "FREEZER") continue;
           const recipe = toDTO(entry.recipe);
+          // Recipes that state their portions are scaled to the household's.
+          const factor = servingsFactor(recipe.servings, householdServings);
           for (const ingredient of recipe.ingredients) {
             const unit = ingredient.unit ?? null;
             const key = `${ingredient.ingredientId}::${unit ?? ""}`;
@@ -1509,7 +1588,7 @@ export const plannerRouter = router({
               acc.isPantryItem = true;
             }
             acc.category = normalizeIngredientCategory(ingredient.category);
-            const quantity = ingredient.quantity;
+            const quantity = scaleQuantity(ingredient.quantity, factor);
             if (quantity != null) {
               acc.sumQuantity += quantity;
               acc.hasQuantities = true;
@@ -1592,12 +1671,12 @@ export const plannerRouter = router({
                 occurrence.dayIndex,
               );
               const statusKeyByWeek = `${occurrence.weekStartISO}::${item.ingredientId}::${item.unit ?? ""}`;
-              const statusByWeek = statusMap.get(statusKeyByWeek);
-              const isChecked = statusByWeek?.checked ?? false;
-              if (statusByWeek?.firstCheckedDayIndex != null) {
+              const checkedDays = statusMap.get(statusKeyByWeek);
+              const isChecked = checkedDays?.has(occurrence.dayIndex) ?? false;
+              if (checkedDays && checkedDays.size > 0) {
                 firstCheckedByWeek.set(
                   occurrence.weekStartISO,
-                  statusByWeek.firstCheckedDayIndex,
+                  Math.min(...checkedDays),
                 );
               }
               return {
@@ -1620,13 +1699,16 @@ export const plannerRouter = router({
             occurrenceArray.length > 0
               ? occurrenceArray.every((occurrence) => {
                 const statusKeyByWeek = `${occurrence.weekStartISO}::${item.ingredientId}::${item.unit ?? ""}`;
-                return statusMap.get(statusKeyByWeek)?.checked ?? false;
+                return (
+                  statusMap.get(statusKeyByWeek)?.has(occurrence.dayIndex) ??
+                  false
+                );
               })
               : Array.from(item.weeks.values()).every(
                 (weekIso) =>
-                  statusMap.get(
+                  (statusMap.get(
                     `${weekIso}::${item.ingredientId}::${item.unit ?? ""}`,
-                  )?.checked ?? false,
+                  )?.size ?? 0) > 0,
               );
 
           const firstCheckedOccurrences = Array.from(
@@ -1690,6 +1772,7 @@ export const plannerRouter = router({
       return {
         weekStart: weekStart.toISOString(),
         includedWeekStarts: weekStarts.map((week) => week.toISOString()),
+        householdServings,
         items,
         extras,
         plannedDays,
@@ -1741,46 +1824,60 @@ export const plannerRouter = router({
 
       const weekEntries = Array.from(weekMeta.values());
 
-      await prisma.$transaction(
-        weekEntries.map(({ week, dayIndices }) => {
-          const firstDayIndex =
-            input.checked && dayIndices.length > 0
-              ? Math.min(...dayIndices)
-              : null;
-
-          const updateData: Prisma.ShoppingStateUpdateInput = {
-            checked: input.checked,
+      // Read-modify-write per week inside one transaction: named days are
+      // added to or removed from the checked set, while a week without days
+      // checks or clears every day in it.
+      await prisma.$transaction(async (tx) => {
+        for (const { week, dayIndices } of weekEntries) {
+          // Two shoppers checking different days of the same item at once
+          // would otherwise both start from the same set and one day would
+          // be lost; the lock makes them take turns.
+          await tx.$executeRaw(
+            Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`shopping-state:${householdId}:${week.toISOString()}:${input.ingredientId}:${unitKey}`}, 0))`,
+          );
+          const where = {
+            weekStart_ingredientId_unit_householdId: {
+              weekStart: week,
+              ingredientId: input.ingredientId,
+              unit: unitKey,
+              householdId,
+            },
           };
+          const existing = await tx.shoppingState.findUnique({ where });
+          const days = new Set<number>(existing?.checkedDayIndices ?? []);
 
-          if (input.checked) {
-            if (dayIndices.length > 0) {
-              updateData.firstCheckedDayIndex = firstDayIndex;
+          if (dayIndices.length > 0) {
+            for (const dayIndex of dayIndices) {
+              if (input.checked) days.add(dayIndex);
+              else days.delete(dayIndex);
             }
           } else {
-            updateData.firstCheckedDayIndex = null;
+            days.clear();
+            if (input.checked) {
+              for (const dayIndex of DAYS) days.add(dayIndex);
+            }
           }
 
-          return prisma.shoppingState.upsert({
-            where: {
-              weekStart_ingredientId_unit_householdId: {
-                weekStart: week,
-                ingredientId: input.ingredientId,
-                unit: unitKey, // endret fra null|string
-                householdId,
-              },
-            },
+          const checkedDayIndices = Array.from(days).sort((a, b) => a - b);
+          const state = {
+            checked: checkedDayIndices.length > 0,
+            firstCheckedDayIndex: checkedDayIndices[0] ?? null,
+            checkedDayIndices,
+          };
+
+          await tx.shoppingState.upsert({
+            where,
             create: {
               weekStart: week,
               ingredientId: input.ingredientId,
-              unit: unitKey, // endret fra null|string
-              checked: input.checked,
-              firstCheckedDayIndex: firstDayIndex,
+              unit: unitKey,
               householdId,
+              ...state,
             },
-            update: updateData,
+            update: state,
           });
-        }),
-      );
+        }
+      });
 
       return { ok: true };
     }),

@@ -59,6 +59,9 @@ interface RecipeFormDialogProps {
   onEverydayChange: (_value: number) => void;
   health: number;
   onHealthChange: (_value: number) => void;
+  /** Portions the quantities are written for; empty when not stated. */
+  servings: string;
+  onServingsChange: (_value: string) => void;
   desc: string;
   onDescChange: (_value: string) => void;
   ingSearch: string;
@@ -104,6 +107,8 @@ export function RecipeFormDialog({
   onEverydayChange,
   health,
   onHealthChange,
+  servings,
+  onServingsChange,
   desc,
   onDescChange,
   ingSearch,
@@ -305,6 +310,26 @@ export function RecipeFormDialog({
                               ))}
                             </SelectContent>
                           </Select>
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-sm font-medium" htmlFor="recipe-servings">
+                            Porsjoner
+                          </label>
+                          <Input
+                            id="recipe-servings"
+                            className="focus-visible:ring-inset"
+                            type="number"
+                            inputMode="numeric"
+                            min={1}
+                            max={100}
+                            placeholder="Ikke oppgitt"
+                            value={servings}
+                            onChange={(event) => onServingsChange(event.target.value)}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Hvor mange mengdene er beregnet for. Brukes til å tilpasse
+                            handlelisten til husstanden.
+                          </p>
                         </div>
                       </div>
                     </CarouselItem>

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  fillWeek,
   generateWeek,
   type GeneratorRecipe,
   type MealCategoryKey,
@@ -357,5 +358,71 @@ describe("generateWeek", () => {
       weeks.flat().forEach((id) => counts.set(id, (counts.get(id) ?? 0) + 1));
       expect(Math.max(...counts.values())).toBeLessThanOrEqual(6);
     });
+  });
+});
+
+describe("fillWeek", () => {
+  const pool = makePool();
+  const byId = (id: string) => pool.find((recipe) => recipe.id === id)!;
+
+  it("leaves kept days exactly as they are", () => {
+    const kept = [byId("fisk-0"), undefined, null, undefined, byId("storfe-1")];
+    for (let i = 0; i < 20; i += 1) {
+      const week = fillWeek(pool, DEFAULT_CFG, kept, { seed: `keep-${i}` });
+      expect(week).toHaveLength(7);
+      expect(week[0]?.id).toBe("fisk-0");
+      expect(week[2]).toBeNull();
+      expect(week[4]?.id).toBe("storfe-1");
+      for (const day of [1, 3, 5, 6]) expect(week[day]).not.toBeNull();
+    }
+  });
+
+  it("does not repeat a kept recipe on a generated day", () => {
+    const kept = [byId("fisk-0"), byId("veg-0"), byId("kyll-0")];
+    for (let i = 0; i < 30; i += 1) {
+      const week = fillWeek(pool, DEFAULT_CFG, kept, { seed: `unique-${i}` });
+      const ids = week.map((recipe) => recipe!.id);
+      expect(new Set(ids).size).toBe(7);
+    }
+  });
+
+  it("counts kept days towards the category targets", () => {
+    // Both fish dinners are already planned, so the four open days should
+    // rarely bring a third.
+    const kept = [byId("fisk-0"), undefined, byId("fisk-1"), undefined, null];
+    let extraFish = 0;
+    for (let i = 0; i < 40; i += 1) {
+      const week = fillWeek(pool, DEFAULT_CFG, kept, { seed: `quota-${i}` });
+      const fish = week.filter((recipe) => recipe?.category === "FISK").length;
+      expect(fish).toBeGreaterThanOrEqual(2);
+      extraFish += fish - 2;
+      // The remaining targets still fit in the open days.
+      const counts = countByCategory(week.filter((r) => r !== null));
+      expect(counts.VEGETAR).toBeGreaterThanOrEqual(1);
+      expect(counts.KYLLING).toBeGreaterThanOrEqual(1);
+      expect(counts.STORFE).toBeGreaterThanOrEqual(1);
+    }
+    expect(extraFish).toBeLessThan(10);
+  });
+
+  it("drops targets that no longer fit in the open days", () => {
+    // One open day, four categories still wanted: it must simply be filled.
+    const kept = [null, null, null, undefined, null, null, null];
+    const week = fillWeek(pool, DEFAULT_CFG, kept, { seed: "tight" });
+    expect(week.filter((recipe) => recipe !== null)).toHaveLength(1);
+    expect(week[3]).not.toBeNull();
+  });
+
+  it("returns the kept days untouched when nothing is open", () => {
+    const kept = [byId("fisk-0"), null, null, null, null, null, byId("veg-1")];
+    expect(fillWeek([], DEFAULT_CFG, kept)).toEqual(kept);
+  });
+
+  it("matches generateWeek when nothing is kept", () => {
+    const filled = fillWeek(pool, DEFAULT_CFG, [], { seed: "same" });
+    const generated = generateWeek(pool, DEFAULT_CFG, { seed: "same" });
+    expect(filled.map((recipe) => recipe?.id)).toEqual(
+      generated.map((recipe) => recipe.id),
+    );
   });
 });

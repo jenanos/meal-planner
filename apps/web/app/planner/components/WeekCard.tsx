@@ -3,6 +3,7 @@ import { MagicCard } from "@repo/ui";
 import type { DayName } from "../types";
 import { dayBaseHsl, dayHoverGradients } from "../palette";
 import { CategoryEmoji } from "../../components/CategoryEmoji";
+import { Lock, LockOpen } from "lucide-react";
 //TODO: Add icons instead of text for category
 export type Props = {
     index: number;
@@ -31,6 +32,14 @@ export type Props = {
     onChangeRecipe?: () => void;
     onSetTakeaway?: () => void;
     onClearEntry?: () => void;
+    /** The day is today's date. */
+    isToday?: boolean;
+    /** The day lies before today. */
+    isPast?: boolean;
+    /** The meal is kept when the week gets new suggestions. */
+    isLocked?: boolean;
+    /** Shown on planned recipes when given. */
+    onToggleLock?: () => void;
 };
 
 export function WeekCard({
@@ -47,6 +56,10 @@ export function WeekCard({
     onChangeRecipe,
     onSetTakeaway,
     onClearEntry,
+    isToday = false,
+    isPast = false,
+    isLocked = false,
+    onToggleLock,
 }: Props) {
     // Palett og hover-gradienter fra felles palette-modul
     const baseHsl = dayBaseHsl[dayName];
@@ -57,7 +70,8 @@ export function WeekCard({
 
     return (
         <MagicCard
-            className={`rounded-lg flex h-full w-full items-center justify-center text-center`}
+            className={`rounded-lg flex h-full w-full items-center justify-center text-center ${isToday ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""} ${isPast ? "opacity-60" : ""}`}
+            aria-current={isToday ? "date" : undefined}
             style={{ ["--magic-card-bg" as any]: isFreezer ? "200 80% 92%" : isTakeaway ? "36 100% 94%" : baseHsl }}
             gradientFrom={isFreezer ? "#67E8F9" : isTakeaway ? "#FB923C" : dayGrad.from}
             gradientTo={isFreezer ? "#A5F3FC" : isTakeaway ? "#FDE68A" : dayGrad.to}
@@ -88,6 +102,11 @@ export function WeekCard({
             <div className="flex h-full min-h-[128px] flex-col items-center justify-center gap-1 p-2.5 text-center sm:min-h-[160px] sm:p-4 sm:gap-2">
                 <div className="text-[11px] text-muted-foreground sm:text-xs">
                     {dayName} {dateLabel && <span className="opacity-75 font-normal ml-0.5">{dateLabel}</span>}
+                    {isToday ? (
+                        <span className="ml-1.5 rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground">
+                            I dag
+                        </span>
+                    ) : null}
                 </div>
                 {isFreezer && recipe ? (
                     <div className="flex flex-col items-center justify-center space-y-0.5 sm:space-y-1.5">
@@ -108,7 +127,7 @@ export function WeekCard({
                 ) : (
                     <div className="text-sm text-muted-foreground/60">Ingen valgt</div>
                 )}
-                {(onChangeRecipe && (entryType === "RECIPE" || isFreezer)) || (entryType === "RECIPE" && onSetTakeaway) ? (
+                {(onChangeRecipe && (entryType === "RECIPE" || isFreezer)) || (entryType === "RECIPE" && (onSetTakeaway || onToggleLock)) ? (
                     <div className="mt-1 flex flex-wrap items-center justify-center gap-1.5">
                         {(entryType === "RECIPE" || isFreezer) && onChangeRecipe ? (
                             <button
@@ -132,6 +151,21 @@ export function WeekCard({
                                 }}
                             >
                                 Bytt til takeaway
+                            </button>
+                        ) : null}
+                        {entryType === "RECIPE" && onToggleLock && !isPast ? (
+                            <button
+                                type="button"
+                                aria-pressed={isLocked}
+                                title={isLocked ? "Låst: beholdes ved nye forslag" : "Lås middagen så den beholdes ved nye forslag"}
+                                className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-medium ${isLocked ? "border-foreground/40 bg-foreground/10 text-foreground" : "border-foreground/20 bg-white/70 text-muted-foreground hover:bg-white"}`}
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    onToggleLock();
+                                }}
+                            >
+                                {isLocked ? <Lock className="h-3 w-3" /> : <LockOpen className="h-3 w-3" />}
+                                {isLocked ? "Låst" : "Lås"}
                             </button>
                         ) : null}
                     </div>
