@@ -64,6 +64,8 @@ export function useRecipeDialogState({
   const [cat, setCat] = useState<(typeof CATEGORIES)[number]>(defaultCategory);
   const [everyday, setEveryday] = useState(3);
   const [health, setHealth] = useState(4);
+  // Kept as text so the field can be left empty ("not stated").
+  const [servings, setServings] = useState("");
   const [ingSearch, setIngSearch] = useState("");
   const [debouncedIngSearch, setDebouncedIngSearch] = useState("");
   const [ingList, setIngList] = useState<FormIngredient[]>([]);
@@ -78,6 +80,7 @@ export function useRecipeDialogState({
     setCat(defaultCategory);
     setEveryday(3);
     setHealth(4);
+    setServings("");
     setIngSearch("");
     setDebouncedIngSearch("");
     setIngList([]);
@@ -375,6 +378,7 @@ export function useRecipeDialogState({
       setCat(categoryValue);
       setEveryday(recipe.everydayScore ?? 3);
       setHealth(recipe.healthScore ?? 4);
+      setServings(recipe.servings != null ? String(recipe.servings) : "");
       const ingredients = (recipe.ingredients ?? []) as RecipeIngredient[];
       setIngList(
         ingredients.map((ingredient) => ({
@@ -451,6 +455,12 @@ export function useRecipeDialogState({
         notes: ingredient.notes,
       }));
 
+      const parsedServings = Number.parseInt(servings, 10);
+      const servingsPayload =
+        Number.isInteger(parsedServings) && parsedServings >= 1
+          ? Math.min(100, parsedServings)
+          : null;
+
       if (editId) {
         if (updateRecipe.isPending) return;
         updateRecipe.mutate({
@@ -460,6 +470,7 @@ export function useRecipeDialogState({
           category: cat,
           everydayScore: everyday,
           healthScore: health,
+          servings: servingsPayload,
           ingredients: ingredientsPayload,
         });
         return;
@@ -472,10 +483,11 @@ export function useRecipeDialogState({
         category: cat,
         everydayScore: everyday,
         healthScore: health,
+        servings: servingsPayload,
         ingredients: ingredientsPayload,
       });
     },
-    [cat, createRecipe, desc, editId, everyday, health, ingList, name, updateRecipe]
+    [cat, createRecipe, desc, editId, everyday, health, servings, ingList, name, updateRecipe]
   );
 
   const isLastStep = currentStep === stepTitles.length - 1;
@@ -509,6 +521,8 @@ export function useRecipeDialogState({
     setEveryday,
     health,
     setHealth,
+    servings,
+    setServings,
     desc,
     setDesc,
     ingSearch,

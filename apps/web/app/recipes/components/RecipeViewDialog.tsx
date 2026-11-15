@@ -97,6 +97,13 @@ export function RecipeViewDialog({
                             </span>
                           ) : null}
                           <span>{describeHealth(viewRecipe.healthScore)}</span>
+                          {viewRecipe.servings ? (
+                            <span>
+                              {viewRecipe.servings === 1
+                                ? "1 porsjon"
+                                : `${viewRecipe.servings} porsjoner`}
+                            </span>
+                          ) : null}
                         </div>
                         <div>
                           <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">

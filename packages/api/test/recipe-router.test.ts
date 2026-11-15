@@ -117,6 +117,7 @@ describe("recipe router", () => {
           category: "FISK",
           everydayScore: 4,
           healthScore: 3,
+          servings: null,
           lastUsed: undefined,
           usageCount: 2,
           ingredients: [
@@ -236,6 +237,7 @@ describe("recipe router", () => {
       category: "ANNET",
       everydayScore: 5,
       healthScore: 4,
+      servings: null,
       lastUsed: undefined,
       usageCount: 0,
       ingredients: [

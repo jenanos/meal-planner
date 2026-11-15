@@ -10,6 +10,9 @@ const { prismaMock } = vi.hoisted(() => {
       updateMany: vi.fn(),
       findMany: vi.fn(),
     },
+    household: {
+      findUnique: vi.fn(),
+    },
     shoppingState: {
       findMany: vi.fn(),
       findUnique: vi.fn(),
@@ -88,10 +91,16 @@ function makeIngredient(args: {
   };
 }
 
-function makeRecipe(id: string, name: string, ingredients: unknown[]) {
+function makeRecipe(
+  id: string,
+  name: string,
+  ingredients: unknown[],
+  servings: number | null = null,
+) {
   return {
     id,
     name,
+    servings,
     category: "ANNET",
     everydayScore: 3,
     healthScore: 3,
@@ -111,6 +120,7 @@ beforeEach(() => {
   prismaMock.weekIndex.upsert.mockResolvedValue({ id: "week-index-1" });
   prismaMock.weekPlan.updateMany.mockResolvedValue({ count: 0 });
   prismaMock.$queryRaw.mockResolvedValue([]);
+  prismaMock.household.findUnique.mockResolvedValue({ servings: null });
 });
 
 afterEach(() => {
@@ -274,6 +284,89 @@ describe("planner.shoppingList", () => {
     expect(result.items[0]?.occurrences[0]).toMatchObject({
       weekdayLabel: "Søndag",
       dateISO: "2026-07-12T00:00:00.000Z",
+    });
+  });
+
+  describe("portions", () => {
+    function planWith(servingsByRecipe: [number | null, number | null]) {
+      prismaMock.weekPlan.findMany.mockResolvedValueOnce([
+        {
+          weekStart: WEEK_START,
+          entries: [
+            {
+              dayIndex: 0,
+              entryType: "RECIPE",
+              recipe: makeRecipe(
+                "r1",
+                "Gryte",
+                [
+                  makeIngredient({
+                    ingredientId: KJOTT_ID,
+                    name: "Kjøtt",
+                    unit: "g",
+                    quantity: 400,
+                  }),
+                ],
+                servingsByRecipe[0],
+              ),
+            },
+            {
+              dayIndex: 1,
+              entryType: "RECIPE",
+              recipe: makeRecipe(
+                "r2",
+                "Biff",
+                [
+                  makeIngredient({
+                    ingredientId: KJOTT_ID,
+                    name: "Kjøtt",
+                    unit: "g",
+                    quantity: 300,
+                  }),
+                ],
+                servingsByRecipe[1],
+              ),
+            },
+          ],
+        },
+      ]);
+      prismaMock.shoppingState.findMany.mockResolvedValueOnce([]);
+      prismaMock.extraShoppingItem.findMany.mockResolvedValueOnce([]);
+    }
+
+    it("scales recipes that state their portions to the household's", async () => {
+      prismaMock.household.findUnique.mockResolvedValue({ servings: 2 });
+      // Gryte is written for 4 and gets halved; Biff says nothing and is
+      // used as written.
+      planWith([4, null]);
+
+      const result = await createCaller().shoppingList({ weekStart: WEEK_ISO });
+      const kjott = result.items.find((item) => item.ingredientId === KJOTT_ID);
+
+      expect(result.householdServings).toBe(2);
+      expect(kjott?.occurrences.map((o) => o.quantity)).toEqual([200, 300]);
+      expect(kjott?.totalQuantity).toBe(500);
+      expect(kjott?.details.map((d) => d.quantity)).toEqual([200, 300]);
+    });
+
+    it("rounds scaled quantities to two decimals", async () => {
+      prismaMock.household.findUnique.mockResolvedValue({ servings: 2 });
+      planWith([3, 3]);
+
+      const result = await createCaller().shoppingList({ weekStart: WEEK_ISO });
+      const kjott = result.items.find((item) => item.ingredientId === KJOTT_ID);
+
+      expect(kjott?.occurrences.map((o) => o.quantity)).toEqual([266.67, 200]);
+    });
+
+    it("leaves quantities as written when the household has no portions", async () => {
+      planWith([4, 2]);
+
+      const result = await createCaller().shoppingList({ weekStart: WEEK_ISO });
+      const kjott = result.items.find((item) => item.ingredientId === KJOTT_ID);
+
+      expect(result.householdServings).toBeNull();
+      expect(kjott?.totalQuantity).toBe(700);
     });
   });
 

@@ -64,6 +64,12 @@ export const IngredientListQuery = z.object({
 });
 export type IngredientListQuery = z.infer<typeof IngredientListQuery>;
 
+/**
+ * Portions: how many a recipe's quantities are written for, or how many a
+ * household cooks for. `null` clears the value.
+ */
+export const Servings = z.number().int().min(1).max(100);
+
 // (Hvis ikke allerede finnes)
 export const RecipeCreate = z.object({
   name: z.string().min(1),
@@ -71,6 +77,7 @@ export const RecipeCreate = z.object({
   category: Category,
   everydayScore: z.number().int().min(1).max(5),
   healthScore: z.number().int().min(1).max(5),
+  servings: Servings.nullable().optional(),
   ingredients: z.array(
     z.object({
       name: z.string().min(1),
@@ -89,6 +96,7 @@ export const RecipeUpdate = z.object({
   category: Category.optional(),
   everydayScore: z.number().int().min(1).max(5).optional(),
   healthScore: z.number().int().min(1).max(5).optional(),
+  servings: Servings.nullable().optional(),
   ingredients: z.array(
     z.object({
       name: z.string().min(1),
@@ -189,6 +197,11 @@ export const UserPreferenceUpdate = z.object({
   // First weekday shown in the week planner (0 = Monday).
   startDay: z.number().int().min(0).max(6),
   shoppingHorizon: ShoppingHorizon.optional(),
+  /**
+   * Portions the household cooks for. Shared by everyone in the household,
+   * unlike the rest of these preferences. Omit to leave it as it is.
+   */
+  householdServings: Servings.nullable().optional(),
   showPantryWithIngredients: z.boolean(),
   compactShoppingList: z.boolean().optional(),
   plannerTapOpensRecipe: z.boolean().optional(),

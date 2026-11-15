@@ -13,6 +13,9 @@ import {
 
 // ─── Shared recipe helpers ─────────────────────────────────────────────
 
+const servingsHelp =
+  "Antall porsjoner mengdene i oppskriften er beregnet for. Handlelisten skalerer mengdene til husstandens porsjoner når begge er satt.";
+
 type RecipeLike = {
   id: string;
   name: string;
@@ -20,6 +23,7 @@ type RecipeLike = {
   category: string;
   everydayScore: number;
   healthScore: number;
+  servings?: number | null;
   lastUsed?: unknown;
   usageCount: number;
   ingredients?: Array<{
@@ -46,6 +50,7 @@ export function recipeSummary(
     category: recipe.category,
     everydayScore: recipe.everydayScore,
     healthScore: recipe.healthScore,
+    servings: recipe.servings ?? undefined,
     usageCount: recipe.usageCount,
     lastUsed: toDateOnly(recipe.lastUsed) ?? undefined,
     description: options.ingredients
@@ -278,6 +283,13 @@ export function registerRecipeTools(ctx: ToolContext) {
           .max(5)
           .describe(scoreHelp.everyday),
         healthScore: z.number().int().min(1).max(5).describe(scoreHelp.health),
+        servings: z
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .optional()
+          .describe(servingsHelp),
         ingredients: z
           .array(ingredientLine)
           .optional()
@@ -327,6 +339,14 @@ export function registerRecipeTools(ctx: ToolContext) {
           .max(5)
           .optional()
           .describe(scoreHelp.health),
+        servings: z
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .nullable()
+          .optional()
+          .describe(`${servingsHelp} null fjerner verdien.`),
         ingredients: z
           .array(ingredientLine)
           .optional()

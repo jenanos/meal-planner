@@ -302,6 +302,8 @@ export default function ShoppingListPage() {
 
   // Own check marks that the loaded list does not reflect yet.
   const checkedOverlay = outbox.itemChecked;
+  const householdServings =
+    ((shoppingQuery.data as any)?.householdServings as number | null) ?? null;
   const rawItems = shoppingQuery.data?.items ?? EMPTY_ITEMS;
   const plannedDays = (shoppingQuery.data as any)?.plannedDays as
     | {
@@ -1123,6 +1125,14 @@ export default function ShoppingListPage() {
         showPastDays={showPastDays}
         onShowPastDaysChange={setShowPastDays}
       />
+
+      {householdServings ? (
+        <p className="text-xs text-muted-foreground">
+          Mengdene er tilpasset {householdServings}{" "}
+          {householdServings === 1 ? "porsjon" : "porsjoner"} for oppskrifter
+          som oppgir porsjoner.
+        </p>
+      ) : null}
 
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-row sm:items-center sm:justify-between">

@@ -63,6 +63,8 @@ type UserSettings = {
   showPantryWithIngredients: boolean;
   compactShoppingList: boolean;
   plannerTapOpensRecipe: boolean;
+  /** Portions the household cooks for; shared by the household. */
+  householdServings: number | null;
   defaultStoreId: string | null;
 };
 
@@ -105,6 +107,7 @@ export default function SettingsPage() {
     showPantryWithIngredients: false,
     compactShoppingList: false,
     plannerTapOpensRecipe: false,
+    householdServings: null,
     defaultStoreId: null,
   });
   const [stores, setStores] = useState<ShoppingStore[]>([]);
@@ -148,6 +151,7 @@ export default function SettingsPage() {
       ...s,
       compactShoppingList: Boolean(s.compactShoppingList),
       plannerTapOpensRecipe: Boolean(s.plannerTapOpensRecipe),
+      householdServings: s.householdServings ?? null,
       shoppingHorizon: isShoppingHorizon(s.shoppingHorizon)
         ? s.shoppingHorizon
         : DEFAULT_SHOPPING_HORIZON,
@@ -177,6 +181,7 @@ export default function SettingsPage() {
       defaultDisplayStyle: settings.defaultDisplayStyle,
       startDay: settings.startDay,
       shoppingHorizon: settings.shoppingHorizon,
+      householdServings: settings.householdServings,
       showPantryWithIngredients: settings.showPantryWithIngredients,
       compactShoppingList: settings.compactShoppingList,
       plannerTapOpensRecipe: settings.plannerTapOpensRecipe,
@@ -401,6 +406,41 @@ export default function SettingsPage() {
             Handlelisten starter alltid på dagens dato og viser så langt frem
             som dette. Du kan endre det for én handletur på selve handlelisten.
           </p>
+        </div>
+
+        <div className="space-y-2">
+          <h3 className="font-medium text-xs text-muted-foreground uppercase tracking-wider">
+            Porsjoner
+          </h3>
+          <label className="flex items-center justify-between gap-3 border rounded-lg p-2.5">
+            <span className="text-sm">
+              Vi lager mat til
+              <span className="block text-xs text-muted-foreground">
+                Oppskrifter som oppgir porsjoner skaleres til dette på
+                handlelisten. Gjelder hele husstanden. La stå tomt for å bruke
+                mengdene som de står.
+              </span>
+            </span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={100}
+              placeholder="–"
+              aria-label="Antall porsjoner husstanden lager mat til"
+              className="w-16 shrink-0 rounded-md border border-input bg-background px-2 py-1.5 text-sm text-center"
+              value={settings.householdServings ?? ""}
+              onChange={(event) => {
+                const value = Number.parseInt(event.target.value, 10);
+                patchSettings({
+                  householdServings:
+                    Number.isInteger(value) && value >= 1
+                      ? Math.min(100, value)
+                      : null,
+                });
+              }}
+            />
+          </label>
         </div>
 
         <div className="space-y-2">

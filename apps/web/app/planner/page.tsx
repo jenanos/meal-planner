@@ -209,6 +209,8 @@ export default function PlannerPage() {
     setEveryday,
     health,
     setHealth,
+    servings,
+    setServings,
     desc,
     setDesc,
     ingSearch,
@@ -918,6 +920,8 @@ export default function PlannerPage() {
         onEverydayChange={setEveryday}
         health={health}
         onHealthChange={setHealth}
+        servings={servings}
+        onServingsChange={setServings}
         desc={desc}
         onDescChange={setDesc}
         ingSearch={ingSearch}

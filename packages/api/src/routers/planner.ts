@@ -65,6 +65,8 @@ type RecipeDTO = {
   category: MealCategoryKey;
   everydayScore: number;
   healthScore: number;
+  /** Portions the quantities are written for, when the recipe says. */
+  servings: number | null;
   lastUsed: Date | null;
   usageCount: number;
   ingredients: {
@@ -215,6 +217,7 @@ function toDTO(r: any): RecipeDTO {
     category: normalizeDiet(String(r.category)),
     everydayScore: r.everydayScore,
     healthScore: r.healthScore,
+    servings: r.servings ?? null,
     lastUsed: r.lastUsed ?? null,
     usageCount: r.usageCount,
     ingredients: (r.ingredients ?? []).map((ri: any) => ({
@@ -227,6 +230,26 @@ function toDTO(r: any): RecipeDTO {
       category: normalizeIngredientCategory(ri.ingredient.category),
     })),
   };
+}
+
+/**
+ * How much to multiply a recipe's quantities by so they match the portions
+ * the household cooks for. Only known when both sides state their portions;
+ * otherwise quantities are used as written.
+ */
+export function servingsFactor(
+  recipeServings: number | null | undefined,
+  householdServings: number | null | undefined,
+) {
+  if (!recipeServings || !householdServings) return 1;
+  if (recipeServings <= 0 || householdServings <= 0) return 1;
+  return householdServings / recipeServings;
+}
+
+/** Scaled quantities keep the two decimals quantities are stored with. */
+function scaleQuantity(quantity: number | null, factor: number) {
+  if (quantity == null || factor === 1) return quantity;
+  return Math.round(quantity * factor * 100) / 100;
 }
 
 function daysSince(d?: Date | null) {
@@ -971,6 +994,7 @@ export function selectRecipes(
       category,
       everydayScore: 3,
       healthScore: 3,
+      servings: null,
       lastUsed: null,
       usageCount: 0,
       ingredients: [],
@@ -1292,13 +1316,17 @@ export const plannerRouter = router({
 
       await ensureDefaultStore(householdId);
 
-      const [preference, stores] = await Promise.all([
+      const [preference, stores, household] = await Promise.all([
         prisma.userPreference.findUnique({
           where: { userId },
         }),
         prisma.shoppingStore.findMany({
           where: { householdId },
           orderBy: [{ isDefault: "desc" }, { name: "asc" }],
+        }),
+        prisma.household.findUnique({
+          where: { id: householdId },
+          select: { servings: true },
         }),
       ]);
 
@@ -1320,7 +1348,9 @@ export const plannerRouter = router({
           };
 
       return {
-        settings,
+        // The household's portions are shared by its members, unlike the
+        // rest, which is each user's own.
+        settings: { ...settings, householdServings: household?.servings ?? null },
         stores: serializedStores,
       };
     }),
@@ -1372,7 +1402,22 @@ export const plannerRouter = router({
         },
       });
 
-      return serializeUserPreference(updated, defaultStoreId);
+      const household =
+        input.householdServings !== undefined
+          ? await prisma.household.update({
+              where: { id: householdId },
+              data: { servings: input.householdServings },
+              select: { servings: true },
+            })
+          : await prisma.household.findUnique({
+              where: { id: householdId },
+              select: { servings: true },
+            });
+
+      return {
+        ...serializeUserPreference(updated, defaultStoreId),
+        householdServings: household?.servings ?? null,
+      };
     }),
 
   createShoppingStore: protectedProcedure
@@ -1435,6 +1480,14 @@ export const plannerRouter = router({
       for (const week of weekStarts) {
         await ensureWeekIndex(prisma, week, householdId);
       }
+
+      const householdServings =
+        (
+          await prisma.household.findUnique({
+            where: { id: householdId },
+            select: { servings: true },
+          })
+        )?.servings ?? null;
 
       const plans = await prisma.weekPlan.findMany({
         where: { weekStart: { in: weekStarts }, householdId },
@@ -1510,6 +1563,8 @@ export const plannerRouter = router({
           // FREEZER entries have a recipe reference but should not add ingredients to the shopping list
           if (entry.entryType === "FREEZER") continue;
           const recipe = toDTO(entry.recipe);
+          // Recipes that state their portions are scaled to the household's.
+          const factor = servingsFactor(recipe.servings, householdServings);
           for (const ingredient of recipe.ingredients) {
             const unit = ingredient.unit ?? null;
             const key = `${ingredient.ingredientId}::${unit ?? ""}`;
@@ -1533,7 +1588,7 @@ export const plannerRouter = router({
               acc.isPantryItem = true;
             }
             acc.category = normalizeIngredientCategory(ingredient.category);
-            const quantity = ingredient.quantity;
+            const quantity = scaleQuantity(ingredient.quantity, factor);
             if (quantity != null) {
               acc.sumQuantity += quantity;
               acc.hasQuantities = true;
@@ -1717,6 +1772,7 @@ export const plannerRouter = router({
       return {
         weekStart: weekStart.toISOString(),
         includedWeekStarts: weekStarts.map((week) => week.toISOString()),
+        householdServings,
         items,
         extras,
         plannedDays,

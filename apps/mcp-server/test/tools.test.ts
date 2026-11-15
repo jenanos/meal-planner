@@ -888,6 +888,7 @@ describe("freezer and settings", () => {
         startDay: 0,
         showPantryWithIngredients: false,
         shoppingHorizon: undefined,
+        householdServings: undefined,
         compactShoppingList: undefined,
         plannerTapOpensRecipe: true,
         defaultStoreId: storeId,

@@ -362,6 +362,8 @@ export async function importProdDump(
         category: row.category as "FISK" | "VEGETAR" | "KYLLING" | "STORFE" | "ANNET",
         everydayScore: Number.parseInt(row.everydayScore!, 10),
         healthScore: Number.parseInt(row.healthScore!, 10),
+        servings:
+          row.servings == null ? null : Number.parseInt(row.servings, 10),
         lastUsed: parsePgTimestamp(row.lastUsed),
         usageCount: Number.parseInt(row.usageCount!, 10),
         createdAt: parsePgTimestamp(row.createdAt)!,
