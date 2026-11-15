@@ -51,3 +51,62 @@ export function resolveShoppingWindow(
     lookaheadWeeks: Math.floor((todayIndex + daysAhead) / 7),
   };
 }
+
+type DayRef = { weekStart: string; dayIndex: number };
+
+/** The shape of a shopping list item this module needs to narrow it. */
+type NarrowableItem = {
+  occurrences?: (DayRef & {
+    quantity: number | null;
+    hasMissingQuantities: boolean;
+  })[];
+  details?: DayRef[];
+  weekStarts?: string[];
+  totalQuantity: number | null;
+  hasMissingQuantities: boolean;
+};
+
+export function dayKey(day: DayRef) {
+  return `${day.weekStart}::${day.dayIndex}`;
+}
+
+/**
+ * Cut every item down to the given days ("weekStart::dayIndex"): only the
+ * occurrences and recipe details on those days remain, totals are recomputed
+ * from them, and items with nothing left are dropped.
+ */
+export function narrowItemsToDays<T extends NarrowableItem>(
+  items: readonly T[],
+  visibleDayKeys: ReadonlySet<string>,
+): T[] {
+  const result: T[] = [];
+  for (const item of items) {
+    const occurrences = (item.occurrences ?? []).filter((occurrence) =>
+      visibleDayKeys.has(dayKey(occurrence)),
+    );
+    if (!occurrences.length) continue;
+    const hasQuantity = occurrences.some(
+      (occurrence) => occurrence.quantity != null,
+    );
+    result.push({
+      ...item,
+      occurrences,
+      details: (item.details ?? []).filter((detail) =>
+        visibleDayKeys.has(dayKey(detail)),
+      ),
+      weekStarts: Array.from(
+        new Set(occurrences.map((occurrence) => occurrence.weekStart)),
+      ),
+      totalQuantity: hasQuantity
+        ? occurrences.reduce(
+            (sum, occurrence) => sum + (occurrence.quantity ?? 0),
+            0,
+          )
+        : null,
+      hasMissingQuantities: occurrences.some(
+        (occurrence) => occurrence.hasMissingQuantities,
+      ),
+    });
+  }
+  return result;
+}

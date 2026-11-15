@@ -430,6 +430,9 @@ export default function PlannerPage() {
     ],
   );
   const spansNextWeek = startDay > 0;
+  const planLoaded =
+    weekPlanQuery.data !== undefined &&
+    (!spansNextWeek || nextWeekPlanQuery.data !== undefined);
   const hasOpenDays = (mode: GenerateMode) =>
     keepDaysFor(mode, 0).length < 7 ||
     (spansNextWeek && keepDaysFor(mode, 1).length < 7);
@@ -861,7 +864,9 @@ export default function PlannerPage() {
                 type="button"
                 size="sm"
                 className="w-full sm:w-auto gap-2 bg-emerald-500 text-white hover:bg-emerald-600 focus-visible:ring-emerald-600"
-                disabled={generateWeekMutation.isPending}
+                // Not before the plan has loaded: what to keep is decided
+                // from the days on screen.
+                disabled={generateWeekMutation.isPending || !planLoaded}
               >
                 {generateWeekMutation.isPending
                   ? "Genererer…"

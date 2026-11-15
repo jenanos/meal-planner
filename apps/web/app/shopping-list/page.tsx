@@ -45,7 +45,11 @@ import {
   type ShoppingViewMode,
   type ShoppingDisplayStyle,
 } from "../../lib/shopping";
-import { localTodayMs, resolveShoppingWindow } from "../../lib/shopping-window";
+import {
+  localTodayMs,
+  narrowItemsToDays,
+  resolveShoppingWindow,
+} from "../../lib/shopping-window";
 import { occurrenceKey, type ShoppingOp } from "../../lib/shopping-outbox";
 import { useShoppingOutbox } from "./use-shopping-outbox";
 import {
@@ -467,38 +471,10 @@ export default function ShoppingListPage() {
 
   // Narrow every item down to the visible days, so quantities and checkmarks
   // in all three views describe exactly what this shopping trip covers.
-  const items = useMemo(() => {
-    const result: ShoppingListItem[] = [];
-    for (const item of rawItems) {
-      const occurrences = (item.occurrences ?? []).filter((occurrence) =>
-        visibleDayKeySet.has(`${occurrence.weekStart}::${occurrence.dayIndex}`),
-      );
-      if (!occurrences.length) continue;
-      const hasQuantity = occurrences.some(
-        (occurrence) => occurrence.quantity != null,
-      );
-      result.push({
-        ...item,
-        occurrences,
-        details: (item.details ?? []).filter((detail) =>
-          visibleDayKeySet.has(`${detail.weekStart}::${detail.dayIndex}`),
-        ),
-        weekStarts: Array.from(
-          new Set(occurrences.map((occurrence) => occurrence.weekStart)),
-        ),
-        totalQuantity: hasQuantity
-          ? occurrences.reduce(
-              (sum, occurrence) => sum + (occurrence.quantity ?? 0),
-              0,
-            )
-          : null,
-        hasMissingQuantities: occurrences.some(
-          (occurrence) => occurrence.hasMissingQuantities,
-        ),
-      });
-    }
-    return result;
-  }, [rawItems, visibleDayKeySet]);
+  const items = useMemo(
+    () => narrowItemsToDays(rawItems, visibleDayKeySet),
+    [rawItems, visibleDayKeySet],
+  );
 
   const rawItemsByKey = useMemo(() => {
     const map = new Map<string, ShoppingListItem>();
