@@ -1435,16 +1435,11 @@ export const plannerRouter = router({
         },
       });
 
-      const statusMap = new Map<
-        string,
-        { checked: boolean; firstCheckedDayIndex: number | null }
-      >();
+      // Items are checked off per planned day within a week.
+      const statusMap = new Map<string, Set<number>>();
       statuses.forEach((status) => {
         const key = `${status.weekStart.toISOString()}::${status.ingredientId}::${status.unit ?? ""}`;
-        statusMap.set(key, {
-          checked: status.checked,
-          firstCheckedDayIndex: status.firstCheckedDayIndex,
-        });
+        statusMap.set(key, new Set(status.checkedDayIndices ?? []));
       });
 
       type OccurrenceAccumulator = {
@@ -1592,12 +1587,12 @@ export const plannerRouter = router({
                 occurrence.dayIndex,
               );
               const statusKeyByWeek = `${occurrence.weekStartISO}::${item.ingredientId}::${item.unit ?? ""}`;
-              const statusByWeek = statusMap.get(statusKeyByWeek);
-              const isChecked = statusByWeek?.checked ?? false;
-              if (statusByWeek?.firstCheckedDayIndex != null) {
+              const checkedDays = statusMap.get(statusKeyByWeek);
+              const isChecked = checkedDays?.has(occurrence.dayIndex) ?? false;
+              if (checkedDays && checkedDays.size > 0) {
                 firstCheckedByWeek.set(
                   occurrence.weekStartISO,
-                  statusByWeek.firstCheckedDayIndex,
+                  Math.min(...checkedDays),
                 );
               }
               return {
@@ -1620,13 +1615,16 @@ export const plannerRouter = router({
             occurrenceArray.length > 0
               ? occurrenceArray.every((occurrence) => {
                 const statusKeyByWeek = `${occurrence.weekStartISO}::${item.ingredientId}::${item.unit ?? ""}`;
-                return statusMap.get(statusKeyByWeek)?.checked ?? false;
+                return (
+                  statusMap.get(statusKeyByWeek)?.has(occurrence.dayIndex) ??
+                  false
+                );
               })
               : Array.from(item.weeks.values()).every(
                 (weekIso) =>
-                  statusMap.get(
+                  (statusMap.get(
                     `${weekIso}::${item.ingredientId}::${item.unit ?? ""}`,
-                  )?.checked ?? false,
+                  )?.size ?? 0) > 0,
               );
 
           const firstCheckedOccurrences = Array.from(
@@ -1741,46 +1739,54 @@ export const plannerRouter = router({
 
       const weekEntries = Array.from(weekMeta.values());
 
-      await prisma.$transaction(
-        weekEntries.map(({ week, dayIndices }) => {
-          const firstDayIndex =
-            input.checked && dayIndices.length > 0
-              ? Math.min(...dayIndices)
-              : null;
-
-          const updateData: Prisma.ShoppingStateUpdateInput = {
-            checked: input.checked,
+      // Read-modify-write per week inside one transaction: named days are
+      // added to or removed from the checked set, while a week without days
+      // checks or clears every day in it.
+      await prisma.$transaction(async (tx) => {
+        for (const { week, dayIndices } of weekEntries) {
+          const where = {
+            weekStart_ingredientId_unit_householdId: {
+              weekStart: week,
+              ingredientId: input.ingredientId,
+              unit: unitKey,
+              householdId,
+            },
           };
+          const existing = await tx.shoppingState.findUnique({ where });
+          const days = new Set<number>(existing?.checkedDayIndices ?? []);
 
-          if (input.checked) {
-            if (dayIndices.length > 0) {
-              updateData.firstCheckedDayIndex = firstDayIndex;
+          if (dayIndices.length > 0) {
+            for (const dayIndex of dayIndices) {
+              if (input.checked) days.add(dayIndex);
+              else days.delete(dayIndex);
             }
           } else {
-            updateData.firstCheckedDayIndex = null;
+            days.clear();
+            if (input.checked) {
+              for (const dayIndex of DAYS) days.add(dayIndex);
+            }
           }
 
-          return prisma.shoppingState.upsert({
-            where: {
-              weekStart_ingredientId_unit_householdId: {
-                weekStart: week,
-                ingredientId: input.ingredientId,
-                unit: unitKey, // endret fra null|string
-                householdId,
-              },
-            },
+          const checkedDayIndices = Array.from(days).sort((a, b) => a - b);
+          const state = {
+            checked: checkedDayIndices.length > 0,
+            firstCheckedDayIndex: checkedDayIndices[0] ?? null,
+            checkedDayIndices,
+          };
+
+          await tx.shoppingState.upsert({
+            where,
             create: {
               weekStart: week,
               ingredientId: input.ingredientId,
-              unit: unitKey, // endret fra null|string
-              checked: input.checked,
-              firstCheckedDayIndex: firstDayIndex,
+              unit: unitKey,
               householdId,
+              ...state,
             },
-            update: updateData,
+            update: state,
           });
-        }),
-      );
+        }
+      });
 
       return { ok: true };
     }),

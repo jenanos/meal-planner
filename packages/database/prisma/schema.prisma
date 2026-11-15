@@ -406,8 +406,11 @@ model ShoppingState {
   weekStart            DateTime
   ingredientId         String   @db.Uuid
   unit                 String?  @db.VarChar(32)
+  // True when at least one day is checked; kept in step with checkedDayIndices.
   checked              Boolean  @default(false)
   firstCheckedDayIndex Int?
+  // The weekdays (0 = Monday) this item is checked off for in this week.
+  checkedDayIndices    Int[]    @default([])
   householdId          String   @db.Uuid
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt

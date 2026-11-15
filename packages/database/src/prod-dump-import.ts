@@ -439,6 +439,14 @@ export async function importProdDump(
           row.firstCheckedDayIndex == null
             ? null
             : Number.parseInt(row.firstCheckedDayIndex, 10),
+        // Dumps from before per-day checking have no such column; there a
+        // checked row covered the whole week.
+        checkedDayIndices:
+          row.checkedDayIndices != null
+            ? parsePgIntArray(row.checkedDayIndices)
+            : parsePgBoolean(row.checked)
+              ? [0, 1, 2, 3, 4, 5, 6]
+              : [],
         householdId: household.id,
         createdAt: parsePgTimestamp(row.createdAt)!,
         updatedAt: parsePgTimestamp(row.updatedAt)!,

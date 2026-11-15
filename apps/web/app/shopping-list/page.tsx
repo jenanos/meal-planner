@@ -542,6 +542,8 @@ export default function ShoppingListPage() {
     if (!match) return null;
     if (match.dayIndex === occurrence.dayIndex) return null;
     if (occurrence.dayIndex <= match.dayIndex) return null;
+    // Only a reminder on days that still need buying.
+    if (isOccurrenceChecked(item, occurrence)) return null;
     // The day it was bought on may lie outside the visible window.
     const source =
       rawItemsByKey.get(`${item.ingredientId}::${item.unit ?? ""}`) ?? item;
