@@ -17,6 +17,7 @@ import {
   ShoppingPackageSuggest,
 } from "../schemas.js";
 import {
+  fillWeek,
   generateWeek,
   type MealCategoryKey,
   type PlannedMeal,
@@ -1040,6 +1041,12 @@ const GenerateWeekInput = z.object({
    * that manage the inventory themselves.
    */
   syncFreezer: z.boolean().optional(),
+  /**
+   * Days (0 = Monday) to leave exactly as they are: meals already chosen,
+   * days that have passed. Only the other days are generated, around what
+   * the kept days hold. Omit to replace the whole week.
+   */
+  keepDays: z.array(z.number().int().min(0).max(6)).max(7).optional(),
 });
 
 const dayIndexSchema = z.number().int().min(0).max(6);
@@ -1097,18 +1104,40 @@ export const plannerRouter = router({
         .map((entry) => entry.recipeId)
         .filter((id): id is string => id != null);
 
-      const selected = generateWeek(pool, cfg, {
-        history,
-        avoidRecipeIds,
-        seed: input?.seed,
-      });
-      const days = selected.map((recipe) => ({
-        type: "RECIPE" as const,
-        recipeId: recipe.id,
-      }));
-      const persisted = await changeWeekPlan(weekStart, householdId, () => days, {
-        syncFreezer: input?.syncFreezer ?? false,
-      });
+      const keepDays = new Set(input?.keepDays ?? []);
+      const poolById = new Map(pool.map((recipe) => [recipe.id, recipe]));
+
+      // Generated inside the plan's lock, from the days as they are stored at
+      // that moment, so a kept day can never be overwritten by a stale view.
+      const persisted = await changeWeekPlan(
+        weekStart,
+        householdId,
+        (current) => {
+          const kept = DAYS.map((dayIndex) => {
+            if (!keepDays.has(dayIndex)) return undefined;
+            const entry = current[dayIndex];
+            const recipeId =
+              entry && "recipeId" in entry ? entry.recipeId : undefined;
+            return (recipeId ? poolById.get(recipeId) : undefined) ?? null;
+          });
+          const selected = fillWeek(pool, cfg, kept, {
+            history,
+            avoidRecipeIds,
+            seed: input?.seed,
+          });
+          return DAYS.map((dayIndex) => {
+            if (keepDays.has(dayIndex)) {
+              return current[dayIndex] ?? { type: "EMPTY" as const };
+            }
+            const recipe = selected[dayIndex];
+            if (!recipe) {
+              throw new Error(`Failed to select recipe for day ${dayIndex}`);
+            }
+            return { type: "RECIPE" as const, recipeId: recipe.id };
+          });
+        },
+        { syncFreezer: input?.syncFreezer ?? false },
+      );
 
       const suggestions = buildSuggestionBuckets(pool, []);
 

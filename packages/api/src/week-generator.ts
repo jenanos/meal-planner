@@ -68,7 +68,15 @@ export type GenerateWeekOptions = {
   now?: Date;
 };
 
+/**
+ * A day that is already settled when filling a week: the recipe planned
+ * there, or `null` for a day to leave alone without a recipe (takeaway, a day
+ * that has passed). `undefined` marks a day to generate.
+ */
+export type KeptDay<T> = T | null | undefined;
+
 const DAYS_IN_WEEK = 7;
+const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 const DAY_MS = 86_400_000;
 
 /** Friday and Saturday are the "weekend food" slots. Day 0 is Monday. */
@@ -255,6 +263,8 @@ function daysSince(date: Date | null, now: Date): number {
 function buildDayCategories(
   cfg: WeekGeneratorConfig,
   rng: Rng,
+  openDays: number[] = ALL_DAYS,
+  alreadyPlanned: readonly MealCategoryKey[] = [],
 ): (MealCategoryKey | null)[] {
   const requested = new Map<MealCategoryKey, number>([
     ["FISK", Math.max(0, Math.floor(cfg.fish))],
@@ -263,10 +273,16 @@ function buildDayCategories(
     ["STORFE", Math.max(0, Math.floor(cfg.beef))],
   ]);
 
+  // Days that are kept already count towards their category's target.
+  for (const category of alreadyPlanned) {
+    const count = requested.get(category);
+    if (count) requested.set(category, count - 1);
+  }
+
   // More targets than days: take the surplus off whichever category is asking
   // for the most, so a category that only wanted a single day keeps it.
   let total = Array.from(requested.values()).reduce((sum, n) => sum + n, 0);
-  while (total > DAYS_IN_WEEK) {
+  while (total > openDays.length) {
     const largest = Math.max(...requested.values());
     const contenders = Array.from(requested.entries())
       .filter(([, count]) => count === largest)
@@ -280,9 +296,9 @@ function buildDayCategories(
   for (const [category, count] of requested) {
     for (let i = 0; i < count; i += 1) slots.push(category);
   }
-  while (slots.length < DAYS_IN_WEEK) slots.push(null);
+  while (slots.length < openDays.length) slots.push(null);
 
-  return assignSlotsToDays(slots, rng);
+  return assignSlotsToDays(slots, rng, openDays);
 }
 
 /**
@@ -303,11 +319,12 @@ const LAYOUT_TEMPERATURE = 1.2;
 function assignSlotsToDays(
   slots: (MealCategoryKey | null)[],
   rng: Rng,
+  openDays: number[] = ALL_DAYS,
 ): (MealCategoryKey | null)[] {
   const remaining = shuffle(slots, rng);
   const layout: (MealCategoryKey | null)[] = new Array(DAYS_IN_WEEK).fill(null);
 
-  for (const dayIndex of shuffle([0, 1, 2, 3, 4, 5, 6], rng)) {
+  for (const dayIndex of shuffle(openDays, rng)) {
     if (remaining.length === 0) break;
     const scored = remaining.map((slot, position) => ({
       item: position,
@@ -446,30 +463,65 @@ export function generateWeek<T extends GeneratorRecipe>(
   cfg: WeekGeneratorConfig,
   options: GenerateWeekOptions = {},
 ): T[] {
+  return fillWeek(pool, cfg, [], options).map((recipe, dayIndex) => {
+    if (!recipe) throw new Error(`Failed to select recipe for day ${dayIndex}`);
+    return recipe;
+  });
+}
+
+/**
+ * Generate only the days that are not settled yet. `kept` holds what each day
+ * already has (see `KeptDay`); kept recipes are returned as they are and
+ * shape the rest of the week the same way generated ones do: they count
+ * towards the category targets, are not repeated, and keep their category
+ * off the neighbouring days. Days kept without a recipe come back as `null`.
+ */
+export function fillWeek<T extends GeneratorRecipe>(
+  pool: T[],
+  cfg: WeekGeneratorConfig,
+  kept: readonly KeptDay<T>[],
+  options: GenerateWeekOptions = {},
+): (T | null)[] {
+  const openDays = ALL_DAYS.filter((day) => kept[day] === undefined);
+  const keptRecipes = ALL_DAYS.map((day) => kept[day] ?? null);
+  if (openDays.length === 0) return keptRecipes;
+
   if (pool.length === 0) {
     throw new Error("No recipes available for planner selection");
   }
 
   const rng = createRng(options.seed);
-  const layout = buildDayCategories(cfg, rng);
+  const layout = buildDayCategories(
+    cfg,
+    rng,
+    openDays,
+    keptRecipes.flatMap((recipe) => (recipe ? [recipe.category] : [])),
+  );
   const ctx: ScoreContext = {
     cfg,
     history: indexHistory(options.history ?? [], pool),
     layout,
     budgets: categoryBudgets(cfg),
     usedIngredients: new Set<string>(),
-    chosenByDay: new Array(DAYS_IN_WEEK).fill(null),
+    chosenByDay: keptRecipes.slice(),
     avoid: new Set(options.avoidRecipeIds ?? []),
     maxUsageCount: pool.reduce((max, r) => Math.max(max, r.usageCount), 0),
     now: options.now ?? new Date(),
   };
 
   const usedRecipeIds = new Set<string>();
+  for (const recipe of keptRecipes) {
+    if (!recipe) continue;
+    usedRecipeIds.add(recipe.id);
+    for (const ingredient of recipe.ingredients) {
+      if (!ingredient.isPantryItem) ctx.usedIngredients.add(ingredient.ingredientId);
+    }
+  }
 
   // Fill the days that owe a category first, so their quota is not eaten by
   // the unconstrained days.
-  const constrainedDays = [0, 1, 2, 3, 4, 5, 6].filter((day) => layout[day] !== null);
-  const freeDays = [0, 1, 2, 3, 4, 5, 6].filter((day) => layout[day] === null);
+  const constrainedDays = openDays.filter((day) => layout[day] !== null);
+  const freeDays = openDays.filter((day) => layout[day] === null);
   const fillOrder = [...shuffle(constrainedDays, rng), ...shuffle(freeDays, rng)];
 
   for (const dayIndex of fillOrder) {
@@ -498,8 +550,5 @@ export function generateWeek<T extends GeneratorRecipe>(
     }
   }
 
-  return ctx.chosenByDay.map((recipe, dayIndex) => {
-    if (!recipe) throw new Error(`Failed to select recipe for day ${dayIndex}`);
-    return recipe as T;
-  });
+  return ctx.chosenByDay as (T | null)[];
 }

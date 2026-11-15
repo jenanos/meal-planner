@@ -269,16 +269,24 @@ export function registerWeekPlanTools(ctx: ToolContext) {
           .describe(
             "Valgfri verdi som gir samme forslag hver gang. Utelat for et nytt forslag.",
           ),
+        keepDays: z
+          .array(z.number().int().min(0).max(6))
+          .max(7)
+          .optional()
+          .describe(
+            "Dager som skal stå urørt (0 = mandag ... 6 = søndag), f.eks. middager som alt er valgt eller dager som har passert. Bare de andre dagene får nye forslag. Utelat for å bytte ut hele uka.",
+          ),
         syncFreezer: syncFreezerArg,
       },
     },
-    async ({ week, fish, vegetarian, chicken, beef, seed, syncFreezer }) => {
+    async ({ week, fish, vegetarian, chicken, beef, seed, syncFreezer, keepDays }) => {
       const hasConstraints = [fish, vegetarian, chicken, beef].some(
         (value) => value !== undefined,
       );
       const generated = await api.planner.generateWeekPlan.mutate({
         weekStart: toApiWeekStart(resolveWeek(ctx, week)),
         seed,
+        keepDays,
         // A generated week never contains freezer meals, so any that were
         // planned go back into the freezer, in the same transaction.
         syncFreezer: syncFreezer ?? true,

@@ -17,9 +17,13 @@ type WeekSlotProps = {
   onClearEntry?: (_index: number) => void;
   /** When true, tapping a meal opens the recipe and a separate button opens the picker. */
   tapOpensRecipe?: boolean;
+  isToday?: boolean;
+  isPast?: boolean;
+  isLocked?: boolean;
+  onToggleLock?: (_index: number) => void;
 };
 
-export function WeekSlot({ index, dayName, dateLabel, entry, weekOffset = 0, onRecipeClick, onRequestChange, onSetTakeaway, onClearEntry, tapOpensRecipe = false }: WeekSlotProps & { dateLabel?: string }) {
+export function WeekSlot({ index, dayName, dateLabel, entry, weekOffset = 0, onRecipeClick, onRequestChange, onSetTakeaway, onClearEntry, tapOpensRecipe = false, isToday, isPast, isLocked, onToggleLock }: WeekSlotProps & { dateLabel?: string }) {
   const recipe = entry?.type === "RECIPE" ? entry.recipe : (entry?.type === "FREEZER" ? entry.recipe : null);
   const entryKey = entry?.type === "TAKEAWAY" ? "takeaway" : entry?.type === "FREEZER" ? `freezer-${recipe?.id}` : recipe?.id || "empty";
   // Use the same format as draggable IDs so parseDragId works
@@ -54,6 +58,8 @@ export function WeekSlot({ index, dayName, dateLabel, entry, weekOffset = 0, onR
           onChangeRecipe={handleChangeRecipe}
           onSetTakeaway={onSetTakeaway ? () => onSetTakeaway(index) : undefined}
           onClearEntry={onClearEntry ? () => onClearEntry(index) : undefined}
+          isToday={isToday}
+          isPast={isPast}
         />
       </div>
     );
@@ -74,6 +80,10 @@ export function WeekSlot({ index, dayName, dateLabel, entry, weekOffset = 0, onR
               onClick={handleClick}
               onChangeRecipe={handleChangeRecipe}
               onSetTakeaway={onSetTakeaway ? () => onSetTakeaway(index) : undefined}
+              isToday={isToday}
+              isPast={isPast}
+              isLocked={isLocked}
+              onToggleLock={onToggleLock ? () => onToggleLock(index) : undefined}
             />
           </div>
         )}

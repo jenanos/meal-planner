@@ -423,6 +423,7 @@ describe("week plan", () => {
         input: {
           weekStart: "2026-11-09T00:00:00.000Z",
           seed: undefined,
+          keepDays: undefined,
           syncFreezer: true,
           constraints: {
             fish: 3,

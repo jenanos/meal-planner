@@ -9,6 +9,9 @@ export type MobileEditorItem = {
   dateLabel?: string;
   realIdx: number;
   weekOffset: number;
+  isToday?: boolean;
+  isPast?: boolean;
+  isLocked?: boolean;
 };
 
 export type MobileEditorProps = {
@@ -17,6 +20,7 @@ export type MobileEditorProps = {
   onSetTakeaway: (index: number, weekOffset: number) => void;
   onClearEntry: (index: number, weekOffset: number) => void;
   onRecipeClick?: (recipe: RecipeDTO) => void;
+  onToggleLock?: (index: number, weekOffset: number) => void;
   /** User preference: tap opens the recipe, a button on the card opens the picker. */
   tapOpensRecipe?: boolean;
 };
@@ -33,6 +37,7 @@ export function MobileEditor({
   onSetTakeaway,
   onClearEntry,
   onRecipeClick,
+  onToggleLock,
   tapOpensRecipe = false,
 }: MobileEditorProps) {
   return (
@@ -51,6 +56,14 @@ export function MobileEditor({
             tapOpensRecipe={tapOpensRecipe}
             onSetTakeaway={() => onSetTakeaway(item.realIdx, item.weekOffset)}
             onClearEntry={() => onClearEntry(item.realIdx, item.weekOffset)}
+            isToday={item.isToday}
+            isPast={item.isPast}
+            isLocked={item.isLocked}
+            onToggleLock={
+              onToggleLock
+                ? () => onToggleLock(item.realIdx, item.weekOffset)
+                : undefined
+            }
           />
         ))}
       </div>
