@@ -25,6 +25,7 @@ import {
 import { z } from "zod";
 import { computeExpiresAt } from "./freezer.js";
 import { findDuplicateGroups } from "../duplicates.js";
+import { purgeExpiredDeals, toDealDTO } from "./deal.js";
 
 const DAYS = [0, 1, 2, 3, 4, 5, 6] as const;
 export type DayIndex = (typeof DAYS)[number];
@@ -1738,9 +1739,10 @@ export const plannerRouter = router({
         );
 
       // Include extra shopping items scoped to this household.
+      await purgeExpiredDeals(householdId);
       const extraItems = await prisma.extraShoppingItem.findMany({
         where: { householdId },
-        include: { catalogItem: true },
+        include: { catalogItem: { include: { deal: true } } },
         orderBy: { updatedAt: "desc" },
       });
       const categoryByCatalogId = await fetchExtraCatalogCategoryMap(
@@ -1766,6 +1768,8 @@ export const plannerRouter = router({
             updatedAt: e.updatedAt.toISOString(),
             category,
             hasCategory: category !== null,
+            // A store offer on this item, set through the MCP server.
+            deal: e.catalogItem.deal ? toDealDTO(e.catalogItem.deal) : null,
           };
         });
 
@@ -2185,9 +2189,15 @@ export const plannerRouter = router({
         where: { name: input.name.trim(), householdId },
       });
       if (!catalog) return { ok: true };
-      await prisma.extraShoppingItem.deleteMany({
-        where: { catalogItemId: catalog.id, householdId },
-      });
+      await prisma.$transaction([
+        prisma.extraShoppingItem.deleteMany({
+          where: { catalogItemId: catalog.id, householdId },
+        }),
+        // An offer has no meaning without its item on the list.
+        prisma.shoppingDeal.deleteMany({
+          where: { catalogItemId: catalog.id, householdId },
+        }),
+      ]);
       return { ok: true };
     }),
 

@@ -4,6 +4,7 @@ import { registerPrompts } from "./prompts.js";
 import { registerAdminTools } from "./tools/admin.js";
 import { registerCatalogTools } from "./tools/catalog.js";
 import { registerContextTools } from "./tools/context.js";
+import { registerDealTools } from "./tools/deals.js";
 import { registerFreezerTools } from "./tools/freezer.js";
 import type { ToolContext } from "./tools/helpers.js";
 import { registerIngredientTools } from "./tools/ingredients.js";
@@ -20,6 +21,7 @@ Begreper:
 - Uke: starter alltid på mandag. Verktøy med 'week' tar en hvilken som helst dato i uka (YYYY-MM-DD) eller "current" / "next" / "previous". dayIndex 0 = mandag ... 6 = søndag. Kall get-context for dagens dato før du regner på uker.
 - Ukesplan: én middag per dag. RECIPE = lag oppskriften, FREEZER = porsjon fra fryseren, TAKEAWAY, EMPTY.
 - Handleliste: bygges automatisk av ingrediensene i ukas RECIPE-dager (items), pluss ekstra varer husholdningen legger til selv (extras). Basisvarer er ingredienser man vanligvis har hjemme.
+- Tilbud: en ekstra vare kan være merket med et butikktilbud (butikk, pris, periode). Serveren leser ikke tilbudsaviser selv – du finner tilbudene med nettsøk og melder dem inn med add-shopping-deals. Tilbudsvarsler (get-deal-watchlist) er varene husholdningen vil ha beskjed om. Utløpte tilbud ryddes bort automatisk.
 - Fryser: porsjoner av ferdige retter. Å planlegge en FREEZER-dag trekker en porsjon fra beholdningen.
 - Handlepakke: en navngitt samling ekstra varer som legges på handlelisten samlet.
 
@@ -73,6 +75,7 @@ export function buildServer(options: BuildServerOptions): McpServer {
   registerRecipeTools(ctx);
   registerIngredientTools(ctx);
   registerShoppingTools(ctx);
+  registerDealTools(ctx);
   registerCatalogTools(ctx);
   registerFreezerTools(ctx);
   registerSettingsTools(ctx);

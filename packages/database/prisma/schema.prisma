@@ -254,6 +254,8 @@ model Household {
   shoppingStates   ShoppingState[]
   extraCatalog     ExtraItemCatalog[]
   extraItems       ExtraShoppingItem[]
+  shoppingDeals    ShoppingDeal[]
+  dealWatchItems   DealWatchItem[]
   shoppingStores   ShoppingStore[]
   shoppingPackages ShoppingPackage[]
   freezerItems     FreezerItem[]
@@ -434,6 +436,7 @@ model ExtraItemCatalog {
   updatedAt   DateTime            @updatedAt
 
   extras       ExtraShoppingItem[]
+  deal         ShoppingDeal?
   packageItems ShoppingPackageItem[]
   household    Household             @relation(fields: [householdId], references: [id], onDelete: Cascade)
 
@@ -455,6 +458,48 @@ model ExtraShoppingItem {
 
   @@unique([weekStart, catalogItemId, householdId])
   @@index([weekStart])
+}
+
+// A store offer attached to an extra item on the shopping list. At most one
+// per item: the best offer found. Expired offers are purged when the list is
+// read, together with the item itself if the offer was the reason it was added.
+model ShoppingDeal {
+  id            String    @id @default(uuid()) @db.Uuid
+  catalogItemId String    @unique @db.Uuid
+  householdId   String    @db.Uuid
+  store         String
+  // Free text, since offers come as "39,90 kr", "2 for 70 kr", "-40 %" ...
+  price         String
+  regularPrice  String?
+  // The concrete product on offer, e.g. "Evergood filtermalt 250 g".
+  product       String?
+  validFrom     DateTime? @db.Date
+  // Last day the offer applies.
+  validTo       DateTime  @db.Date
+  // True when the offer put the item on the list (it was not there already).
+  addedByDeal   Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  catalogItem ExtraItemCatalog @relation(fields: [catalogItemId], references: [id], onDelete: Cascade)
+  household   Household        @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@index([householdId, validTo])
+}
+
+// Products the household wants to be told about when they are on offer.
+model DealWatchItem {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @db.Citext
+  // Free text: preferred brand, pack size, the price that counts as a good offer.
+  note        String?
+  householdId String   @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@unique([name, householdId])
 }
 
 model ShoppingStore {

@@ -21,10 +21,15 @@ const { prismaMock } = vi.hoisted(() => {
     extraShoppingItem: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
+      deleteMany: vi.fn(),
     },
     extraItemCatalog: {
       findMany: vi.fn(),
       upsert: vi.fn(),
+    },
+    shoppingDeal: {
+      findMany: vi.fn(),
+      deleteMany: vi.fn(),
     },
     shoppingPackage: {
       findMany: vi.fn(),
@@ -407,8 +412,77 @@ describe("planner.shoppingList", () => {
         updatedAt: "2026-07-08T10:00:00.000Z",
         category: "HUSHOLDNING",
         hasCategory: true,
+        deal: null,
       },
     ]);
+  });
+
+  it("reports the store offer on an extra and purges expired offers first", async () => {
+    prismaMock.weekPlan.findMany.mockResolvedValueOnce([]);
+    prismaMock.shoppingState.findMany.mockResolvedValueOnce([]);
+    prismaMock.shoppingDeal.findMany.mockResolvedValueOnce([
+      { id: "deal-old", catalogItemId: "cat-old", addedByDeal: true },
+      { id: "deal-kept", catalogItemId: "cat-kept", addedByDeal: false },
+    ]);
+    prismaMock.extraShoppingItem.deleteMany.mockReturnValue("delete-items");
+    prismaMock.shoppingDeal.deleteMany.mockReturnValue("delete-deals");
+    prismaMock.extraShoppingItem.findMany.mockResolvedValueOnce([
+      {
+        id: "extra-kaffe",
+        catalogItemId: CATALOG_ID,
+        weekStart: new Date("1970-01-05T00:00:00.000Z"),
+        checked: false,
+        updatedAt: new Date("2026-07-08T10:00:00.000Z"),
+        catalogItem: {
+          name: "Kaffe",
+          deal: {
+            store: "Kiwi",
+            price: "39,90 kr",
+            regularPrice: null,
+            product: "Evergood 250 g",
+            validFrom: new Date("2026-07-06T00:00:00.000Z"),
+            validTo: new Date("2026-07-12T00:00:00.000Z"),
+            addedByDeal: true,
+          },
+        },
+      },
+    ]);
+
+    const result = await createCaller().shoppingList({ weekStart: WEEK_ISO });
+
+    // Expired = last day before today (9 July in Oslo).
+    expect(prismaMock.shoppingDeal.findMany).toHaveBeenCalledWith({
+      where: {
+        householdId: HOUSEHOLD_ID,
+        validTo: { lt: new Date("2026-07-09T00:00:00.000Z") },
+      },
+      select: { id: true, catalogItemId: true, addedByDeal: true },
+    });
+    // Only the item the offer itself put on the list goes with it, and only
+    // while it is still unchecked.
+    expect(prismaMock.extraShoppingItem.deleteMany).toHaveBeenCalledWith({
+      where: {
+        householdId: HOUSEHOLD_ID,
+        catalogItemId: { in: ["cat-old"] },
+        checked: false,
+      },
+    });
+    expect(prismaMock.shoppingDeal.deleteMany).toHaveBeenCalledWith({
+      where: { id: { in: ["deal-old", "deal-kept"] } },
+    });
+    expect(prismaMock.$transaction).toHaveBeenCalledWith([
+      "delete-items",
+      "delete-deals",
+    ]);
+    expect(result.extras[0]?.deal).toEqual({
+      store: "Kiwi",
+      price: "39,90 kr",
+      regularPrice: null,
+      product: "Evergood 250 g",
+      validFrom: "2026-07-06",
+      validTo: "2026-07-12",
+      addedByDeal: true,
+    });
   });
 });
 

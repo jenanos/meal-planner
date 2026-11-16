@@ -4,6 +4,7 @@ import { plannerRouter } from "./planner.js";
 import { ingredientRouter } from "./ingredient.js";
 import { freezerRouter } from "./freezer.js";
 import { adminRouter } from "./admin.js";
+import { dealRouter } from "./deal.js";
 
 const routes = {
   recipe: recipeRouter,
@@ -11,6 +12,7 @@ const routes = {
   ingredient: ingredientRouter,
   freezer: freezerRouter,
   admin: adminRouter,
+  deal: dealRouter,
 } as const;
 
 export const appRouter = router(routes);

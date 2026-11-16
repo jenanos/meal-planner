@@ -77,7 +77,9 @@ describe("tool catalogue", () => {
       "generate-week-plan",
       "merge-extra-catalog-items",
       "merge-ingredients",
+      "remove-deal-watch-items",
       "remove-extra-shopping-items",
+      "remove-shopping-deals",
       "set-freezer-item",
       "set-week-plan-days",
       "update-recipe",
@@ -103,6 +105,7 @@ describe("tool catalogue", () => {
       "handleliste",
       "planlegg-uka",
       "rydd-i-varer",
+      "tilbudsjakt",
     ]);
     const prompt = await client.getPrompt({
       name: "planlegg-uka",
@@ -797,6 +800,144 @@ describe("shopping list", () => {
       { name: "Smør", source: "new" },
       // Lookalikes added earlier in the same call count too.
       { name: "Smørbukk", source: "new", similarInCatalog: ["Smør"] },
+    ]);
+  });
+});
+
+describe("store offers", () => {
+  it("gathers everything a deal hunt needs in one call", async () => {
+    const { api } = fakeApi({
+      "deal.watchList": () => [
+        { name: "Gulost", note: null },
+        { name: "Kaffe", note: "Evergood, under 45 kr" },
+      ],
+      "deal.list": () => [
+        {
+          name: "Kaffe",
+          checked: true,
+          store: "Kiwi",
+          price: "39,90 kr",
+          regularPrice: null,
+          product: null,
+          validFrom: null,
+          validTo: "2026-11-15",
+          addedByDeal: true,
+        },
+      ],
+      "planner.shoppingSettings": () => ({
+        settings: {},
+        stores: [{ id: "s1", name: "Kiwi Storo", categoryOrder: [] }],
+      }),
+    });
+    const { call } = await connect({ api });
+
+    const { data } = await call("get-deal-watchlist", {});
+
+    expect(data).toEqual({
+      today: "2026-11-12",
+      watchlist: [
+        { name: "Gulost" },
+        { name: "Kaffe", note: "Evergood, under 45 kr" },
+      ],
+      activeDeals: [
+        {
+          name: "Kaffe",
+          store: "Kiwi",
+          price: "39,90 kr",
+          validTo: "2026-11-15",
+          bought: true,
+        },
+      ],
+      stores: ["Kiwi Storo"],
+    });
+  });
+
+  it("passes offers on and explains the ones that were skipped", async () => {
+    const { api, callsTo } = fakeApi({
+      "deal.set": () => ({
+        saved: [{ name: "Kaffe", status: "added" }],
+        skipped: [{ name: "Gulost", reason: "expired" }],
+      }),
+    });
+    const { call } = await connect({ api });
+    const deals = [
+      {
+        name: "kaffe",
+        store: "Kiwi",
+        price: "39,90 kr",
+        product: "Evergood 250 g",
+        validFrom: "2026-11-09",
+        validTo: "2026-11-15",
+      },
+      { name: "Gulost", store: "Rema 1000", price: "79 kr", validTo: "2026-11-08" },
+    ];
+
+    const { data } = await call("add-shopping-deals", { deals });
+
+    expect(callsTo("deal.set")).toEqual([{ deals }]);
+    expect(data.saved).toEqual([{ name: "Kaffe", status: "added" }]);
+    expect(data.skipped).toEqual([
+      { name: "Gulost", reason: "Tilbudsperioden er allerede over." },
+    ]);
+  });
+
+  it("rejects an offer without a proper end date", async () => {
+    const { api, callsTo } = fakeApi({});
+    const { call } = await connect({ api });
+
+    const { isError } = await call("add-shopping-deals", {
+      deals: [{ name: "Kaffe", store: "Kiwi", price: "39,90", validTo: "søndag" }],
+    });
+
+    expect(isError).toBe(true);
+    expect(callsTo("deal.set")).toEqual([]);
+  });
+
+  it("shows the offer on extras in the shopping list", async () => {
+    const WEEK = "2026-11-09T00:00:00.000Z";
+    const { api } = fakeApi({
+      "planner.shoppingList": () => ({
+        weekStart: WEEK,
+        includedWeekStarts: [WEEK],
+        plannedDays: [],
+        items: [],
+        extras: [
+          { id: "e1", name: "Dopapir", checked: false, category: null, deal: null },
+          {
+            id: "e2",
+            name: "Kaffe",
+            checked: false,
+            category: "TORRVARER",
+            deal: {
+              store: "Kiwi",
+              price: "39,90 kr",
+              regularPrice: "64,90 kr",
+              product: null,
+              validFrom: null,
+              validTo: "2026-11-15",
+              addedByDeal: true,
+            },
+          },
+        ],
+      }),
+    });
+    const { call } = await connect({ api });
+
+    const { data } = await call("get-shopping-list", {});
+
+    expect(data.extras).toEqual([
+      { name: "Dopapir", checked: false },
+      {
+        name: "Kaffe",
+        checked: false,
+        category: "TORRVARER",
+        deal: {
+          store: "Kiwi",
+          price: "39,90 kr",
+          regularPrice: "64,90 kr",
+          validTo: "2026-11-15",
+        },
+      },
     ]);
   });
 });

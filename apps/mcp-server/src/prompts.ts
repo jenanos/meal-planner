@@ -78,6 +78,35 @@ export function registerPrompts(server: McpServer) {
   );
 
   server.registerPrompt(
+    "tilbudsjakt",
+    {
+      title: "Finn tilbud til handlelisten",
+      description:
+        "Sjekk ukas tilbudsaviser og legg gode tilbud på handlelisten. Egner seg som ukentlig, planlagt jobb.",
+      argsSchema: {
+        butikker: z
+          .string()
+          .optional()
+          .describe(
+            "Butikkene som er aktuelle, f.eks. «Kiwi, Rema 1000, Coop Extra». Standard: de vanlige kjedene.",
+          ),
+      },
+    },
+    ({ butikker }) =>
+      userMessage(
+        [
+          "Sjekk ukas tilbudsaviser og legg gode tilbud på handlelisten min.",
+          "1. Hent tilbudsvarslene med get-deal-watchlist: varene jeg følger med på, tilbudene som allerede står på listen, og dagens dato.",
+          `2. Søk på nettet etter gjeldende tilbud på hver vare i ${butikker || "de vanlige norske dagligvarekjedene (Kiwi, Rema 1000, Coop Extra, Coop Mega, Meny, Bunnpris, Spar)"}. Bruk kjedenes egne kundeaviser eller en tilbudstjeneste, og les av pris og gyldighetsperiode der – ikke gjett.`,
+          "3. Ta bare med tilbud som faktisk er gode: tydelig under ordinær pris, og i tråd med notatet på varen (merke, størrelse, makspris). Velg det beste når flere butikker har samme vare. Hopp over varer uten et godt tilbud.",
+          "4. Meld dem inn samlet med add-shopping-deals: varenavnet fra tilbudsvarslene i name, og butikk, tilbudspris, ordinær pris, konkret produkt og periode i feltene. Ikke meld inn et tilbud som allerede står i activeDeals med samme butikk, pris og periode.",
+          "5. Avslutt med en kort oppsummering: hva som ble lagt til, hvor mye det sparer, og hvilke varer som ikke hadde noe godt tilbud denne uka.",
+          "Hvis tilbudsvarslene er tomme: spør meg hvilke varer jeg vil følge med på (og lagre dem med set-deal-watch-items) hvis jeg er til stede; ellers avslutt uten å endre noe.",
+        ].join("\n"),
+      ),
+  );
+
+  server.registerPrompt(
     "rydd-i-varer",
     {
       title: "Rydd i ingredienser og varer",
