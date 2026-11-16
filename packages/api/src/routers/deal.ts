@@ -57,30 +57,22 @@ export function toDealDTO(deal: StoredDeal) {
  * linger as history like any other).
  */
 export async function purgeExpiredDeals(householdId: string) {
-  const expired = await prisma.shoppingDeal.findMany({
-    where: { householdId, validTo: { lt: dealToday() } },
-    select: { id: true, catalogItemId: true, addedByDeal: true },
-  });
-  if (!expired?.length) return;
+  const expired = { householdId, validTo: { lt: dealToday() } };
+  // Nearly always nothing: keep the common read free of writes.
+  if (!(await prisma.shoppingDeal.count({ where: expired }))) return;
 
-  const addedByDeal = expired
-    .filter((deal) => deal.addedByDeal)
-    .map((deal) => deal.catalogItemId);
+  // Both deletes decide for themselves what has expired, rather than work
+  // from a list read earlier: an offer replaced in the meantime, and the
+  // item it put on the list, must survive.
   await prisma.$transaction([
-    ...(addedByDeal.length
-      ? [
-          prisma.extraShoppingItem.deleteMany({
-            where: {
-              householdId,
-              catalogItemId: { in: addedByDeal },
-              checked: false,
-            },
-          }),
-        ]
-      : []),
-    prisma.shoppingDeal.deleteMany({
-      where: { id: { in: expired.map((deal) => deal.id) } },
+    prisma.extraShoppingItem.deleteMany({
+      where: {
+        householdId,
+        checked: false,
+        catalogItem: { deal: { is: { ...expired, addedByDeal: true } } },
+      },
     }),
+    prisma.shoppingDeal.deleteMany({ where: expired }),
   ]);
 }
 

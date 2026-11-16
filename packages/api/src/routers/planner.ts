@@ -2076,6 +2076,30 @@ export const plannerRouter = router({
           }
         }
 
+        // A store offer follows its item. The kept entry's own offer wins;
+        // otherwise it takes over the merged offer that runs longest.
+        // Deleting the merged entries below drops whatever is left.
+        const keepDeal = await tx.shoppingDeal.findUnique({
+          where: { catalogItemId: keepId },
+        });
+        if (!keepDeal) {
+          const moved = await tx.shoppingDeal.findFirst({
+            where: { catalogItemId: { in: verifiedMergeIds }, householdId },
+            orderBy: { validTo: "desc" },
+          });
+          if (moved) {
+            await tx.shoppingDeal.update({
+              where: { id: moved.id },
+              data: {
+                catalogItemId: keepId,
+                // The kept item may have been on the list in its own right.
+                addedByDeal:
+                  moved.addedByDeal && !keepLinks.some((l) => !l.checked),
+              },
+            });
+          }
+        }
+
         await tx.extraItemCatalog.deleteMany({
           where: { id: { in: verifiedMergeIds }, householdId },
         });

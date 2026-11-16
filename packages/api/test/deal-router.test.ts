@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
     shoppingDeal: {
+      count: vi.fn(),
       findMany: vi.fn(),
       findUnique: vi.fn(),
       findFirst: vi.fn(),
@@ -76,6 +77,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   // Monday 16 November 2026, midday in Oslo.
   vi.setSystemTime(new Date("2026-11-16T11:00:00.000Z"));
+  prismaMock.shoppingDeal.count.mockResolvedValue(0);
   prismaMock.shoppingDeal.findMany.mockResolvedValue([]);
   prismaMock.shoppingDeal.findUnique.mockResolvedValue(null);
   prismaMock.dealWatchItem.findUnique.mockResolvedValue(null);

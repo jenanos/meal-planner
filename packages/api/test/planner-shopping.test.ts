@@ -28,7 +28,7 @@ const { prismaMock } = vi.hoisted(() => {
       upsert: vi.fn(),
     },
     shoppingDeal: {
-      findMany: vi.fn(),
+      count: vi.fn(),
       deleteMany: vi.fn(),
     },
     shoppingPackage: {
@@ -420,10 +420,7 @@ describe("planner.shoppingList", () => {
   it("reports the store offer on an extra and purges expired offers first", async () => {
     prismaMock.weekPlan.findMany.mockResolvedValueOnce([]);
     prismaMock.shoppingState.findMany.mockResolvedValueOnce([]);
-    prismaMock.shoppingDeal.findMany.mockResolvedValueOnce([
-      { id: "deal-old", catalogItemId: "cat-old", addedByDeal: true },
-      { id: "deal-kept", catalogItemId: "cat-kept", addedByDeal: false },
-    ]);
+    prismaMock.shoppingDeal.count.mockResolvedValueOnce(2);
     prismaMock.extraShoppingItem.deleteMany.mockReturnValue("delete-items");
     prismaMock.shoppingDeal.deleteMany.mockReturnValue("delete-deals");
     prismaMock.extraShoppingItem.findMany.mockResolvedValueOnce([
@@ -451,24 +448,24 @@ describe("planner.shoppingList", () => {
     const result = await createCaller().shoppingList({ weekStart: WEEK_ISO });
 
     // Expired = last day before today (9 July in Oslo).
-    expect(prismaMock.shoppingDeal.findMany).toHaveBeenCalledWith({
-      where: {
-        householdId: HOUSEHOLD_ID,
-        validTo: { lt: new Date("2026-07-09T00:00:00.000Z") },
-      },
-      select: { id: true, catalogItemId: true, addedByDeal: true },
+    const expired = {
+      householdId: HOUSEHOLD_ID,
+      validTo: { lt: new Date("2026-07-09T00:00:00.000Z") },
+    };
+    expect(prismaMock.shoppingDeal.count).toHaveBeenCalledWith({
+      where: expired,
     });
-    // Only the item the offer itself put on the list goes with it, and only
-    // while it is still unchecked.
+    // Only an item the offer itself put on the list goes with it, and only
+    // while it is still unchecked. Each delete re-checks expiry itself.
     expect(prismaMock.extraShoppingItem.deleteMany).toHaveBeenCalledWith({
       where: {
         householdId: HOUSEHOLD_ID,
-        catalogItemId: { in: ["cat-old"] },
         checked: false,
+        catalogItem: { deal: { is: { ...expired, addedByDeal: true } } },
       },
     });
     expect(prismaMock.shoppingDeal.deleteMany).toHaveBeenCalledWith({
-      where: { id: { in: ["deal-old", "deal-kept"] } },
+      where: expired,
     });
     expect(prismaMock.$transaction).toHaveBeenCalledWith([
       "delete-items",
