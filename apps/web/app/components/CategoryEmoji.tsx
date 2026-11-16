@@ -19,7 +19,7 @@ const emojiByCategory: Record<string, string> = {
     ANNET: "❓",
 };
 
-const srLabelByCategory: Record<string, string> = {
+export const CATEGORY_LABELS: Record<string, string> = {
     VEGETAR: "Vegetar",
     KYLLING: "Kylling",
     STORFE: "Storfe",
@@ -31,7 +31,7 @@ export function CategoryEmoji({ category, className, size = 10, showSrLabel = tr
     if (!category) return null;
     const key = (category || "").toUpperCase();
     const emoji = emojiByCategory[key] ?? "❓";
-    const label = srLabelByCategory[key] ?? "Annet";
+    const label = CATEGORY_LABELS[key] ?? "Annet";
 
     // Twemoji replaces unicode with consistent SVG/PNG assets
     return (
