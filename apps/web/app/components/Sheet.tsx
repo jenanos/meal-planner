@@ -67,6 +67,10 @@ export function Sheet({
   useVisualViewport(frameRef, open);
   useCloseOnBack(open, requestClose);
 
+  // While an overlay prompt is up, the sheet behind it is out of reach of
+  // focus and pointer alike. (`inert` as a string: React 18 drops a boolean.)
+  const blocked = overlay ? ({ inert: "" } as object) : {};
+
   const DismissIcon = dismissIcon === "back" ? ArrowLeft : X;
 
   return (
@@ -121,6 +125,7 @@ export function Sheet({
               />
             ) : null}
             <header
+              {...blocked}
               className={cn(
                 "grid shrink-0 grid-cols-[minmax(2.75rem,1fr)_auto_minmax(2.75rem,1fr)] items-center gap-2 px-2 sm:px-3",
                 variant === "page"
@@ -156,6 +161,7 @@ export function Sheet({
               </DialogPrimitive.Description>
             ) : null}
             <div
+              {...blocked}
               className={cn(
                 "min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-4 [-webkit-overflow-scrolling:touch]",
                 "pb-[calc(env(safe-area-inset-bottom)+2rem)] sm:px-6 sm:pb-6",
@@ -196,6 +202,15 @@ export function SheetConfirm({
       aria-label={title}
       className="absolute inset-0 z-10 flex items-end justify-center bg-black/40 p-4 animate-in fade-in-0 sm:items-center"
       onClick={onCancel}
+      // The sheet behind is inert, so Tab just moves between the two buttons.
+      onKeyDown={(event) => {
+        if (event.key !== "Tab") return;
+        event.preventDefault();
+        event.stopPropagation();
+        const buttons = event.currentTarget.querySelectorAll("button");
+        const next = document.activeElement === buttons[0] ? buttons[1] : buttons[0];
+        next?.focus();
+      }}
     >
       <div
         className="w-full max-w-sm space-y-4 rounded-2xl bg-background p-5 shadow-2xl animate-in slide-in-from-bottom-4"
