@@ -1,324 +1,176 @@
 "use client";
 export const dynamic = "force-dynamic";
 
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { BookOpen, ChevronRight } from "lucide-react";
+import { cn } from "@repo/ui";
+
+import { ingredientCategoryLabel } from "../../lib/shopping";
 import { trpc } from "../../lib/trpcClient";
-import { Badge, Button, Checkbox, Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, ScrollArea } from "@repo/ui";
 import type { RouterOutputs } from "../../lib/trpcTypes";
-import { IngredientCard } from "./components/IngredientCard";
-import { X } from "lucide-react";
+import { ListToolbar } from "../components/ListToolbar";
+import { IngredientSheet, type IngredientSheetTarget } from "./components/IngredientSheet";
 
 type IngredientListItem = RouterOutputs["ingredient"]["list"][number];
-type IngredientRecipe = RouterOutputs["ingredient"]["getWithRecipes"]["recipes"][number];
+
+const FILTERS = [
+  { id: "all", label: "Alle", test: (_item: IngredientListItem) => true },
+  { id: "pantry", label: "Basisvarer", test: (item: IngredientListItem) => item.isPantryItem },
+  { id: "no-unit", label: "Uten enhet", test: (item: IngredientListItem) => !item.unit },
+  { id: "unused", label: "Ubrukte", test: (item: IngredientListItem) => item.usageCount === 0 },
+] as const;
+
+type FilterId = (typeof FILTERS)[number]["id"];
+
+const collator = new Intl.Collator("nb", { sensitivity: "base" });
+
+function initialOf(name: string) {
+  const first = name.trim().charAt(0).toLocaleUpperCase("nb");
+  // A letter has distinct cases; digits and symbols share one bucket.
+  return first && first !== first.toLocaleLowerCase("nb") ? first : "#";
+}
 
 export default function IngredientsPage() {
-    const [search, setSearch] = useState("");
-    const deferredSearch = useDeferredValue(search);
-    const [isDialogOpen, setIsDialogOpen] = useState(false);
-    const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
-    const [viewIngredientId, setViewIngredientId] = useState<string | null>(null);
-    const [editingId, setEditingId] = useState<string | null>(null);
-    const [name, setName] = useState("");
-    const [unit, setUnit] = useState("");
-    const [debouncedName, setDebouncedName] = useState("");
-    const [isPantryItem, setIsPantryItem] = useState(false);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<FilterId>("all");
+  const [sheet, setSheet] = useState<IngredientSheetTarget>(null);
 
-    const list = trpc.ingredient.list.useQuery({ search: deferredSearch.trim() || undefined });
-    // Debounce dialog "name" for suggestions
-    useEffect(() => {
-        const t = setTimeout(() => setDebouncedName(name), 250);
-        return () => clearTimeout(t);
-    }, [name]);
-    // Suggestions for the dialog input
-    const dialogSuggest = trpc.ingredient.list.useQuery(
-        { search: debouncedName.trim() || undefined },
-        { enabled: debouncedName.trim().length > 0, staleTime: 5_000 }
-    );
+  // The whole list is small enough to fetch once and filter as you type.
+  const list = trpc.ingredient.list.useQuery(undefined);
 
-    const resetForm = () => {
-        setName("");
-        setUnit("");
-        setIsPantryItem(false);
-        setEditingId(null);
-    };
+  const items = useMemo(
+    () => [...(list.data ?? [])].sort((a, b) => collator.compare(a.name, b.name)),
+    [list.data],
+  );
 
-    const create = trpc.ingredient.create.useMutation({
-        onSuccess: () => {
-            list.refetch();
-            setIsDialogOpen(false);
-            resetForm();
-        },
-    });
+  const counts = useMemo(
+    () =>
+      Object.fromEntries(
+        FILTERS.map(({ id, test }) => [id, items.filter(test).length]),
+      ) as Record<FilterId, number>,
+    [items],
+  );
 
-    const update = trpc.ingredient.update.useMutation({
-        onSuccess: (_data: unknown, variables: { id: string }) => {
-            list.refetch();
-            setIsDialogOpen(false);
-            const nextId = variables.id;
-            resetForm();
-            if (nextId) {
-                setViewIngredientId(nextId);
-                setIsViewDialogOpen(true);
-            }
-        },
-    });
+  const groups = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    const test = FILTERS.find(({ id }) => id === filter)?.test ?? (() => true);
+    const result: { letter: string; items: IngredientListItem[] }[] = [];
+    for (const item of items) {
+      if (!test(item) || (term && !item.name.toLowerCase().includes(term))) continue;
+      const letter = initialOf(item.name);
+      const last = result[result.length - 1];
+      if (last?.letter === letter) last.items.push(item);
+      else result.push({ letter, items: [item] });
+    }
+    return result;
+  }, [filter, items, search]);
 
-    const viewDetail = trpc.ingredient.getWithRecipes.useQuery(
-        { id: viewIngredientId! },
-        { enabled: !!viewIngredientId }
-    );
+  const selectedId = sheet && sheet.mode !== "create" ? sheet.id : null;
 
-    const startEditing = () => {
-        const data = viewDetail.data;
-        if (!data) return;
-        setEditingId(data.id);
-        setName(data.name);
-        setUnit(data.unit ?? "");
-        setIsPantryItem(data.isPantryItem);
-        setIsDialogOpen(true);
-        setIsViewDialogOpen(false);
-    };
+  return (
+    <div className="space-y-4 max-md:pb-16">
+      <h1 className="hidden text-xl font-bold text-center md:block">Ingredienser</h1>
+      <ListToolbar
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Søk etter ingredienser"
+        addLabel="Ny ingrediens"
+        onAdd={() => setSheet({ mode: "create" })}
+      />
 
-    const isEditMode = editingId !== null;
-    const activeMutation = isEditMode ? update : create;
-    const isSubmitting = activeMutation.isPending;
-    const actionLabel = isEditMode ? (isSubmitting ? "Oppdaterer…" : "Oppdater") : isSubmitting ? "Legger til…" : "Legg til";
+      <div
+        role="group"
+        aria-label="Filter"
+        className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden"
+      >
+        {FILTERS.map(({ id, label }) => {
+          const selected = filter === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={selected}
+              className={cn(
+                "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/60",
+                selected
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border/60 bg-background/70 text-foreground/80 active:bg-foreground/5",
+              )}
+              onClick={() => setFilter(id)}
+            >
+              {label}
+              <span className={cn("tabular-nums", selected ? "opacity-80" : "text-muted-foreground")}>
+                {counts[id]}
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
-    const items: IngredientListItem[] = list.data ?? [];
-    const filtered = useMemo(() => {
-        const term = search.trim().toLowerCase();
-        if (!term) return items;
-        return items.filter((item) => item.name.toLowerCase().includes(term));
-    }, [items, search]);
+      {list.isLoading ? <p className="text-sm text-muted-foreground">Laster…</p> : null}
+      {list.error ? (
+        <p className="text-sm text-destructive">Kunne ikke laste ingrediensene.</p>
+      ) : null}
+      {!list.isLoading && !list.error && groups.length === 0 ? (
+        <p className="py-8 text-center text-sm text-muted-foreground">
+          {search.trim() || filter !== "all" ? "Ingen ingredienser passer." : "Ingen ingredienser ennå."}
+        </p>
+      ) : null}
 
-    return (
-        <div className="space-y-6">
-            <h1 className="hidden text-xl font-bold text-center md:block">Ingredienser</h1>
-            <div className="flex items-center justify-between gap-4">
-                <div className="flex-1 max-w-md">
-                    <Input
-                        placeholder="Søk etter ingredienser"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                    />
-                </div>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    className="min-w-[12rem]"
-                    onClick={() => {
-                        resetForm();
-                        setIsDialogOpen(true);
-                    }}
+      <div className="space-y-3">
+        {groups.map((group) => (
+          <section key={group.letter} aria-label={group.letter}>
+            <h2 className="sticky top-0 z-10 -mx-4 bg-background/90 px-5 py-1 text-xs font-bold uppercase tracking-wider text-primary backdrop-blur-sm sm:mx-0 sm:rounded-md sm:px-3">
+              {group.letter}
+            </h2>
+            <ul className="grid grid-cols-1 gap-x-6 md:grid-cols-2 xl:grid-cols-3">
+              {group.items.map((item) => (
+                <li key={item.id} className="border-b border-border/30">
+                  <button
                     type="button"
-                >
-                    Legg til ingrediens
-                </Button>
-            </div>
+                    className={cn(
+                      "flex min-h-[3.25rem] w-full items-center gap-3 rounded-lg px-1 py-1.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/60 active:bg-foreground/5 md:hover:bg-foreground/5",
+                      item.id === selectedId && "bg-primary/10",
+                    )}
+                    onClick={() => setSheet({ mode: "view", id: item.id })}
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-2">
+                        <span className="truncate text-base font-medium leading-tight">
+                          {item.name}
+                        </span>
+                        {item.isPantryItem ? (
+                          <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-px text-[11px] font-semibold text-emerald-900">
+                            Basis
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {[ingredientCategoryLabel(item.category), item.unit ?? "ingen enhet"].join(" · ")}
+                      </span>
+                    </span>
+                    <span
+                      className={cn(
+                        "inline-flex shrink-0 items-center gap-1 text-sm tabular-nums",
+                        item.usageCount === 0 ? "text-muted-foreground/60" : "text-muted-foreground",
+                      )}
+                      aria-label={
+                        item.usageCount === 1 ? "1 oppskrift" : `${item.usageCount} oppskrifter`
+                      }
+                    >
+                      <BookOpen className="size-3.5" aria-hidden="true" />
+                      {item.usageCount}
+                    </span>
+                    <ChevronRight className="size-4 shrink-0 text-muted-foreground/60" aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3 justify-items-center xl:min-w-[840px]">
-                {filtered.map((i, idx) => (
-                    <IngredientCard
-                        key={i.id}
-                        ingredient={{ id: i.id, name: i.name, unit: i.unit, usageCount: i.usageCount, isPantryItem: i.isPantryItem }}
-                        index={idx}
-                        selected={i.id === viewIngredientId}
-                        onClick={() => {
-                            setViewIngredientId(i.id);
-                            setIsViewDialogOpen(true);
-                        }}
-                    />
-                ))}
-                {!filtered.length && (
-                    <div className="col-span-full text-sm text-muted-foreground">Ingen ingredienser</div>
-                )}
-            </div>
-
-            <Dialog
-                open={isViewDialogOpen}
-                onOpenChange={(open) => {
-                    setIsViewDialogOpen(open);
-                    if (!open) {
-                        setViewIngredientId(null);
-                    }
-                }}
-            >
-                <DialogContent className="isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground max-sm:w-[calc(100vw-2rem)] max-sm:mx-auto sm:max-w-lg sm:max-h-[min(100vh-4rem,32rem)] sm:shadow-2xl sm:ring-1 sm:ring-border sm:rounded-xl max-sm:bg-background max-sm:!left-1/2 max-sm:!top-[calc(env(safe-area-inset-top)+1rem)] max-sm:!h-[50dvh] max-sm:!max-h-[50dvh] max-sm:!-translate-x-1/2 max-sm:!translate-y-0 max-sm:!rounded-2xl max-sm:!border-0 max-sm:!shadow-none max-sm:p-6">
-                    <div className="flex h-full min-h-0 flex-col gap-4 max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-[env(safe-area-inset-bottom)]">
-                        <DialogHeader className="sm:px-0 sm:pt-0">
-                            <div className="mb-3 flex items-center justify-between">
-                                <Button type="button" size="sm" onClick={startEditing} disabled={!viewDetail.data}>
-                                    Endre ingrediens
-                                </Button>
-                                <DialogClose asChild>
-                                    <Button type="button" variant="ghost" size="icon" aria-label="Lukk">
-                                        <X className="size-4" />
-                                    </Button>
-                                </DialogClose>
-                            </div>
-                            <div className="space-y-2">
-                                <DialogTitle className="leading-tight">
-                                    {viewDetail.data?.name ?? "Ingrediens"}
-                                </DialogTitle>
-                                <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                                    {viewDetail.data?.unit ? <span>Enhet: {viewDetail.data.unit}</span> : null}
-                                    {viewDetail.data?.isPantryItem ? (
-                                        <Badge variant="outline" className="text-xs uppercase tracking-wide">
-                                            Basisvare
-                                        </Badge>
-                                    ) : null}
-                                </div>
-                            </div>
-                            <DialogDescription className="max-sm:hidden">
-                                Oversikt over hvilke oppskrifter som bruker ingrediensen.
-                            </DialogDescription>
-                        </DialogHeader>
-
-                        <div className="flex-1 min-h-0 space-y-4 overflow-y-auto pr-1">
-                            {viewDetail.isLoading ? <p>Laster…</p> : null}
-                            {viewDetail.error ? (
-                                <p className="text-sm text-destructive">
-                                    Kunne ikke laste ingrediensen. Prøv igjen senere.
-                                </p>
-                            ) : null}
-                            {viewDetail.data ? (
-                                <div className="space-y-4 pb-2">
-                                    <div>
-                                        <h3 className="text-sm font-medium">Oppskrifter med denne ingrediensen:</h3>
-                                        {viewDetail.data.recipes.length ? (
-                                            <ul className="mt-2 space-y-2">
-                                                {viewDetail.data.recipes.map((recipe: IngredientRecipe) => (
-                                                    <li key={recipe.id} className="text-sm">
-                                                        <span className="font-medium">{recipe.name}</span>{" "}
-                                                        {recipe.category ? (
-                                                            <span className="text-xs text-muted-foreground">({recipe.category})</span>
-                                                        ) : null}
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        ) : (
-                                            <p className="text-sm text-muted-foreground">
-                                                Ingen oppskrifter bruker denne ingrediensen ennå.
-                                            </p>
-                                        )}
-                                    </div>
-                                </div>
-                            ) : null}
-                        </div>
-                    </div>
-                </DialogContent>
-            </Dialog>
-
-            <Dialog
-                open={isDialogOpen}
-                onOpenChange={(open) => {
-                    setIsDialogOpen(open);
-                    if (!open) {
-                        resetForm();
-                    }
-                }}
-            >
-                <DialogContent className="isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground max-sm:w-[calc(100vw-2rem)] max-sm:mx-auto sm:max-w-md sm:max-h-[min(100vh-4rem,32rem)] sm:shadow-2xl sm:ring-1 sm:ring-border sm:rounded-xl max-sm:bg-background max-sm:!left-1/2 max-sm:!top-[calc(env(safe-area-inset-top)+1rem)] max-sm:!h-[50dvh] max-sm:!max-h-[50dvh] max-sm:!-translate-x-1/2 max-sm:!translate-y-0 max-sm:!rounded-2xl max-sm:!border-0 max-sm:!shadow-none max-sm:p-6">
-                    <div className="flex h-full min-h-0 flex-col max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-[env(safe-area-inset-bottom)]">
-                        <DialogHeader className="sm:px-0 sm:pt-0">
-                            <div className="mb-3 flex items-center justify-between">
-                                <Button
-                                    type="submit"
-                                    form="ingredient-form"
-                                    size="sm"
-                                    disabled={isSubmitting || !name.trim()}
-                                >
-                                    {actionLabel}
-                                </Button>
-                                <DialogClose asChild>
-                                    <Button type="button" variant="ghost" size="icon" aria-label="Lukk">
-                                        <X className="size-4" />
-                                    </Button>
-                                </DialogClose>
-                            </div>
-                            <DialogTitle>{isEditMode ? "Oppdater ingrediens" : "Ny ingrediens"}</DialogTitle>
-                            <DialogDescription className="max-sm:hidden">
-                                {isEditMode ? "Oppdater informasjon om ingrediensen." : "Legg til en ny ingrediens i databasen."}
-                            </DialogDescription>
-                        </DialogHeader>
-                        <form
-                            id="ingredient-form"
-                            className="space-y-3 max-sm:flex-1 max-sm:overflow-y-auto max-sm:overflow-x-visible"
-                            onSubmit={(e) => {
-                                e.preventDefault();
-                                if (!name.trim()) return;
-                                const payload = { name: name.trim(), unit: unit.trim() || undefined, isPantryItem };
-                                if (isEditMode && editingId) {
-                                    update.mutate({ id: editingId, ...payload });
-                                } else {
-                                    create.mutate(payload);
-                                }
-                            }}
-                        >
-                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                                <div className="sm:col-span-2">
-                                    <label className="text-sm">Navn</label>
-                                    <Input className="focus-visible:ring-inset" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-                                    {name.trim().length > 0 ? (
-                                        <div className="mt-2 space-y-2">
-                                            {dialogSuggest.isFetching ? (
-                                                <p className="text-xs text-muted-foreground">Søker…</p>
-                                            ) : null}
-                                            {(() => {
-                                                const suggestions: IngredientListItem[] = dialogSuggest.data ?? [];
-                                                const lowered = name.trim().toLowerCase();
-                                                const hasExact = suggestions.some((s) => s.name.toLowerCase() === lowered);
-                                                if (suggestions.length === 0 && !hasExact) {
-                                                    return (
-                                                        <Badge className="cursor-pointer" onClick={() => setName(name.trim())}>
-                                                            Legg til "{name.trim()}"
-                                                        </Badge>
-                                                    );
-                                                }
-                                                return (
-                                                    <ScrollArea className="max-h-32 pr-2">
-                                                        <div className="flex flex-wrap gap-2 pb-2">
-                                                            {suggestions.map((s: IngredientListItem) => (
-                                                                <Badge
-                                                                    key={s.id}
-                                                                    className="cursor-pointer"
-                                                                    onClick={() => {
-                                                                        setName(s.name);
-                                                                        if (s.unit) setUnit(s.unit);
-                                                                    }}
-                                                                >
-                                                                    {s.name}
-                                                                    {s.unit ? <span className="opacity-60">&nbsp;({s.unit})</span> : null}
-                                                                </Badge>
-                                                            ))}
-                                                            {!hasExact && (
-                                                                <Badge className="cursor-pointer" onClick={() => setName(name.trim())}>
-                                                                    Legg til "{name.trim()}"
-                                                                </Badge>
-                                                            )}
-                                                        </div>
-                                                    </ScrollArea>
-                                                );
-                                            })()}
-                                        </div>
-                                    ) : null}
-                                </div>
-                                <div>
-                                    <label className="text-sm">Enhet</label>
-                                    <Input className="focus-visible:ring-inset" value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="f.eks. g, ml, stk" />
-                                </div>
-                                <div className="sm:col-span-3 flex items-center gap-2">
-                                    <Checkbox id="is-pantry" checked={isPantryItem} onCheckedChange={(checked) => setIsPantryItem(Boolean(checked))} />
-                                    <label htmlFor="is-pantry" className="text-sm select-none">
-                                        Marker som basisvare
-                                    </label>
-                                </div>
-                            </div>
-                            {/* Footer removed: primary action sits in header */}
-                        </form>
-                    </div>
-                </DialogContent>
-            </Dialog>
-        </div>
-    );
+      <IngredientSheet target={sheet} onTargetChange={setSheet} ingredients={items} />
+    </div>
+  );
 }

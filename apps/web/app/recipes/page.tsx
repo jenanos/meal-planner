@@ -3,12 +3,10 @@ export const dynamic = "force-dynamic";
 
 import { useMemo, useState } from "react";
 import { trpc } from "../../lib/trpcClient";
-import { Input } from "@repo/ui";
 
-import { RecipeFormDialog } from "./components/RecipeFormDialog";
-import { RecipeViewDialog } from "./components/RecipeViewDialog";
+import { ListToolbar } from "../components/ListToolbar";
 import { RecipeCard } from "./components/RecipeCard";
-import { STEP_DESCRIPTIONS, STEP_TITLES } from "./constants";
+import { RecipeSheets } from "./components/RecipeSheets";
 import type { RecipeListItem } from "./types";
 import { useRecipeDialogState } from "./hooks/useRecipeDialogState";
 
@@ -33,60 +31,8 @@ export default function RecipesPage() {
     return items as RecipeListItem[];
   }, [data]);
 
-  const {
-    dialogContentClassName,
-    viewDialogContentClassName,
-    isEditDialogOpen,
-    onFormOpenChange,
-    openCreate,
-    openView,
-    createIsPending,
-    updateIsPending,
-    editId,
-    currentStep,
-    isLastStep,
-    nextDisabled,
-    nextLabel,
-    carouselApi,
-    setCarouselApi,
-    name,
-    setName,
-    matchingRecipes,
-    onSelectExistingRecipe,
-    cat,
-    setCat,
-    everyday,
-    setEveryday,
-    health,
-    setHealth,
-    servings,
-    setServings,
-    desc,
-    setDesc,
-    ingSearch,
-    setIngSearch,
-    trimmedIngSearch,
-    ingredientSuggestions,
-    ingredientResultsAreCurrent,
-    isIngredientQueryFetching,
-    ingList,
-    addIngredientByName,
-    removeIngredient,
-    upsertQuantity,
-    upsertUnit,
-    persistUnit,
-    submitRecipe,
-    isViewDialogOpen,
-    onViewOpenChange,
-    viewRecipe,
-    viewCurrentStep,
-    viewCarouselApi,
-    setViewCarouselApi,
-    formatIngredientLine,
-    startEditFromView,
-  } = useRecipeDialogState({
+  const recipeDialogs = useRecipeDialogState({
     recipes: allItems,
-    stepTitles: STEP_TITLES,
     onCreateSuccess: async () => {
       setPage(1);
       await utils.recipe.list.invalidate().catch(() => undefined);
@@ -109,80 +55,24 @@ export default function RecipesPage() {
   }, [allItems, search]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 max-md:pb-16">
       <h1 className="hidden text-xl font-bold text-center md:block">Oppskrifter</h1>
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex-1 max-w-md">
-          <Input
-            placeholder="Søk etter oppskrifter"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          {isLoading ? (
-            <p className="mt-1 text-xs text-muted-foreground">Laster…</p>
-          ) : null}
-          {error ? (
-            <p className="mt-1 text-xs text-red-500">Kunne ikke laste</p>
-          ) : null}
-        </div>
+      <ListToolbar
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Søk etter oppskrifter"
+        addLabel="Ny oppskrift"
+        onAdd={recipeDialogs.openCreate}
+      />
+      {isLoading ? <p className="text-sm text-muted-foreground">Laster…</p> : null}
+      {error ? <p className="text-sm text-destructive">Kunne ikke laste oppskriftene.</p> : null}
+      {!isLoading && !error && filtered.length === 0 ? (
+        <p className="py-8 text-center text-sm text-muted-foreground">
+          {search.trim() ? "Ingen oppskrifter passer søket." : "Ingen oppskrifter ennå."}
+        </p>
+      ) : null}
 
-        <RecipeFormDialog
-          open={isEditDialogOpen}
-          onOpenChange={onFormOpenChange}
-          onCreateClick={openCreate}
-          dialogContentClassName={dialogContentClassName}
-          editId={editId}
-          currentStep={currentStep}
-          stepTitles={STEP_TITLES}
-          stepDescriptions={STEP_DESCRIPTIONS}
-          carouselApi={carouselApi}
-          setCarouselApi={setCarouselApi}
-          isLastStep={isLastStep}
-          nextDisabled={nextDisabled}
-          nextLabel={nextLabel}
-          name={name}
-          onNameChange={setName}
-          matchingRecipes={matchingRecipes}
-          onSelectExistingRecipe={onSelectExistingRecipe}
-          cat={cat}
-          onCategoryChange={setCat}
-          everyday={everyday}
-          onEverydayChange={setEveryday}
-          health={health}
-          onHealthChange={setHealth}
-          servings={servings}
-          onServingsChange={setServings}
-          desc={desc}
-          onDescChange={setDesc}
-          ingSearch={ingSearch}
-          onIngSearchChange={setIngSearch}
-          trimmedIngSearch={trimmedIngSearch}
-          ingredientSuggestions={ingredientSuggestions}
-          ingredientResultsAreCurrent={ingredientResultsAreCurrent}
-          isIngredientQueryFetching={isIngredientQueryFetching}
-          ingList={ingList}
-          addIngredientByName={addIngredientByName}
-          removeIngredient={removeIngredient}
-          upsertQuantity={upsertQuantity}
-          upsertUnit={upsertUnit}
-          persistUnit={persistUnit}
-          onSubmit={submitRecipe}
-          createIsPending={createIsPending}
-          updateIsPending={updateIsPending}
-        />
-
-        <RecipeViewDialog
-          open={isViewDialogOpen}
-          onOpenChange={onViewOpenChange}
-          dialogContentClassName={viewDialogContentClassName}
-          viewRecipe={viewRecipe}
-          viewCurrentStep={viewCurrentStep}
-          viewCarouselApi={viewCarouselApi}
-          setViewCarouselApi={setViewCarouselApi}
-          formatIngredientLine={formatIngredientLine}
-          onEdit={startEditFromView}
-        />
-      </div>
+      <RecipeSheets state={recipeDialogs} />
 
       <div className="overflow-x-auto">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3 justify-items-center xl:min-w-[840px]">
@@ -191,7 +81,7 @@ export default function RecipesPage() {
               key={r.id}
               recipe={{ id: r.id, name: r.name, category: r.category }}
               index={idx}
-              onClick={() => openView(r.id)}
+              onClick={() => recipeDialogs.openView(r.id)}
             />
           ))}
         </div>

@@ -2,24 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 
-import type { CarouselApi } from "@repo/ui";
-import { cn } from "@repo/ui";
-
 import { trpc } from "../../../lib/trpcClient";
 import { CATEGORIES } from "../constants";
 import type { FormIngredient, IngredientSuggestion, RecipeListItem } from "../types";
-
-// For edit/create dialog - stays at 50% height on mobile to avoid keyboard overlap
-export const RECIPE_DIALOG_CONTENT_CLASSNAME = cn(
-  "isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground sm:h-[min(100vh-4rem,38rem)] sm:max-w-md sm:p-6 sm:shadow-2xl sm:ring-1 sm:ring-border sm:rounded-xl overflow-hidden",
-  "max-sm:w-[calc(100vw-2rem)] max-sm:mx-auto max-sm:h-[50dvh] max-sm:max-h-[50dvh] max-sm:p-6 max-sm:bg-background max-sm:rounded-2xl max-sm:border-0 max-sm:shadow-none max-sm:!top-[calc(env(safe-area-inset-top)+1rem)] max-sm:!translate-y-0 max-sm:overflow-hidden max-sm:touch-pan-y"
-);
-
-// For view dialog - uses full height on mobile for better readability
-export const RECIPE_VIEW_DIALOG_CONTENT_CLASSNAME = cn(
-  "isolate z-[2000] bg-white dark:bg-neutral-900 text-foreground sm:h-[min(100vh-4rem,38rem)] sm:max-w-md sm:p-6 sm:shadow-2xl sm:ring-1 sm:ring-border sm:rounded-xl overflow-hidden",
-  "max-sm:w-[calc(100vw-2rem)] max-sm:mx-auto max-sm:h-[calc(100dvh-4rem)] max-sm:max-h-[calc(100dvh-4rem)] max-sm:p-6 max-sm:bg-background max-sm:rounded-2xl max-sm:border-0 max-sm:shadow-none max-sm:!top-[calc(env(safe-area-inset-top)+1rem)] max-sm:!translate-y-0 max-sm:overflow-hidden max-sm:touch-pan-y"
-);
 
 type RecipeIngredient = {
   ingredientId?: string;
@@ -35,18 +20,16 @@ type MaybePromise<T> = T | Promise<T>;
 
 export interface UseRecipeDialogStateOptions {
   recipes: readonly RecipeListItem[];
-  stepTitles: readonly string[];
   onCreateSuccess?: () => MaybePromise<void>;
   onUpdateSuccess?: () => MaybePromise<void>;
-  hideTrigger?: boolean;
 }
+
+export type RecipeDialogState = ReturnType<typeof useRecipeDialogState>;
 
 export function useRecipeDialogState({
   recipes,
-  stepTitles,
   onCreateSuccess,
   onUpdateSuccess,
-  hideTrigger = false,
 }: UseRecipeDialogStateOptions) {
   const utils = trpc.useUtils();
   const defaultCategory = CATEGORIES[0];
@@ -55,10 +38,8 @@ export function useRecipeDialogState({
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [viewRecipeId, setViewRecipeId] = useState<string | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
-  const [carouselApi, setCarouselApi] = useState<CarouselApi | null>(null);
-  const [viewCarouselApi, setViewCarouselApi] = useState<CarouselApi | null>(null);
-  const [currentStep, setCurrentStep] = useState(0);
-  const [viewCurrentStep, setViewCurrentStep] = useState(0);
+  // The form as it was when the sheet opened, to tell whether it was edited.
+  const [baseline, setBaseline] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
   const [cat, setCat] = useState<(typeof CATEGORIES)[number]>(defaultCategory);
@@ -88,20 +69,17 @@ export function useRecipeDialogState({
 
   const handleFormOpenChange = useCallback(
     (open: boolean) => {
+      // The fields are left as they are on close, so the sheet does not blank
+      // out while it animates away; opening always fills them afresh.
       setIsEditDialogOpen(open);
-      if (!open) {
-        resetForm();
-        setCurrentStep(0);
-      }
     },
-    [resetForm]
+    []
   );
 
   const handleViewOpenChange = useCallback((open: boolean) => {
     setIsViewDialogOpen(open);
     if (!open) {
       setViewRecipeId(null);
-      setViewCurrentStep(0);
     }
   }, []);
 
@@ -288,71 +266,23 @@ export function useRecipeDialogState({
     [ingList, updateIngredient]
   );
 
-  const numberFormatter = useMemo(
-    () => new Intl.NumberFormat("nb-NO", { maximumFractionDigits: 2 }),
-    []
-  );
+  const snapshot = JSON.stringify([
+    name,
+    desc,
+    cat,
+    everyday,
+    health,
+    servings,
+    ingList.map((item) => [item.name, item.quantity ?? "", item.unit ?? ""]),
+  ]);
 
-  const formatIngredientLine = useCallback(
-    (ingredient: {
-      name: string;
-      quantity?: number | string | null;
-      unit?: string | null;
-      notes?: string | null;
-    }) => {
-      const parts: string[] = [];
-      if (ingredient.quantity != null && ingredient.quantity !== "") {
-        if (typeof ingredient.quantity === "number") {
-          parts.push(numberFormatter.format(ingredient.quantity));
-        } else {
-          parts.push(String(ingredient.quantity));
-        }
-      }
-      if (ingredient.unit) {
-        parts.push(ingredient.unit);
-      }
-      parts.push(ingredient.name);
-      if (ingredient.notes) {
-        parts.push(`(${ingredient.notes})`);
-      }
-      return parts.join(" ");
-    },
-    [numberFormatter]
-  );
-
+  // Opening (or hydrating) sets every field in one batch, so the first render
+  // with the sheet open holds the untouched form.
   useEffect(() => {
-    if (!carouselApi) return;
-    const handleSelect = () => setCurrentStep(carouselApi.selectedScrollSnap());
-    const unsubscribe = carouselApi.on("select", handleSelect);
-    handleSelect();
-    return () => {
-      unsubscribe();
-    };
-  }, [carouselApi]);
+    setBaseline(isEditDialogOpen ? snapshot : null);
+  }, [isEditDialogOpen, editId]);
 
-  useEffect(() => {
-    if (isEditDialogOpen && carouselApi) {
-      setCurrentStep(0);
-      carouselApi.scrollTo(0);
-    }
-  }, [isEditDialogOpen, carouselApi]);
-
-  useEffect(() => {
-    if (!viewCarouselApi) return;
-    const handleSelect = () => setViewCurrentStep(viewCarouselApi.selectedScrollSnap());
-    handleSelect();
-    const unsubscribe = viewCarouselApi.on("select", handleSelect);
-    return () => {
-      unsubscribe();
-    };
-  }, [viewCarouselApi]);
-
-  useEffect(() => {
-    if (isViewDialogOpen && viewCarouselApi) {
-      setViewCurrentStep(0);
-      viewCarouselApi.scrollTo(0);
-    }
-  }, [isViewDialogOpen, viewCarouselApi]);
+  const isDirty = isEditDialogOpen && baseline !== null && baseline !== snapshot;
 
   const matchingRecipes = useMemo(() => {
     const term = name.trim().toLowerCase();
@@ -393,6 +323,8 @@ export function useRecipeDialogState({
       );
       setIngSearch("");
       setDebouncedIngSearch("");
+      createRecipe.reset();
+      updateRecipe.reset();
       setIsEditDialogOpen(true);
     },
     [defaultCategory]
@@ -400,6 +332,8 @@ export function useRecipeDialogState({
 
   const openCreate = useCallback(() => {
     resetForm();
+    createRecipe.reset();
+    updateRecipe.reset();
     setIsEditDialogOpen(true);
   }, [resetForm]);
 
@@ -490,14 +424,7 @@ export function useRecipeDialogState({
     [cat, createRecipe, desc, editId, everyday, health, servings, ingList, name, updateRecipe]
   );
 
-  const isLastStep = currentStep === stepTitles.length - 1;
-  const nextDisabled = currentStep === 0 && name.trim().length === 0;
-  const nextLabel = !isLastStep ? `Neste: ${stepTitles[currentStep + 1]}` : null;
-
   return {
-    dialogContentClassName: RECIPE_DIALOG_CONTENT_CLASSNAME,
-    viewDialogContentClassName: RECIPE_VIEW_DIALOG_CONTENT_CLASSNAME,
-    hideTrigger,
     isEditDialogOpen,
     onFormOpenChange: handleFormOpenChange,
     openCreate,
@@ -505,12 +432,8 @@ export function useRecipeDialogState({
     createIsPending: createRecipe.isPending,
     updateIsPending: updateRecipe.isPending,
     editId,
-    currentStep,
-    isLastStep,
-    nextDisabled,
-    nextLabel,
-    carouselApi,
-    setCarouselApi,
+    isDirty,
+    submitError: createRecipe.error?.message ?? updateRecipe.error?.message ?? null,
     name,
     setName,
     matchingRecipes,
@@ -542,10 +465,6 @@ export function useRecipeDialogState({
     onViewOpenChange: handleViewOpenChange,
     openView,
     viewRecipe,
-    viewCurrentStep,
-    viewCarouselApi,
-    setViewCarouselApi,
-    formatIngredientLine,
     startEditFromView,
   } as const;
 }

@@ -8,7 +8,7 @@ This monorepo contains a Next.js web app, a Fastify+tRPC server, a Prisma databa
   - State/data via tRPC React Query client in `apps/web/lib/trpcClient.ts`
   - Pages under `apps/web/app/**` (e.g. `/planner`, `/recipes`, `/ingredients`)
   - DnD in planner uses `@dnd-kit` with separate DndContext for mobile vs desktop, and a DragOverlay portaled to `document.body` to avoid offset bugs
-  - Shared navigation for multi-step dialogs lives in `app/recipes/components/StepNav.tsx`
+  - Overlays use the shared `Sheet` in `app/components/Sheet.tsx`: sized to the visible viewport (so the on-screen keyboard shrinks it rather than covering it) and closed by the system back button
 - apps/server: Fastify + tRPC
   - Entry: `apps/server/src/index.ts`
   - Routers live in `packages/api/src/routers/*` and are imported into server
@@ -23,11 +23,11 @@ This monorepo contains a Next.js web app, a Fastify+tRPC server, a Prisma databa
 
 - Type flow: server exports `AppRouter` → web imports the type in `trpcClient.ts`; avoid importing built output.
 - Planner DnD: do not reintroduce transforms/backdrop-filter on containers that would create containing blocks; keep DragOverlay in a portal to `document.body`.
-- Recipe dialogs: use `StepNav` for navigation (arrows always enabled). Primary actions live in the dialog header (left); a close “X” sits in header (right). StepNav should not render extra right-side actions. Validation gating happens on the header button (disabled until required data is set).
+- Recipe sheets: viewing and editing are each one scrolling page in a `Sheet` – no steps or carousels. The dismiss button sits top left and the primary action top right in the sheet header, where the keyboard never covers it. Validation gating happens on that header button (disabled until required data is set).
 - Category visuals: use `CategoryEmoji` (app/components/CategoryEmoji.tsx) instead of raw text where space is tight.
 - Scores: surface labels via `describeEveryday/describeHealth` from `apps/web/lib/scoreLabels.ts` instead of raw numbers in the view dialog.
-- Details step (form): category is chosen via an emoji button row (FISK, KYLLING, VEGETAR, ANNET). Everyday/Health selects render side-by-side on the next row.
-- Dialog footers are removed (empty) — don’t add actions there.
+- Recipe form: category is chosen via an emoji button row; everyday/health scores are 1–5 segmented controls that spell out the chosen level. Touch targets are at least 44px and inputs at least 16px text (smaller text makes iOS zoom on focus).
+- Don’t put actions in a footer at the bottom of a sheet — that is where the keyboard is.
 
 ## Developer workflows
 
@@ -60,15 +60,14 @@ This monorepo contains a Next.js web app, a Fastify+tRPC server, a Prisma databa
 
 ## Examples from codebase
 
-- Step navigation with labels: `apps/web/app/recipes/components/StepNav.tsx`
 - Category emoji usage: `apps/web/app/components/CategoryEmoji.tsx` and `apps/web/app/recipes/components/RecipeCard.tsx`
-- Recipe dialogs (header actions + StepNav): `apps/web/app/recipes/components/RecipeFormDialog.tsx`, `RecipeViewDialog.tsx`
+- Sheets (header actions, keyboard handling): `apps/web/app/components/Sheet.tsx`, used by `apps/web/app/recipes/components/RecipeFormSheet.tsx`, `RecipeViewSheet.tsx` and `apps/web/app/ingredients/components/IngredientSheet.tsx`
 - Planner DnD setup: `apps/web/app/planner/page.tsx`
 
 ## Guardrails for agents
 
 - Maintain separate DnD contexts for mobile/desktop and keep `DragOverlay` portaled.
-- Don’t use dialog footers for actions (actions belong in header; StepNav only for nav).
+- Don’t use footers for sheet actions (actions belong in the header).
 - Respect the strict ESLint config (`--max-warnings 0`); fix unused imports/vars.
 - Prefer label-based display for scores on view.
 - When changing public UI in `@repo/ui`, rebuild it (tsup) before web build; root `pnpm build` handles this.

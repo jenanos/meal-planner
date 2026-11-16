@@ -11,9 +11,7 @@ import { MobileEditor } from "./components/MobileEditor";
 import { RecipePickerModal } from "./components/RecipePickerModal";
 import { CategoryEmoji } from "../components/CategoryEmoji";
 import { startOfWeekISO, deriveWeekLabel } from "../../lib/week";
-import { RecipeViewDialog } from "../recipes/components/RecipeViewDialog";
-import { RecipeFormDialog } from "../recipes/components/RecipeFormDialog";
-import { STEP_DESCRIPTIONS, STEP_TITLES } from "../recipes/constants";
+import { RecipeSheets } from "../recipes/components/RecipeSheets";
 import type { RecipeListItem } from "../recipes/types";
 import { useRecipeDialogState } from "../recipes/hooks/useRecipeDialogState";
 
@@ -183,61 +181,8 @@ export default function PlannerPage() {
     searchResults,
   ]);
 
-  const {
-    dialogContentClassName,
-    viewDialogContentClassName,
-    isEditDialogOpen,
-    onFormOpenChange,
-    openCreate,
-    openView,
-    createIsPending,
-    updateIsPending,
-    editId,
-    currentStep,
-    isLastStep,
-    nextDisabled,
-    nextLabel,
-    carouselApi,
-    setCarouselApi,
-    name,
-    setName,
-    matchingRecipes,
-    onSelectExistingRecipe,
-    cat,
-    setCat,
-    everyday,
-    setEveryday,
-    health,
-    setHealth,
-    servings,
-    setServings,
-    desc,
-    setDesc,
-    ingSearch,
-    setIngSearch,
-    trimmedIngSearch,
-    ingredientSuggestions,
-    ingredientResultsAreCurrent,
-    isIngredientQueryFetching,
-    ingList,
-    addIngredientByName,
-    removeIngredient,
-    upsertQuantity,
-    upsertUnit,
-    persistUnit,
-    submitRecipe,
-    isViewDialogOpen,
-    onViewOpenChange,
-    viewRecipe,
-    viewCurrentStep,
-    viewCarouselApi,
-    setViewCarouselApi,
-    formatIngredientLine,
-    startEditFromView,
-  } = useRecipeDialogState({
+  const recipeDialogs = useRecipeDialogState({
     recipes: recipeDialogItems,
-    stepTitles: STEP_TITLES,
-    hideTrigger: true,
     onUpdateSuccess: async () => {
       await utils.recipe.list.invalidate().catch(() => undefined);
       await utils.planner.getWeekPlan
@@ -246,6 +191,7 @@ export default function PlannerPage() {
       await weekPlanQuery.refetch().catch(() => undefined);
     },
   });
+  const { openView } = recipeDialogs;
 
   const handleRecipeClick = useCallback(
     (recipe: RecipeDTO) => {
@@ -901,63 +847,7 @@ export default function PlannerPage() {
         </div>
       </div>
 
-      <RecipeFormDialog
-        open={isEditDialogOpen}
-        onOpenChange={onFormOpenChange}
-        onCreateClick={openCreate}
-        dialogContentClassName={dialogContentClassName}
-        editId={editId}
-        currentStep={currentStep}
-        stepTitles={STEP_TITLES}
-        stepDescriptions={STEP_DESCRIPTIONS}
-        carouselApi={carouselApi}
-        setCarouselApi={setCarouselApi}
-        isLastStep={isLastStep}
-        nextDisabled={nextDisabled}
-        nextLabel={nextLabel}
-        name={name}
-        onNameChange={setName}
-        matchingRecipes={matchingRecipes}
-        onSelectExistingRecipe={onSelectExistingRecipe}
-        cat={cat}
-        onCategoryChange={setCat}
-        everyday={everyday}
-        onEverydayChange={setEveryday}
-        health={health}
-        onHealthChange={setHealth}
-        servings={servings}
-        onServingsChange={setServings}
-        desc={desc}
-        onDescChange={setDesc}
-        ingSearch={ingSearch}
-        onIngSearchChange={setIngSearch}
-        trimmedIngSearch={trimmedIngSearch}
-        ingredientSuggestions={ingredientSuggestions}
-        ingredientResultsAreCurrent={ingredientResultsAreCurrent}
-        isIngredientQueryFetching={isIngredientQueryFetching}
-        ingList={ingList}
-        addIngredientByName={addIngredientByName}
-        removeIngredient={removeIngredient}
-        upsertQuantity={upsertQuantity}
-        upsertUnit={upsertUnit}
-        persistUnit={persistUnit}
-        onSubmit={submitRecipe}
-        createIsPending={createIsPending}
-        updateIsPending={updateIsPending}
-        hideTrigger
-      />
-
-      <RecipeViewDialog
-        open={isViewDialogOpen}
-        onOpenChange={onViewOpenChange}
-        dialogContentClassName={viewDialogContentClassName}
-        viewRecipe={viewRecipe}
-        viewCurrentStep={viewCurrentStep}
-        viewCarouselApi={viewCarouselApi}
-        setViewCarouselApi={setViewCarouselApi}
-        formatIngredientLine={formatIngredientLine}
-        onEdit={startEditFromView}
-      />
+      <RecipeSheets state={recipeDialogs} />
 
       {/* Mobile version - separate DndContext to avoid offset issues */}
       <div className="sm:hidden">
