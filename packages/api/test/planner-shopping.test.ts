@@ -21,10 +21,15 @@ const { prismaMock } = vi.hoisted(() => {
     extraShoppingItem: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
+      deleteMany: vi.fn(),
     },
     extraItemCatalog: {
       findMany: vi.fn(),
       upsert: vi.fn(),
+    },
+    shoppingDeal: {
+      count: vi.fn(),
+      deleteMany: vi.fn(),
     },
     shoppingPackage: {
       findMany: vi.fn(),
@@ -407,8 +412,74 @@ describe("planner.shoppingList", () => {
         updatedAt: "2026-07-08T10:00:00.000Z",
         category: "HUSHOLDNING",
         hasCategory: true,
+        deal: null,
       },
     ]);
+  });
+
+  it("reports the store offer on an extra and purges expired offers first", async () => {
+    prismaMock.weekPlan.findMany.mockResolvedValueOnce([]);
+    prismaMock.shoppingState.findMany.mockResolvedValueOnce([]);
+    prismaMock.shoppingDeal.count.mockResolvedValueOnce(2);
+    prismaMock.extraShoppingItem.deleteMany.mockReturnValue("delete-items");
+    prismaMock.shoppingDeal.deleteMany.mockReturnValue("delete-deals");
+    prismaMock.extraShoppingItem.findMany.mockResolvedValueOnce([
+      {
+        id: "extra-kaffe",
+        catalogItemId: CATALOG_ID,
+        weekStart: new Date("1970-01-05T00:00:00.000Z"),
+        checked: false,
+        updatedAt: new Date("2026-07-08T10:00:00.000Z"),
+        catalogItem: {
+          name: "Kaffe",
+          deal: {
+            store: "Kiwi",
+            price: "39,90 kr",
+            regularPrice: null,
+            product: "Evergood 250 g",
+            validFrom: new Date("2026-07-06T00:00:00.000Z"),
+            validTo: new Date("2026-07-12T00:00:00.000Z"),
+            addedByDeal: true,
+          },
+        },
+      },
+    ]);
+
+    const result = await createCaller().shoppingList({ weekStart: WEEK_ISO });
+
+    // Expired = last day before today (9 July in Oslo).
+    const expired = {
+      householdId: HOUSEHOLD_ID,
+      validTo: { lt: new Date("2026-07-09T00:00:00.000Z") },
+    };
+    expect(prismaMock.shoppingDeal.count).toHaveBeenCalledWith({
+      where: expired,
+    });
+    // Only an item the offer itself put on the list goes with it, and only
+    // while it is still unchecked. Each delete re-checks expiry itself.
+    expect(prismaMock.extraShoppingItem.deleteMany).toHaveBeenCalledWith({
+      where: {
+        householdId: HOUSEHOLD_ID,
+        checked: false,
+        catalogItem: { deal: { is: { ...expired, addedByDeal: true } } },
+      },
+    });
+    expect(prismaMock.shoppingDeal.deleteMany).toHaveBeenCalledWith({
+      where: expired,
+    });
+    expect(prismaMock.$transaction).toHaveBeenCalledWith([
+      "delete-items",
+      "delete-deals",
+    ]);
+    expect(result.extras[0]?.deal).toEqual({
+      store: "Kiwi",
+      price: "39,90 kr",
+      regularPrice: null,
+      product: "Evergood 250 g",
+      validFrom: "2026-07-06",
+      validTo: "2026-07-12",
+      addedByDeal: true,
+    });
   });
 });
 

@@ -189,6 +189,58 @@ export const ExtraShoppingRemove = z.object({
 });
 export type ExtraShoppingRemove = z.infer<typeof ExtraShoppingRemove>;
 
+// ─── Store offers on the shopping list ───
+const DateOnly = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Expected a date as YYYY-MM-DD")
+  .refine((value) => !Number.isNaN(Date.parse(`${value}T00:00:00.000Z`)), {
+    message: "Not a valid date",
+  });
+
+export const DealInput = z
+  .object({
+    name: z.string().trim().min(1).max(120),
+    store: z.string().trim().min(1).max(80),
+    price: z.string().trim().min(1).max(80),
+    regularPrice: z.string().trim().max(80).optional(),
+    product: z.string().trim().max(200).optional(),
+    validFrom: DateOnly.optional(),
+    validTo: DateOnly,
+  })
+  .refine((deal) => !deal.validFrom || deal.validFrom <= deal.validTo, {
+    message: "validFrom must not be after validTo",
+    path: ["validFrom"],
+  });
+export type DealInput = z.infer<typeof DealInput>;
+
+export const DealSet = z.object({
+  deals: z.array(DealInput).min(1).max(50),
+});
+export type DealSet = z.infer<typeof DealSet>;
+
+export const DealRemove = z.object({
+  names: z.array(z.string().min(1)).min(1).max(100),
+});
+export type DealRemove = z.infer<typeof DealRemove>;
+
+export const DealWatchSet = z.object({
+  items: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1).max(120),
+        note: z.string().max(300).nullable().optional(),
+      }),
+    )
+    .min(1)
+    .max(100),
+});
+export type DealWatchSet = z.infer<typeof DealWatchSet>;
+
+export const DealWatchRemove = z.object({
+  names: z.array(z.string().min(1)).min(1).max(100),
+});
+export type DealWatchRemove = z.infer<typeof DealWatchRemove>;
+
 // ─── User preference schemas (replaces device/role-based schemas) ───
 
 export const UserPreferenceUpdate = z.object({

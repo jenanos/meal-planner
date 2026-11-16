@@ -74,7 +74,8 @@ export function registerShoppingTools(ctx: ToolContext) {
         "Henter handlelisten for en uke: ingredienser summert fra ukas planlagte oppskrifter (items), " +
         "pluss ekstra varer husholdningen har lagt til selv (extras). " +
         "Basisvarer (isPantryItem) er ting man vanligvis har hjemme. " +
-        "Ekstra varer er ikke knyttet til en bestemt uke – de blir stående til de fjernes.",
+        "Ekstra varer er ikke knyttet til en bestemt uke – de blir stående til de fjernes. " +
+        "En ekstra vare med deal er på tilbud i en butikk (se add-shopping-deals).",
       kind: "read",
       errorContext: "Kunne ikke hente handleliste",
       input: {
@@ -139,6 +140,16 @@ export function registerShoppingTools(ctx: ToolContext) {
             name: extra.name,
             checked: extra.checked,
             category: extra.category ?? undefined,
+            deal: extra.deal
+              ? compact({
+                  store: extra.deal.store,
+                  price: extra.deal.price,
+                  regularPrice: extra.deal.regularPrice ?? undefined,
+                  product: extra.deal.product ?? undefined,
+                  validFrom: extra.deal.validFrom ?? undefined,
+                  validTo: extra.deal.validTo,
+                })
+              : undefined,
           }),
         );
 

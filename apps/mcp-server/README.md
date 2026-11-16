@@ -15,6 +15,7 @@ The server includes its own OAuth 2.1 + PKCE authorization server so that client
 | Recipes | `list-recipes`, `get-recipe`, `create-recipe`, `update-recipe`, `delete-recipe` |
 | Ingredients | `list-ingredients`, `get-ingredient`, `create-ingredient`, `update-ingredient`, `bulk-update-ingredients`, `find-duplicate-ingredients`, `merge-ingredients` |
 | Shopping list | `get-shopping-list`, `check-shopping-items`, `update-shopping-item`, `add-extra-shopping-items`, `remove-extra-shopping-items` |
+| Store offers | `get-deal-watchlist`, `set-deal-watch-items`, `remove-deal-watch-items`, `add-shopping-deals`, `remove-shopping-deals` |
 | Extra item catalog | `list-extra-catalog`, `add-extra-catalog-item`, `set-extra-catalog-categories`, `find-duplicate-extra-items`, `merge-extra-catalog-items` |
 | Shopping packages | `list-shopping-packages`, `create-shopping-package`, `update-shopping-package`, `delete-shopping-package`, `add-shopping-package-to-list` |
 | Freezer | `list-freezer`, `set-freezer-item`, `adjust-freezer-portions` |
@@ -23,7 +24,7 @@ The server includes its own OAuth 2.1 + PKCE authorization server so that client
 | Admin: users | `admin-list-users`, `admin-set-user-role` |
 | Admin: households | `admin-list-households`, `admin-create-household`, `admin-rename-household`, `admin-delete-household`, `admin-set-household-member`, `admin-remove-household-member` |
 
-It also sends server `instructions` (the domain model in a few lines) and three prompts: `planlegg-uka`, `handleliste` and `rydd-i-varer`.
+It also sends server `instructions` (the domain model in a few lines) and four prompts: `planlegg-uka`, `handleliste`, `rydd-i-varer` and `tilbudsjakt`.
 
 ### Conventions
 
@@ -36,6 +37,21 @@ It also sends server `instructions` (the domain model in a few lines) and three 
 - **Annotations.** Every tool declares `readOnlyHint` / `destructiveHint` / `idempotentHint`. Anything that can delete data or replace it wholesale is marked destructive — `delete-*`, `merge-*`, `remove-*`, `generate-week-plan`, and also `set-week-plan-days`, `update-recipe`, `update-shopping-package`, `set-freezer-item` and `adjust-freezer-portions` — so clients can ask for confirmation. `admin-delete-household` additionally requires the household's exact name as confirmation.
 - **Concurrency.** `set-week-plan-days` and `generate-week-plan` are a single API call (`planner.setWeekPlanDays` / `planner.generateWeekPlan`) that changes the days and the freezer portions in one database transaction, under a lock on the household's week. Parallel edits of different days all survive — whether they come from MCP, the web app or another household member — and the plan and the freezer either both change or neither does.
 - **Weeks beyond the planning horizon.** The API answers such requests with the last plannable week. Read tools pass that on with a `note`; tools that change something refuse instead of touching another week.
+
+### Store offers on the shopping list
+
+The server does not read the stores' flyers itself. An assistant with web access finds the offers and reports them with `add-shopping-deals`; the shopping list then shows them in a "Tilbud" section of their own, each with the store, the offer price and the period.
+
+- **Watchlist.** `set-deal-watch-items` stores the products the household wants to hear about ("Kaffe", "Gulost"), with an optional note on brand, size or what counts as a good price. `get-deal-watchlist` returns the watchlist, the offers already on the list, the household's stores and today's date — everything a deal hunt needs in one call.
+- **One offer per item.** A new offer for the same item replaces the old one. If the item was not on the list it is added; if it was, the offer is attached to it.
+- **Expiry.** When the last day of an offer has passed (Europe/Oslo), the offer is removed the next time the list is read. An item that was only there because of the offer goes with it, unless it was checked off; an item that was on the list anyway stays, without the offer.
+- **Safe to repeat.** Reporting the same offer (store, price and end date) for an item that has been checked off since does not put it back.
+
+To run it weekly, create a scheduled task in Claude or ChatGPT with this server connected and web search enabled, for example:
+
+> Hver mandag kl. 07: Bruk Meal Planner. Hent tilbudsvarslene med get-deal-watchlist, søk i ukas kundeaviser fra Kiwi, Rema 1000, Coop Extra og Meny etter gode tilbud på varene, og legg de beste på handlelisten med add-shopping-deals (butikk, tilbudspris, ordinær pris, produkt og periode). Ta bare med tilbud som er tydelig under ordinær pris, og oppsummer kort hva du la til.
+
+The `tilbudsjakt` prompt contains the same workflow for interactive use.
 
 ### Adding a tool
 

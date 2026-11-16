@@ -27,6 +27,10 @@ import {
 import { ShoppingListDayGridView } from "./components/shopping-list-day-grid-view";
 import { ShoppingListCategoryGridView } from "./components/shopping-list-category-grid-view";
 import { ShoppingListGridItem } from "./components/shopping-list-grid-item";
+import {
+  ShoppingListDeals,
+  type ShoppingDeal,
+} from "./components/shopping-list-deals";
 import { ShoppingListDisplayModal } from "./components/ShoppingListDisplayModal";
 import { FALL_BADGE_PALETTE, formatQuantity } from "./utils";
 import type { ShoppingListItem, ShoppingListOccurrence } from "./types";
@@ -333,8 +337,9 @@ export default function ShoppingListPage() {
     updatedAt: string;
     category: string | null;
     hasCategory: boolean;
+    deal: ShoppingDeal | null;
   }>;
-  const extras = useMemo(() => {
+  const allExtras = useMemo(() => {
     // Extras are shared across weeks — deduplicate by name, preferring unchecked
     const byName = new Map<
       string,
@@ -346,6 +351,7 @@ export default function ShoppingListPage() {
         updatedAt: string;
         category: string | null;
         hasCategory: boolean;
+        deal: ShoppingDeal | null;
       }
     >();
     for (const stored of extrasAll) {
@@ -362,6 +368,17 @@ export default function ShoppingListPage() {
     }
     return Array.from(byName.values());
   }, [extrasAll, outbox.extraChecked]);
+  // Items on offer get a section of their own, so they are left out of the
+  // ordinary sections below.
+  const extras = useMemo(() => allExtras.filter((e) => !e.deal), [allExtras]);
+  const dealEntries = useMemo(() => {
+    const cutoff = new Date(Date.now() - CHECKED_EXTRAS_WINDOW_MS);
+    return allExtras.flatMap((e) =>
+      e.deal && (!e.checked || new Date(e.updatedAt) >= cutoff)
+        ? [{ id: e.id, name: e.name, checked: e.checked, deal: e.deal }]
+        : [],
+    );
+  }, [allExtras]);
   const categorizedExtras = useMemo(() => {
     const cutoff = new Date(Date.now() - CHECKED_EXTRAS_WINDOW_MS);
     return extras.filter(
@@ -1292,6 +1309,12 @@ export default function ShoppingListPage() {
         <div
           className={`max-w-2xl mx-auto w-full ${compact ? "space-y-3" : "space-y-6"}`}
         >
+          <ShoppingListDeals
+            entries={dealEntries}
+            compact={compact}
+            onToggle={toggleExtra}
+            onRemove={(name) => void removeExtra(name)}
+          />
           {compact &&
             uncheckedExtras.length === 0 &&
             checkedExtras.length === 0 ? null : (

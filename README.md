@@ -56,6 +56,7 @@ This workspace is orchestrated by [Turborepo](https://turbo.build/repo), a high-
 - 📖 **Recipe catalog** – add recipes with meal categories, health/everyday scores, and structured ingredient lists.
 - 🧂 **Ingredient manager** – maintain an ingredient inventory and see which recipes depend on each item.
 - 🛒 **Shopping list** – build a checklist directly from the planned week, including custom extras that persist week-to-week.
+- 🏷️ **Store offers** – an assistant connected through the MCP server can put good offers from the stores' flyers on the shopping list, marked with store, price and period (see `apps/mcp-server/README.md`).
 - 🔁 **Usage insights** – automatic `lastUsed` and `usageCount` updates keep planning suggestions fresh.
 
 ---
