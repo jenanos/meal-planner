@@ -40,6 +40,8 @@ export type Props = {
     isLocked?: boolean;
     /** Shown on planned recipes when given. */
     onToggleLock?: () => void;
+    /** Small note at the bottom: who changed the day by hand, and when. */
+    changeNote?: string | null;
 };
 
 export function WeekCard({
@@ -60,6 +62,7 @@ export function WeekCard({
     isPast = false,
     isLocked = false,
     onToggleLock,
+    changeNote,
 }: Props) {
     // Palett og hover-gradienter fra felles palette-modul
     const baseHsl = dayBaseHsl[dayName];
@@ -99,7 +102,8 @@ export function WeekCard({
                     : undefined
             }
         >
-            <div className="flex h-full min-h-[128px] flex-col items-center justify-center gap-1 p-2.5 text-center sm:min-h-[160px] sm:p-4 sm:gap-2">
+            <div className="flex h-full min-h-[128px] flex-col items-center p-2.5 text-center sm:min-h-[160px] sm:p-4">
+            <div className="flex w-full flex-1 flex-col items-center justify-center gap-1 sm:gap-2">
                 <div className="text-[11px] text-muted-foreground sm:text-xs">
                     {dayName} {dateLabel && <span className="opacity-75 font-normal ml-0.5">{dateLabel}</span>}
                     {isToday ? (
@@ -206,6 +210,15 @@ export function WeekCard({
                         Fjern
                     </button>
                 ) : null}
+            </div>
+            {changeNote ? (
+                <div
+                    className="mt-1.5 w-full text-[10px] leading-tight text-muted-foreground/80"
+                    title={changeNote}
+                >
+                    {changeNote}
+                </div>
+            ) : null}
             </div>
         </MagicCard>
     );
