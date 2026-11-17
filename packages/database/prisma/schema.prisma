@@ -37,6 +37,16 @@ enum WeekPlanEntryType {
   FREEZER
 }
 
+// How a person changed a day in the week plan by hand. MOVED: the meal came
+// from another day; MOVED_OUT: the day was left empty because its meal moved.
+enum WeekPlanChangeKind {
+  ADDED
+  REPLACED
+  MOVED
+  MOVED_OUT
+  REMOVED
+}
+
 enum ShoppingViewMode {
   BY_DAY
   ALPHABETICAL
@@ -87,6 +97,7 @@ model User {
   oauthRefreshTokens    OAuthRefreshToken[]
   oauthPendingApprovals OAuthPendingApproval[]
   oauthClientApprovals  OAuthClientApproval[]
+  weekPlanDayChanges    WeekPlanDayChange[]
 }
 
 /// Emails that are pre-approved to sign up / sign in.
@@ -375,9 +386,10 @@ model WeekPlan {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  entries   WeekPlanEntry[]
-  weekIndex WeekIndex?      @relation(fields: [weekIndexId], references: [id], onDelete: Cascade)
-  household Household       @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  entries    WeekPlanEntry[]
+  dayChanges WeekPlanDayChange[]
+  weekIndex  WeekIndex?          @relation(fields: [weekIndexId], references: [id], onDelete: Cascade)
+  household  Household           @relation(fields: [householdId], references: [id], onDelete: Cascade)
 
   @@unique([weekStart, householdId])
 }
@@ -403,6 +415,26 @@ model WeekPlanEntry {
 
   weekPlan WeekPlan @relation(fields: [weekPlanId], references: [id], onDelete: Cascade)
   recipe   Recipe?  @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@unique([weekPlanId, dayIndex])
+}
+
+// The last change a person made by hand to a day of a week plan, so the
+// household can tell a deliberate choice from what the generator proposed.
+// One row per day; generating a day anew removes it.
+model WeekPlanDayChange {
+  id            String             @id @default(uuid()) @db.Uuid
+  weekPlanId    String             @db.Uuid
+  dayIndex      Int
+  kind          WeekPlanChangeKind
+  // For MOVED the day (0 = Monday) the meal came from, for MOVED_OUT the
+  // day it went to.
+  otherDayIndex Int?
+  changedById   String?
+  changedAt     DateTime           @default(now())
+
+  weekPlan  WeekPlan @relation(fields: [weekPlanId], references: [id], onDelete: Cascade)
+  changedBy User?    @relation(fields: [changedById], references: [id], onDelete: SetNull)
 
   @@unique([weekPlanId, dayIndex])
 }

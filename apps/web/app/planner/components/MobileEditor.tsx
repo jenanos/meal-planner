@@ -12,6 +12,8 @@ export type MobileEditorItem = {
   isToday?: boolean;
   isPast?: boolean;
   isLocked?: boolean;
+  /** Who changed the day by hand and when; absent for generated days. */
+  changeNote?: string | null;
 };
 
 export type MobileEditorProps = {
@@ -59,6 +61,7 @@ export function MobileEditor({
             isToday={item.isToday}
             isPast={item.isPast}
             isLocked={item.isLocked}
+            changeNote={item.changeNote}
             onToggleLock={
               onToggleLock
                 ? () => onToggleLock(item.realIdx, item.weekOffset)

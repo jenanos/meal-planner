@@ -17,6 +17,11 @@ const { prismaMock } = vi.hoisted(() => {
       upsert: vi.fn(),
       deleteMany: vi.fn(),
     },
+    weekPlanDayChange: {
+      findMany: vi.fn(),
+      upsert: vi.fn(),
+      deleteMany: vi.fn(),
+    },
     recipe: {
       findMany: vi.fn(),
       findUnique: vi.fn(),
@@ -44,7 +49,11 @@ vi.mock("@repo/database", () => ({
   },
 }));
 
-import { freezerChangesBetween, plannerRouter } from "../src/routers/planner";
+import {
+  describeManualChanges,
+  freezerChangesBetween,
+  plannerRouter,
+} from "../src/routers/planner";
 
 const HOUSEHOLD_ID = "00000000-0000-0000-0000-000000000100";
 const USER = {
@@ -100,6 +109,7 @@ beforeEach(() => {
     ],
   });
   prismaMock.weekPlanEntry.findMany.mockResolvedValue([]);
+  prismaMock.weekPlanDayChange.findMany.mockResolvedValue([]);
   prismaMock.recipe.findMany.mockResolvedValue([]);
   prismaMock.recipe.findUniqueOrThrow.mockResolvedValue({ category: "STORFE" });
   prismaMock.freezerItem.updateMany.mockResolvedValue({ count: 1 });
@@ -141,7 +151,103 @@ describe("freezerChangesBetween", () => {
   });
 });
 
+describe("describeManualChanges", () => {
+  const laks = { type: "RECIPE", recipeId: LAKS } as const;
+  const taco = { type: "RECIPE", recipeId: TACO } as const;
+  const lasagne = { type: "RECIPE", recipeId: LASAGNE } as const;
+  const empty = { type: "EMPTY" } as const;
+  const takeaway = { type: "TAKEAWAY" } as const;
+
+  it("tells added, replaced and removed days apart and skips unchanged ones", () => {
+    expect(
+      describeManualChanges(
+        [laks, empty, taco, lasagne],
+        [laks, taco, takeaway, empty],
+      ),
+    ).toEqual([
+      // Taco went from Wednesday to Tuesday, so Tuesday got it moved in…
+      { dayIndex: 1, kind: "MOVED", otherDayIndex: 2 },
+      // …and Wednesday, which now holds something else, was replaced.
+      { dayIndex: 2, kind: "REPLACED", otherDayIndex: null },
+      { dayIndex: 3, kind: "REMOVED", otherDayIndex: null },
+    ]);
+    expect(describeManualChanges([empty, laks], [taco, laks])).toEqual([
+      { dayIndex: 0, kind: "ADDED", otherDayIndex: null },
+    ]);
+  });
+
+  it("marks every day a dragged meal shifted as moved", () => {
+    // Monday's laks dragged to Wednesday shifts taco and lasagne up a day.
+    expect(
+      describeManualChanges([laks, taco, lasagne], [taco, lasagne, laks]),
+    ).toEqual([
+      { dayIndex: 0, kind: "MOVED", otherDayIndex: 1 },
+      { dayIndex: 1, kind: "MOVED", otherDayIndex: 2 },
+      { dayIndex: 2, kind: "MOVED", otherDayIndex: 0 },
+    ]);
+  });
+
+  it("says where the meal went when a day is left empty by a move", () => {
+    expect(describeManualChanges([laks, empty], [empty, laks])).toEqual([
+      { dayIndex: 0, kind: "MOVED_OUT", otherDayIndex: 1 },
+      { dayIndex: 1, kind: "MOVED", otherDayIndex: 0 },
+    ]);
+  });
+});
+
 describe("planner.setWeekPlanDays", () => {
+  it("marks the days it changes with who changed them and when", async () => {
+    prismaMock.weekPlanEntry.findMany.mockResolvedValueOnce([
+      { dayIndex: 0, entryType: "RECIPE", recipeId: LAKS },
+      { dayIndex: 2, entryType: "FREEZER", recipeId: LASAGNE },
+    ]);
+    prismaMock.weekPlanDayChange.findMany.mockResolvedValue([
+      {
+        dayIndex: 4,
+        kind: "ADDED",
+        otherDayIndex: null,
+        changedAt: NOW,
+        changedBy: { id: USER.id, name: USER.name },
+      },
+    ]);
+
+    const result = await createCaller().setWeekPlanDays({
+      weekStart: WEEK_ISO,
+      changes: [
+        // Unchanged: no mark.
+        { dayIndex: 0, type: "RECIPE", recipeId: LAKS },
+        { dayIndex: 4, type: "RECIPE", recipeId: TACO },
+      ],
+    });
+
+    expect(prismaMock.weekPlanDayChange.upsert).toHaveBeenCalledTimes(1);
+    expect(prismaMock.weekPlanDayChange.upsert).toHaveBeenCalledWith({
+      where: { weekPlanId_dayIndex: { weekPlanId: "plan-1", dayIndex: 4 } },
+      update: {
+        kind: "ADDED",
+        otherDayIndex: null,
+        changedById: USER.id,
+        changedAt: NOW,
+      },
+      create: {
+        weekPlanId: "plan-1",
+        dayIndex: 4,
+        kind: "ADDED",
+        otherDayIndex: null,
+        changedById: USER.id,
+        changedAt: NOW,
+      },
+    });
+    expect(prismaMock.weekPlanDayChange.deleteMany).not.toHaveBeenCalled();
+    expect(result.days[4]!.change).toEqual({
+      kind: "ADDED",
+      otherDayIndex: null,
+      changedAt: NOW.toISOString(),
+      changedBy: { id: USER.id, name: USER.name },
+    });
+    expect(result.days[0]!.change).toBeNull();
+  });
+
   it("merges the changes into the stored week inside a locked transaction", async () => {
     const result = await createCaller().setWeekPlanDays({
       weekStart: WEEK_ISO,
@@ -306,5 +412,31 @@ describe("planner.generateWeekPlan", () => {
     });
     expect(withoutSync.freezerChanges).toEqual([]);
     expect(prismaMock.freezerItem.upsert).not.toHaveBeenCalled();
+  });
+
+  it("clears the manual marks of the days it generates anew, and only those", async () => {
+    prismaMock.weekPlan.findMany.mockResolvedValue([]);
+    prismaMock.recipe.findMany.mockResolvedValue(
+      Array.from({ length: 7 }, (_, i) => ({
+        id: `00000000-0000-0000-0000-0000000009${String(i).padStart(2, "0")}`,
+        name: `Rett ${i}`,
+        category: "VEGETAR",
+        everydayScore: 3,
+        healthScore: 3,
+        lastUsed: null,
+        usageCount: 0,
+        ingredients: [],
+      })),
+    );
+
+    await createCaller().generateWeekPlan({
+      weekStart: WEEK_ISO,
+      keepDays: [0, 2],
+    });
+
+    expect(prismaMock.weekPlanDayChange.deleteMany).toHaveBeenCalledWith({
+      where: { weekPlanId: "plan-1", dayIndex: { in: [1, 3, 4, 5, 6] } },
+    });
+    expect(prismaMock.weekPlanDayChange.upsert).not.toHaveBeenCalled();
   });
 });

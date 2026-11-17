@@ -88,6 +88,23 @@ type WeekPlanSuggestionBuckets = {
   frequent: RecipeDTO[];
 };
 
+export type WeekDayChangeKind =
+  | "ADDED"
+  | "REPLACED"
+  | "MOVED"
+  | "MOVED_OUT"
+  | "REMOVED";
+
+/** The last change someone made to a day by hand; null for generated days. */
+type WeekDayChangeDTO = {
+  kind: WeekDayChangeKind;
+  /** MOVED: the day the meal came from. MOVED_OUT: the day it went to. */
+  otherDayIndex: number | null;
+  changedAt: string;
+  /** Null once the person's account is gone. */
+  changedBy: { id: string; name: string } | null;
+};
+
 type WeekPlanResponse = {
   weekStart: string;
   updatedAt: string | null;
@@ -95,6 +112,7 @@ type WeekPlanResponse = {
     dayIndex: DayIndex;
     entryType: WeekEntryType;
     recipe: RecipeDTO | null;
+    change: WeekDayChangeDTO | null;
   }[];
   suggestions: WeekPlanSuggestionBuckets;
 };
@@ -581,9 +599,112 @@ async function resolveLastUsed(
   return { lastUsed: latestRemaining?.weekPlan.weekStart ?? null };
 }
 
-async function writeWeekPlan(weekStart: Date, days: WeekPlanDayEntryInput[], householdId: string) {
+/**
+ * Who a write of the week comes from: a person, whose changed days are marked
+ * with their name, or the generator, whose freshly proposed days lose any
+ * such mark again.
+ */
+export type WeekWriteSource =
+  | { by: "user"; userId: string }
+  | { by: "generator"; days: number[] };
+
+export type ManualDayChange = {
+  dayIndex: number;
+  kind: WeekDayChangeKind;
+  otherDayIndex: number | null;
+};
+
+function sameDayEntry(a: WeekPlanDayEntryInput, b: WeekPlanDayEntryInput) {
+  if (a.type !== b.type) return false;
+  if ("recipeId" in a && "recipeId" in b) return a.recipeId === b.recipeId;
+  return true;
+}
+
+/**
+ * The days a person changed going from `before` to `after`, and how: a meal
+ * that left one day and turned up on another was moved, not replaced.
+ */
+export function describeManualChanges(
+  before: WeekPlanDayEntryInput[],
+  after: WeekPlanDayEntryInput[],
+): ManualDayChange[] {
+  const changed = DAYS.filter(
+    (day) => !sameDayEntry(before[day] ?? EMPTY_DAY, after[day] ?? EMPTY_DAY),
+  );
+  // Day a meal left -> day it went to.
+  const movedTo = new Map<number, number>();
+  const result = new Map<number, ManualDayChange>();
+
+  // Meals that arrived from another changed day of the same week.
+  for (const day of changed) {
+    const next = after[day] ?? EMPTY_DAY;
+    if (next.type === "EMPTY") continue;
+    const source = changed.find(
+      (other) =>
+        other !== day &&
+        !movedTo.has(other) &&
+        sameDayEntry(before[other] ?? EMPTY_DAY, next),
+    );
+    if (source === undefined) continue;
+    movedTo.set(source, day);
+    result.set(day, { dayIndex: day, kind: "MOVED", otherDayIndex: source });
+  }
+
+  for (const day of changed) {
+    if (result.has(day)) continue;
+    const prev = before[day] ?? EMPTY_DAY;
+    const next = after[day] ?? EMPTY_DAY;
+    if (next.type === "EMPTY") {
+      const target = movedTo.get(day);
+      result.set(
+        day,
+        target !== undefined
+          ? { dayIndex: day, kind: "MOVED_OUT", otherDayIndex: target }
+          : { dayIndex: day, kind: "REMOVED", otherDayIndex: null },
+      );
+      continue;
+    }
+    result.set(day, {
+      dayIndex: day,
+      kind: prev.type === "EMPTY" ? "ADDED" : "REPLACED",
+      otherDayIndex: null,
+    });
+  }
+
+  return changed.map((day) => result.get(day)!);
+}
+
+const EMPTY_DAY: WeekPlanDayEntryInput = { type: "EMPTY" };
+
+function entriesToDays(
+  entries: { dayIndex: number; entryType: string; recipeId: string | null }[],
+): WeekPlanDayEntryInput[] {
+  const days: WeekPlanDayEntryInput[] = DAYS.map(() => ({ type: "EMPTY" }));
+  for (const entry of entries) {
+    if (entry.dayIndex < 0 || entry.dayIndex > 6) continue;
+    if (entry.entryType === "TAKEAWAY") {
+      days[entry.dayIndex] = { type: "TAKEAWAY" };
+    } else if (entry.entryType === "FREEZER" && entry.recipeId) {
+      days[entry.dayIndex] = { type: "FREEZER", recipeId: entry.recipeId };
+    } else if (entry.recipeId) {
+      days[entry.dayIndex] = { type: "RECIPE", recipeId: entry.recipeId };
+    }
+  }
+  return days;
+}
+
+const dayChangeInclude = {
+  changedBy: { select: { id: true, name: true } },
+} as const;
+
+async function writeWeekPlan(
+  weekStart: Date,
+  days: WeekPlanDayEntryInput[],
+  householdId: string,
+  source: WeekWriteSource,
+) {
   return prisma.$transaction((tx) =>
-    writeWeekPlanIn(tx, weekStart, days, householdId),
+    writeWeekPlanIn(tx, weekStart, days, householdId, source),
   );
 }
 
@@ -592,6 +713,7 @@ async function writeWeekPlanIn(
   weekStart: Date,
   days: WeekPlanDayEntryInput[],
   householdId: string,
+  source: WeekWriteSource,
 ) {
   if (days.length !== 7) {
     throw new Error("days must have length 7");
@@ -697,19 +819,48 @@ async function writeWeekPlanIn(
     });
   }
 
-  const entries = await tx.weekPlanEntry.findMany({
-    where: { weekPlanId: plan.id },
-    include: {
-      recipe: {
-        include: {
-          ingredients: { include: { ingredient: true } },
+  if (source.by === "user") {
+    const changes = describeManualChanges(entriesToDays(prevEntries), days);
+    for (const change of changes) {
+      const data = {
+        kind: change.kind,
+        otherDayIndex: change.otherDayIndex,
+        changedById: source.userId,
+        changedAt: now,
+      };
+      await tx.weekPlanDayChange.upsert({
+        where: {
+          weekPlanId_dayIndex: { weekPlanId: plan.id, dayIndex: change.dayIndex },
+        },
+        update: data,
+        create: { weekPlanId: plan.id, dayIndex: change.dayIndex, ...data },
+      });
+    }
+  } else if (source.days.length > 0) {
+    await tx.weekPlanDayChange.deleteMany({
+      where: { weekPlanId: plan.id, dayIndex: { in: source.days } },
+    });
+  }
+
+  const [entries, dayChanges] = await Promise.all([
+    tx.weekPlanEntry.findMany({
+      where: { weekPlanId: plan.id },
+      include: {
+        recipe: {
+          include: {
+            ingredients: { include: { ingredient: true } },
+          },
         },
       },
-    },
-    orderBy: { dayIndex: "asc" },
-  });
+      orderBy: { dayIndex: "asc" },
+    }),
+    tx.weekPlanDayChange.findMany({
+      where: { weekPlanId: plan.id },
+      include: dayChangeInclude,
+    }),
+  ]);
 
-  return { plan, entries };
+  return { plan, entries, dayChanges };
 }
 
 // ─── Week changes that keep the freezer in step ───
@@ -759,18 +910,7 @@ async function readWeekDays(
       entries: { select: { dayIndex: true, entryType: true, recipeId: true } },
     },
   });
-  const days: WeekPlanDayEntryInput[] = DAYS.map(() => ({ type: "EMPTY" }));
-  for (const entry of plan?.entries ?? []) {
-    if (entry.dayIndex < 0 || entry.dayIndex > 6) continue;
-    if (entry.entryType === "TAKEAWAY") {
-      days[entry.dayIndex] = { type: "TAKEAWAY" };
-    } else if (entry.entryType === "FREEZER" && entry.recipeId) {
-      days[entry.dayIndex] = { type: "FREEZER", recipeId: entry.recipeId };
-    } else if (entry.recipeId) {
-      days[entry.dayIndex] = { type: "RECIPE", recipeId: entry.recipeId };
-    }
-  }
-  return days;
+  return entriesToDays(plan?.entries ?? []);
 }
 
 async function moveFreezerPortions(
@@ -840,7 +980,7 @@ async function changeWeekPlan(
   weekStart: Date,
   householdId: string,
   build: (current: WeekPlanDayEntryInput[]) => WeekPlanDayEntryInput[],
-  options: { syncFreezer: boolean },
+  options: { syncFreezer: boolean; source: WeekWriteSource },
 ) {
   return prisma.$transaction(
     async (tx) => {
@@ -853,13 +993,27 @@ async function changeWeekPlan(
         ? freezerChangesBetween(current, next)
         : [];
       await moveFreezerPortions(tx, householdId, freezerChanges);
-      const persisted = await writeWeekPlanIn(tx, weekStart, next, householdId);
+      const persisted = await writeWeekPlanIn(
+        tx,
+        weekStart,
+        next,
+        householdId,
+        options.source,
+      );
       return { ...persisted, freezerChanges };
     },
     // Room to wait for a competing change of the same week to finish.
     { maxWait: 10_000, timeout: 20_000 },
   );
 }
+
+type StoredDayChange = {
+  dayIndex: number;
+  kind: WeekDayChangeKind;
+  otherDayIndex: number | null;
+  changedAt: Date;
+  changedBy: { id: string; name: string } | null;
+};
 
 function composeWeekResponse(args: {
   weekStart: Date;
@@ -869,9 +1023,21 @@ function composeWeekResponse(args: {
     recipe: any | null;
     entryType?: WeekEntryType;
   }[];
+  dayChanges?: StoredDayChange[];
   suggestions: WeekPlanSuggestionBuckets;
 }): WeekPlanResponse {
   const { weekStart, updatedAt, entries, suggestions } = args;
+  const changeMap = new Map<number, WeekDayChangeDTO>();
+  for (const change of args.dayChanges ?? []) {
+    changeMap.set(change.dayIndex, {
+      kind: change.kind,
+      otherDayIndex: change.otherDayIndex,
+      changedAt: change.changedAt.toISOString(),
+      changedBy: change.changedBy
+        ? { id: change.changedBy.id, name: change.changedBy.name }
+        : null,
+    });
+  }
   const entryMap = new Map<
     number,
     { entryType: WeekEntryType; recipe: RecipeDTO | null }
@@ -891,6 +1057,7 @@ function composeWeekResponse(args: {
       dayIndex,
       entryType: entryMap.get(dayIndex)?.entryType ?? "EMPTY",
       recipe: entryMap.get(dayIndex)?.recipe ?? null,
+      change: changeMap.get(dayIndex) ?? null,
     })),
     suggestions,
   };
@@ -1037,6 +1204,7 @@ async function ensureWeekPlanResponse(
           },
           orderBy: { dayIndex: "asc" },
         },
+        dayChanges: { include: dayChangeInclude },
       },
     }),
     fetchAllRecipes(),
@@ -1051,6 +1219,7 @@ async function ensureWeekPlanResponse(
     weekStart,
     updatedAt,
     entries,
+    dayChanges: planWithEntries?.dayChanges ?? [],
     suggestions,
   });
 }
@@ -1161,7 +1330,13 @@ export const plannerRouter = router({
             return { type: "RECIPE" as const, recipeId: recipe.id };
           });
         },
-        { syncFreezer: input?.syncFreezer ?? false },
+        {
+          syncFreezer: input?.syncFreezer ?? false,
+          source: {
+            by: "generator",
+            days: DAYS.filter((dayIndex) => !keepDays.has(dayIndex)),
+          },
+        },
       );
 
       const suggestions = buildSuggestionBuckets(pool, []);
@@ -1171,6 +1346,7 @@ export const plannerRouter = router({
           weekStart,
           updatedAt: persisted.plan.updatedAt,
           entries: persisted.entries,
+          dayChanges: persisted.dayChanges,
           suggestions,
         }),
         freezerChanges: persisted.freezerChanges,
@@ -1213,7 +1389,10 @@ export const plannerRouter = router({
           }
           return next;
         },
-        { syncFreezer: input.syncFreezer },
+        {
+          syncFreezer: input.syncFreezer,
+          source: { by: "user", userId: ctx.user.id },
+        },
       );
 
       const pool = await fetchAllRecipes();
@@ -1222,6 +1401,7 @@ export const plannerRouter = router({
           weekStart,
           updatedAt: persisted.plan.updatedAt,
           entries: persisted.entries,
+          dayChanges: persisted.dayChanges,
           suggestions: buildSuggestionBuckets(pool, []),
         }),
         freezerChanges: persisted.freezerChanges,
@@ -1897,7 +2077,10 @@ export const plannerRouter = router({
 
       const weekStart = startOfWeek(weekStartString);
       enforceFutureLimit(weekStart);
-      const persisted = await writeWeekPlan(weekStart, days, householdId);
+      const persisted = await writeWeekPlan(weekStart, days, householdId, {
+        by: "user",
+        userId: ctx.user.id,
+      });
 
       const pool = await fetchAllRecipes();
       const suggestions = buildSuggestionBuckets(pool, []);
@@ -1906,6 +2089,7 @@ export const plannerRouter = router({
         weekStart,
         updatedAt: persisted.plan.updatedAt,
         entries: persisted.entries,
+        dayChanges: persisted.dayChanges,
         suggestions,
       });
     }),

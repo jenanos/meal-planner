@@ -54,6 +54,8 @@ import {
 import { ChevronDown } from "lucide-react";
 import { MS_PER_DAY } from "../../lib/week";
 import { localTodayMs } from "../../lib/shopping-window";
+import { describeDayChange, type DayChange } from "../../lib/planner-change";
+import { useSession } from "../../lib/auth-client";
 import {
   daysToKeep,
   type GenerateMode,
@@ -74,6 +76,11 @@ export default function PlannerPage() {
   // Date formatter for "16.02" format
   const dateFormatter = useMemo(() => new Intl.DateTimeFormat("nb-NO", { day: "2-digit", month: "2-digit" }), []);
   const [week, setWeek] = useState<WeekState>(makeEmptyWeek);
+  // Who changed each day by hand, as the server last reported it.
+  const [weekChanges, setWeekChanges] = useState<(DayChange | null)[]>([]);
+  const [nextWeekChanges, setNextWeekChanges] = useState<(DayChange | null)[]>([]);
+  const { data: session } = useSession();
+  const currentUserId = session?.user?.id ?? null;
   const [previewWeek, setPreviewWeek] = useState<WeekState | null>(null);
   const [draggingWeekIndex, setDraggingWeekIndex] = useState<number | null>(
     null,
@@ -218,6 +225,7 @@ export default function PlannerPage() {
         return null;
       }) as WeekState;
       setWeek(weekState);
+      setWeekChanges(res.days.map((day) => day.change));
       setPreviewWeek(null);
       setDraggingWeekIndex(null);
       setLongGap(res.suggestions.longGap);
@@ -242,6 +250,7 @@ export default function PlannerPage() {
         return null;
       }) as WeekState;
       setNextWeek(weekState);
+      setNextWeekChanges(res.days.map((day) => day.change));
       setPreviewNextWeek(null);
       utils.planner.getWeekPlan.setData({ weekStart: res.weekStart }, res);
     },
@@ -702,6 +711,17 @@ export default function PlannerPage() {
 
   const dayNames = useMemo(() => reorderDayNames(startDay), [startDay]);
 
+  // The note belongs to the day, so it is hidden while a drag reshuffles the
+  // cards of that week and would put it under the wrong meal.
+  const changeNoteFor = useCallback(
+    (changes: (DayChange | null)[], dayIndex: number, dragging: boolean) => {
+      const change = changes[dayIndex];
+      if (!change || dragging) return null;
+      return describeDayChange(change, { currentUserId });
+    },
+    [currentUserId],
+  );
+
   const rollingWeekItems = useMemo(() => {
     const baseDate = new Date(activeWeekStart);
     return Array.from({ length: 7 }, (_, i) => {
@@ -726,9 +746,12 @@ export default function PlannerPage() {
         isToday: dateMs === todayMs,
         isPast: dateMs < todayMs,
         isLocked: lockedDays.has(`${lockWeek}::${realIdx}`),
+        changeNote: isNextWeek
+          ? changeNoteFor(nextWeekChanges, realIdx, previewNextWeek !== null)
+          : changeNoteFor(weekChanges, realIdx, previewWeek !== null),
       };
     });
-  }, [displayWeek, displayNextWeek, startDay, dayNames, activeWeekStart, activeWeekStartMs, nextWeekStart, todayMs, lockedDays, dateFormatter]);
+  }, [displayWeek, displayNextWeek, startDay, dayNames, activeWeekStart, activeWeekStartMs, nextWeekStart, todayMs, lockedDays, dateFormatter, changeNoteFor, weekChanges, nextWeekChanges, previewWeek, previewNextWeek]);
 
   // The separate "next week" row shown below a Monday-first week.
   const nextWeekItems = useMemo(
@@ -744,9 +767,10 @@ export default function PlannerPage() {
           isToday: dateMs === todayMs,
           isPast: dateMs < todayMs,
           isLocked: lockedDays.has(`${nextWeekStart}::${i}`),
+          changeNote: changeNoteFor(nextWeekChanges, i, previewNextWeek !== null),
         };
       }),
-    [displayNextWeek, activeWeekStartMs, nextWeekStart, todayMs, lockedDays, dateFormatter],
+    [displayNextWeek, activeWeekStartMs, nextWeekStart, todayMs, lockedDays, dateFormatter, changeNoteFor, nextWeekChanges, previewNextWeek],
   );
 
   const activeDragRecipe = useMemo(() => {
@@ -975,6 +999,7 @@ export default function PlannerPage() {
                 isToday={item.isToday}
                 isPast={item.isPast}
                 isLocked={item.isLocked}
+                changeNote={item.changeNote}
                 onToggleLock={(idx) => handleToggleLock(idx, item.weekOffset)}
               />
             ))}
@@ -1000,6 +1025,7 @@ export default function PlannerPage() {
                     isToday={item.isToday}
                     isPast={item.isPast}
                     isLocked={item.isLocked}
+                    changeNote={item.changeNote}
                     onToggleLock={(idx) => handleToggleLock(idx, 1)}
                   />
                 ))}

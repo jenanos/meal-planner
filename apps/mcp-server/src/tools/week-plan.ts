@@ -17,6 +17,22 @@ import { recipeRef, recipeSummary, resolveRecipeId } from "./recipes.js";
 type WeekPlan = Awaited<
   ReturnType<MealsApi["planner"]["getWeekPlan"]["query"]>
 >;
+const manualChangeHelp =
+  "Dager med manualChange er endret for hånd av noen i husholdningen (hvem og når står der). " +
+  "De er valgt med vilje: ikke bytt dem ut uten å spørre, og ta dem med i keepDays når uka genereres.";
+
+/** Who changed a day by hand and when; absent for generated days. */
+function formatManualChange(change: WeekPlan["days"][number]["change"]) {
+  if (!change) return undefined;
+  return compact({
+    kind: change.kind,
+    otherDay:
+      change.otherDayIndex != null ? WEEKDAYS[change.otherDayIndex] : undefined,
+    by: change.changedBy?.name ?? "tidligere bruker",
+    at: change.changedAt,
+  });
+}
+
 const entryTypeHelp =
   "RECIPE = lag oppskriften (ingrediensene havner på handlelisten), " +
   "FREEZER = ta en porsjon av oppskriften fra fryseren (ingen ingredienser på handlelisten), " +
@@ -42,6 +58,7 @@ function formatWeek(
             ? recipeSummary(day.recipe, { ingredients: true })
             : recipeRef(day.recipe)
           : undefined,
+        manualChange: formatManualChange(day.change),
       }),
     ),
     suggestions: options.suggestions
@@ -75,7 +92,9 @@ export function registerWeekPlanTools(ctx: ToolContext) {
       title: "Hent ukesplan",
       description:
         "Henter middagsplanen for en uke: sju dager (dayIndex 0 = mandag) med type og oppskrift. " +
-        entryTypeHelp,
+        entryTypeHelp +
+        " " +
+        manualChangeHelp,
       kind: "read",
       errorContext: "Kunne ikke hente ukesplan",
       input: {
@@ -228,7 +247,8 @@ export function registerWeekPlanTools(ctx: ToolContext) {
       description:
         "Lar appen foreslå og lagre en hel uke med oppskrifter, spredt slik at de samme rettene ikke går igjen for ofte. " +
         "ERSTATTER alle sju dagene i uka, også dager som allerede er planlagt. " +
-        "Kall verktøyet på nytt for et annet forslag, og finjuster enkeltdager med set-week-plan-days.",
+        "Kall verktøyet på nytt for et annet forslag, og finjuster enkeltdager med set-week-plan-days. " +
+        "Dager som noen har endret for hånd (manualChange i get-week-plan) bør stå i keepDays.",
       kind: "destructive",
       idempotent: false,
       errorContext: "Kunne ikke generere ukesplan",
